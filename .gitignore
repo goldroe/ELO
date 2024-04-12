@@ -1,0 +1,8 @@
+# build directories
+.vs/
+bin/
+
+*.pdb
+*.exe
+*.ilk
+*.obj
