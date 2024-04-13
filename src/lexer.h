@@ -9,9 +9,11 @@
 
 
 #define TOKENS() \
-    TOK(TOKEN_NONE, ""), \
     TOK(TOKEN_EOF, ""), \
+    TOK(TOKEN_NONE, ""), \
     \
+    TOK(TOKEN_BUILTIN_BEGIN, "beginning of builtin types"), \
+    TOK(TOKEN_BOOL, "bool"), \
     TOK(TOKEN_INT, "int"), \
     TOK(TOKEN_INT8, "int8"), \
     TOK(TOKEN_INT16, "int16"), \
@@ -26,6 +28,24 @@
     TOK(TOKEN_FLOAT32, "float32"), \
     TOK(TOKEN_FLOAT64, "float64"), \
     TOK(TOKEN_STRING, "string"), \
+    TOK(TOKEN_BUILTIN_END, "end of builtin types"), \
+    \
+    TOK(TOKEN_KEYWORD_BEGIN, "beginning of keywords"), \
+    TOK(TOKEN_STRUCT, "struct"), \
+    TOK(TOKEN_ENUM, "enum"), \
+    TOK(TOKEN_IF, "if"), \
+    TOK(TOKEN_ELSE, "else"), \
+    TOK(TOKEN_WHILE, "while"), \
+    TOK(TOKEN_DO, "do"), \
+    TOK(TOKEN_FOR, "for"), \
+    TOK(TOKEN_CASE, "case"), \
+    TOK(TOKEN_CONTINUE, "continue"), \
+    TOK(TOKEN_BREAK, "break"), \
+    TOK(TOKEN_RETURN, "return"), \
+    TOK(TOKEN_CONST, "const"), \
+    TOK(TOKEN_TRUE, "true"), \
+    TOK(TOKEN_FALSE, "false"), \
+    TOK(TOKEN_KEYWORD_END, "end of keywords"), \
     \
     TOK(TOKEN_HASH, "#"), \
     TOK(TOKEN_COLON, ":"), \
@@ -42,8 +62,8 @@
     TOK(TOKEN_PERCENT, "%"), \
     TOK(TOKEN_AMPER, "&"), \
     TOK(TOKEN_BAR, "|"), \
-    TOK(TOKEN_CARET, "^"), \
-    TOK(TOKEN_SQUIGGLE, "~"), \
+    TOK(TOKEN_XOR, "^"), \
+    TOK(TOKEN_TILDE, "~"), \
     \
     TOK(TOKEN_BANG, "!"), \
     TOK(TOKEN_EQUAL, "=="), \
@@ -54,6 +74,8 @@
     TOK(TOKEN_LTEQ, "<="), \
     TOK(TOKEN_GT, ">"), \
     TOK(TOKEN_GTEQ, ">="), \
+    TOK(TOKEN_LSHIFT, "<<"), \
+    TOK(TOKEN_RSHIFT, ">>"), \
     \
     TOK(TOKEN_QUESTION, "?"), \
     \
@@ -77,7 +99,7 @@
     TOK(TOKEN_RBRACE, "}"), \
     \
     TOK(TOKEN_IDENT, "identifier"), \
-    TOK(TOKEN_STRINGLIT, "string"), \
+    TOK(TOKEN_STRLIT, "string"), \
     TOK(TOKEN_INTLIT, "integer"), \
     TOK(TOKEN_FLOATLIT, "float"), \
     TOK(TOKEN_TERMINATOR, "")
@@ -121,6 +143,7 @@ struct Lexer {
         scan();
     }
 
+    void error(const char *fmt, ...);
     void advance();
     int64 scan_integer();
     float64 scan_float();
