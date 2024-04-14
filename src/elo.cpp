@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "lexer.h"
+#include "parser.h"
 
 int main(int argc, char **argv) {
     argc--; argv++;
@@ -11,11 +12,8 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
-    Lexer lexer(argv[0]);
+    char *file_name = argv[0];
 
-    while (lexer.token.type != TOKEN_EOF) 
-    {
-        lexer.scan();
-    }
+    Parser parser(file_name);
     return 0;
 }
