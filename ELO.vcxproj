@@ -165,10 +165,13 @@
   <ItemGroup>
     <ClCompile Include="src\elo.cpp" />
     <ClCompile Include="src\lexer.cpp" />
+    <ClCompile Include="src\parser.cpp" />
     <ClCompile Include="src\path.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\array.h" />
     <ClInclude Include="src\lexer.h" />
+    <ClInclude Include="src\parser.h" />
     <ClInclude Include="src\path.h" />
     <ClInclude Include="src\types.h" />
   </ItemGroup>
