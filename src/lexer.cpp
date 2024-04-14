@@ -4,6 +4,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+const char *_token_type_strings[TOKEN_TERMINATOR + 1] = {
+#define TOK(Tok, Str) Str
+    TOKENS()
+#undef TOK
+};
+
 void Lexer::error(const char *fmt, ...) {
     printf("error: ");
     va_list args;
@@ -11,18 +17,6 @@ void Lexer::error(const char *fmt, ...) {
     vprintf(fmt, args);
     va_end(args);
     printf("\n");
-}
-
-void Lexer::advance() {
-    if (*stream == '\n') {
-        line_number++;
-        column_number = 1;
-    } else {
-        column_number++;
-    }
-
-    stream_pos++;
-    stream++;
 }
 
 int64 Lexer::scan_integer() {
@@ -59,7 +53,7 @@ float64 Lexer::scan_float() {
     return result;
 }
 
-void Lexer::scan() {
+Token Lexer::scan() {
     Token tok;
 begin:
     char *start = stream;
@@ -80,6 +74,19 @@ begin:
             tok.type = T1; \
         } \
         break; \
+
+#define CASE3(C0, T0, C1, T1, C2, T2) \
+    case C0: \
+        advance(); \
+        tok.type = T0; \
+        if (*stream == C1) { \
+            advance(); \
+            tok.type = T1; \
+        } else if (*stream == C2) { \
+            advance(); \
+            tok.type = T2; \
+        } \
+        break; \
     
     switch (*stream) {
         CASE1(';', TOKEN_SEMICOLON);
@@ -97,7 +104,7 @@ begin:
         CASE1('?', TOKEN_QUESTION);
 
         CASE2('+', TOKEN_PLUS, '=', TOKEN_ADD_ASSIGN);
-        CASE2('-', TOKEN_MINUS, '=', TOKEN_SUB_ASSIGN);
+        CASE3('-', TOKEN_MINUS, '=', TOKEN_SUB_ASSIGN, '>', TOKEN_ARROW);
         CASE2('*', TOKEN_STAR, '=', TOKEN_MUL_ASSIGN);
         CASE2('/', TOKEN_SLASH, '=', TOKEN_DIV_ASSIGN);
         CASE2('%', TOKEN_PERCENT, '=', TOKEN_MOD_ASSIGN);
@@ -106,6 +113,8 @@ begin:
 
         CASE2('!', TOKEN_BANG, '=', TOKEN_NEQ);
         CASE2('=', TOKEN_ASSIGN, '=', TOKEN_EQUAL);
+
+        CASE3(':', TOKEN_COLON, ':', TOKEN_COLON2, '=', TOKEN_COLON_ASSIGN);
 
     case '&':
         advance();
@@ -225,9 +234,8 @@ begin:
         tok.type = TOKEN_EOF;
         break;
     }
-
 #undef CASE1
 #undef CASE2
 
-    token = tok;
+    return tok;
 }
