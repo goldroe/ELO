@@ -104,16 +104,21 @@ struct Ast_Expression_Statement : Ast_Statement {
 };
 
 struct Ast_If : Ast_Statement {
+    Ast_If() { type = AST_IF; }
     Ast_Expression *condition;
     Ast_Block *block;
+
+    Ast_If *else_if;
 };
 
 struct Ast_While : Ast_Statement {
+    Ast_While() { type = AST_WHILE; }
     Ast_Expression *condition;
     Ast_Block *block;
 };
 
 struct Ast_Return : Ast_Statement {
+    Ast_Return() { type = AST_RETURN; }
     Ast_Expression *expression;
 };
 
@@ -184,15 +189,17 @@ struct Parser {
     Ast_Expression *parse_primary_expression();
     Ast_Expression *parse_unary_expression();
     Ast_Expression *parse_operand();
-    // Ast_Expression *parse_binary_expression();
-    Ast_Block *parse_block();
+    Ast_Expression *parse_binary_expression(Ast_Expression *lhs, int precedence);
+    Ast_Statement *parse_statement();
     Ast_Statement *parse_init_statement(Ast_Expression *lhs);
     Ast_Statement *parse_simple_statement();
-    Ast_Statement *parse_statement();
-    Ast_Type_Definition *parse_type_definition();
+    Ast_If *parse_if_statement();
+    Ast_While *parse_while_statement();
+    Ast_Declaration *parse_declaration();
     Ast_Variable *parse_variable_declaration(Ast_Ident *identfier);
     Ast_Procedure_Declaration *parse_procedure_declaration(Ast_Ident *ident);
-    Ast_Declaration *parse_declaration();
+    Ast_Block *parse_block();
+    Ast_Type_Definition *parse_type_definition();
     Ast_Root *parse_root();
 };
 

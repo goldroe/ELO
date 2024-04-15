@@ -18,7 +18,7 @@ bool Parser::expect(Token_Type type) {
         lexer->next_token();
         return true;
     }
-    error("expected '%s', got '%s'", token_type_to_string(type));
+    error("expected '%s', got '%s'", token_type_to_string(type), token_type_to_string(lexer->token.type));
     return false;
 }
 
@@ -97,6 +97,14 @@ inline Ast_Unary_Expression *make_unary_expression(Token_Type op) {
     return unary;
 }
 
+inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_Expression *lhs, Ast_Expression *rhs) {
+    Ast_Binary_Expression *binary_expression = AST_NEW(Ast_Binary_Expression);
+    binary_expression->op = op;
+    binary_expression->lhs = lhs;
+    binary_expression->rhs = rhs;
+    return binary_expression;
+}
+
 inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
     Ast_Index_Expression *index_expression = AST_NEW(Ast_Index_Expression);
     index_expression->array = array;
@@ -116,6 +124,21 @@ inline Ast_Call_Expression *make_call_expression(Ast_Expression *operand) {
     call_expression->operand = operand;
     return call_expression;
 }
+
+Ast_If *make_if_statement(Ast_Expression *condition, Ast_Block *block) {
+    Ast_If *if_statement = AST_NEW(Ast_If);
+    if_statement->condition = condition;
+    if_statement->block = block;
+    return if_statement;
+}
+
+Ast_While *make_while_statement(Ast_Expression *condition, Ast_Block *block) {
+    Ast_While *while_statement = AST_NEW(Ast_While);
+    while_statement->condition = condition;
+    while_statement->block = block;
+    return while_statement;
+}
+
 
 Ast_Expression *Parser::parse_operand() {
     switch (lexer->token.type) {
@@ -153,12 +176,12 @@ Ast_Expression *Parser::parse_primary_expression() {
     switch (lexer->token.type) {
     default:
         return operand;
-    case TOKEN_LBRACE:
+    case TOKEN_LBRACKET:
     {
         lexer->next_token();
         Ast_Expression *index = parse_expression();
         Ast_Index_Expression *index_expression = make_index_expression(operand, index);
-        expect(TOKEN_RBRACE);
+        expect(TOKEN_RBRACKET);
         return index_expression;
     }
     case TOKEN_DOT:
@@ -174,7 +197,7 @@ Ast_Expression *Parser::parse_primary_expression() {
         Ast_Call_Expression *call_expression = make_call_expression(operand);
         while (!lexer->match_token(TOKEN_RPAREN)) {
             if (lexer->is_token(TOKEN_SEMICOLON)) {
-                error("';' before ')'");
+                error("missing ')' before ';'");
             }
             Ast_Expression *argument = parse_expression();
             call_expression->arguments.push(argument);
@@ -199,8 +222,85 @@ Ast_Expression *Parser::parse_unary_expression() {
     }
 }
 
+// 10 + 3 * 2
+// 10 + (3 * 2)
+//     +
+//    /  \
+//   /     *
+//  10    / \
+//       3   2
+//
+
+// 10 * 3 + 2
+// (10 * 3) + 2
+//     *
+//    /  \
+//   /     +
+//  10    / \
+//       3   2
+
+// 10 * 3 + 2 * 4
+// (10 * 3) + (2 * 4)
+//        +
+//       / \
+//      /   \
+//     /     \
+//    *      * 
+//   / \    / \
+//  10  3  2   4
+
+int precedence_table(Token_Type op) {
+    switch (op) {
+    default:
+        return -1;
+    case TOKEN_STAR:
+    case TOKEN_SLASH:
+    case TOKEN_PERCENT:
+        return 200;
+    case TOKEN_PLUS:
+    case TOKEN_MINUS:
+        return 100;
+    case TOKEN_LT:
+    case TOKEN_LTEQ:
+    case TOKEN_GT:
+    case TOKEN_GTEQ:
+        return 20;
+    case TOKEN_EQUAL:
+    case TOKEN_NEQ:
+        return 10;
+    }
+}
+
+Ast_Expression *Parser::parse_binary_expression(Ast_Expression *lhs, int precedence) {
+    for (;;) {
+        int op_precedence = precedence_table(lexer->token.type);
+        // leaf expression
+        if (op_precedence < precedence) {
+            return lhs;
+        }
+
+        Token_Type op = lexer->token.type;
+        lexer->next_token();
+
+        Ast_Expression *rhs = parse_unary_expression();
+        if (!rhs) {
+            return nullptr;
+        }
+
+        int next_precedence = precedence_table(lexer->token.type);
+        if (op_precedence < next_precedence) {
+            rhs = parse_binary_expression(rhs, op_precedence + 1);
+            if (!rhs) return nullptr;
+        }
+
+        lhs = make_binary_expression(op, lhs, rhs);
+    }
+}
+
 Ast_Expression *Parser::parse_expression() {
     Ast_Expression *expression = parse_unary_expression();
+    expression = parse_binary_expression(expression, 0);
+    
     return expression;
 }
 
@@ -216,6 +316,8 @@ Ast_Statement *Parser::parse_init_statement(Ast_Expression *lhs) {
 
 Ast_Statement *Parser::parse_simple_statement() {
     Ast_Expression *lhs = parse_expression();
+    if (!lhs) return nullptr;
+    
     switch (lexer->token.type) {
     default:
     {
@@ -231,17 +333,40 @@ Ast_Statement *Parser::parse_simple_statement() {
     }
 }
 
+Ast_If *Parser::parse_if_statement() {
+    assert(lexer->match_token(TOKEN_IF));
+    Ast_Expression *condition = parse_expression();
+    Ast_Block *block = parse_block();
+    Ast_If *if_statement = make_if_statement(condition, block);
+    return if_statement;
+}
+
+Ast_While *Parser::parse_while_statement() {
+    assert(lexer->match_token(TOKEN_WHILE));
+    Ast_Expression *condition = parse_expression();
+    Ast_Block *block = parse_block();
+    Ast_While *while_statement = make_while_statement(condition, block);
+    return while_statement;
+}
+
 Ast_Statement *Parser::parse_statement() {
     Ast_Statement *statement = nullptr;
     switch (lexer->token.type) {
     default:
     {
         statement = parse_simple_statement();
+        if (statement) {
+            expect(TOKEN_SEMICOLON);
+        }
         break;
     }
     case TOKEN_IF:
-    case TOKEN_ELSE:
+        statement = parse_if_statement();
+        break;
     case TOKEN_WHILE:
+        statement = parse_while_statement();
+        break;
+    case TOKEN_ELSE:
     case TOKEN_DO:
     case TOKEN_FOR:
     case TOKEN_CASE:
@@ -250,7 +375,6 @@ Ast_Statement *Parser::parse_statement() {
     case TOKEN_RETURN:
         break;
     }
-    expect(TOKEN_SEMICOLON);
     return statement;
 }
 
@@ -307,7 +431,7 @@ Ast_Type_Definition *Parser::parse_type_definition() {
             break;
         case TOKEN_LBRACKET:
             lexer->next_token();
-            expect(TOKEN_RBRACE);
+            expect(TOKEN_RBRACKET);
             type_definition = make_type_definition(type_definition);
             break;
         }
@@ -372,4 +496,3 @@ Ast_Root *Parser::parse_root() {
     }
     return root;
 }
- 
