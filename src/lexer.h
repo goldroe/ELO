@@ -7,7 +7,6 @@
 #include "types.h"
 #include "path.h"
 
-
 #define TOKENS() \
     TOK(TOKEN_EOF, ""), \
     TOK(TOKEN_NONE, ""), \
@@ -118,6 +117,10 @@ inline const char *token_type_to_string(Token_Type type) {
     return _token_type_strings[type];
 }
 
+void init_keywords();
+
+
+
 inline bool is_assign_operator(Token_Type op) {
     return (op > TOKEN_ASSIGN_FIRST && op < TOKEN_ASSIGN_LAST);
 }
@@ -136,7 +139,6 @@ inline bool is_unary_operator(Token_Type op) {
         return true;
     }
 }
-
 
 struct Token {
     Token_Type type = TOKEN_NONE;

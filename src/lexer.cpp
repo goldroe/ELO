@@ -4,6 +4,78 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+// @todo string interning
+
+uint64 hash_djb2(unsigned const char *str) {
+    uint64_t hash = 5381;
+    int c;
+    while (c = *str++)
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    return hash;
+}
+
+struct Keyword_Entry {
+    const char *key;
+    Token_Type token;
+    Keyword_Entry *next;
+};
+
+struct Keyword_Table {
+    Keyword_Entry **entries;
+    int count;
+};
+
+Keyword_Table *make_keyword_table() {
+    Keyword_Table *table = (Keyword_Table *)malloc(sizeof(Keyword_Table));
+    table->count = 64;
+    table->entries = (Keyword_Entry **)calloc(table->count, sizeof(Keyword_Entry * ));
+    return table;
+}
+
+Keyword_Table *keyword_table;
+
+
+Keyword_Entry *keyword_lookup(const char *str) {
+    uint64 hash = hash_djb2((unsigned const char *)str);
+    uint64 index = hash % keyword_table->count;
+
+    Keyword_Entry *first = keyword_table->entries[index];
+    for (Keyword_Entry *it = first; it; it = it->next) {
+        if (strcmp(it->key, str) == 0) {
+            return it;
+        }
+    }
+    return nullptr;
+}
+
+void keyword_insert(const char *keyword) {
+    Keyword_Entry *entry = (Keyword_Entry *)malloc(sizeof(Keyword_Entry));
+    entry->key = keyword;
+    for (int token = TOKEN_KEYWORD_FIRST + 1; token < TOKEN_KEYWORD_LAST; token++) {
+        if (strcmp(token_type_to_string((Token_Type)token), keyword) == 0) {
+            entry->token = (Token_Type)token;
+        }
+    }
+
+    uint64 hash = hash_djb2((unsigned const char *)keyword);
+    uint64 index = hash % keyword_table->count;
+    Keyword_Entry *first = keyword_table->entries[index];
+    entry->next = first;
+    keyword_table->entries[index] = entry;
+
+    printf("  entry %s: '%s' #%lld %lld\n", token_type_to_string(entry->token), keyword, hash, index);
+}
+
+void init_keywords() {
+    keyword_table = make_keyword_table();
+
+    printf("initializing keyword table...\n");
+    for (int i = TOKEN_KEYWORD_FIRST + 1; i < TOKEN_KEYWORD_LAST; i++) {
+        const char *keyword = token_type_to_string((Token_Type)i);
+        keyword_insert(keyword);
+    }
+}
+
 const char *_token_type_strings[TOKEN_TERMINATOR + 1] = {
 #define TOK(Tok, Str) Str
     TOKENS()
@@ -198,9 +270,13 @@ begin:
         strncpy(ident, start, len);
         ident[len] = 0;
 
-        // @todo implement string hashmap for string interning and separate keyword hashmap for scanning keywords
-        tok.type = TOKEN_IDENT;
-        tok.strlit = ident;
+        Keyword_Entry *key = keyword_lookup(ident);
+        if (key) {
+            tok.type = key->token;
+        } else {
+            tok.type = TOKEN_IDENT;
+            tok.strlit = ident;
+        }
         break;
     }
     
