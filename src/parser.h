@@ -31,6 +31,10 @@ enum Ast_Type {
     AST_EXPRESSION,
     AST_BINARY_EXPRESSION,
     AST_UNARY_EXPRESSION,
+    AST_INDEX_EXPRESSION,
+    AST_FIELD_EXPRESSION,
+    AST_CALL_EXPRESSION,
+    // AST_ASSIGN_EXPRESSION,
     AST_LITERAL,
     AST_IDENT,
 };
@@ -113,17 +117,35 @@ struct Ast_Return : Ast_Statement {
     Ast_Expression *expression;
 };
 
-
-
-struct Ast_Binary : Ast_Expression {
+struct Ast_Binary_Expression : Ast_Expression {
+    Ast_Binary_Expression() { type = AST_BINARY_EXPRESSION; }
     Token_Type op;
     Ast_Expression *lhs;
     Ast_Expression *rhs;
 };
 
-struct Ast_Unary : Ast_Expression {
+struct Ast_Unary_Expression : Ast_Expression {
+    Ast_Unary_Expression() { type = AST_UNARY_EXPRESSION; }
     Token_Type op;
     Ast_Expression *expression;
+};
+
+struct Ast_Index_Expression : Ast_Expression {
+    Ast_Index_Expression() { type = AST_INDEX_EXPRESSION; }
+    Ast_Expression *array;
+    Ast_Expression *index;
+};
+
+struct Ast_Call_Expression : Ast_Expression {
+    Ast_Call_Expression() { type = AST_CALL_EXPRESSION; }
+    Ast_Expression *operand;
+    Array<Ast_Expression *> arguments;
+};
+
+struct Ast_Field_Expression : Ast_Expression {
+    Ast_Field_Expression() { type = AST_FIELD_EXPRESSION; }
+    Ast_Expression *operand;
+    Ast_Expression *field;
 };
 
 constexpr int LITERAL_NUMBER = 0x1;
@@ -159,6 +181,10 @@ struct Parser {
     bool expect(Token_Type type);
 
     Ast_Expression *parse_expression();
+    Ast_Expression *parse_primary_expression();
+    Ast_Expression *parse_unary_expression();
+    Ast_Expression *parse_operand();
+    // Ast_Expression *parse_binary_expression();
     Ast_Block *parse_block();
     Ast_Statement *parse_init_statement(Ast_Expression *lhs);
     Ast_Statement *parse_simple_statement();

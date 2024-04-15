@@ -114,7 +114,6 @@ enum Token_Type {
 };
 
 extern const char *_token_type_strings[TOKEN_TERMINATOR + 1];
-
 inline const char *token_type_to_string(Token_Type type) {
     return _token_type_strings[type];
 }
@@ -122,6 +121,22 @@ inline const char *token_type_to_string(Token_Type type) {
 inline bool is_assign_operator(Token_Type op) {
     return (op > TOKEN_ASSIGN_FIRST && op < TOKEN_ASSIGN_LAST);
 }
+
+inline bool is_unary_operator(Token_Type op) {
+    switch (op) {
+    default:
+        return false;
+    case TOKEN_MINUS:
+    case TOKEN_PLUS:
+    case TOKEN_STAR:
+    case TOKEN_AMPER:
+    case TOKEN_BANG:
+    case TOKEN_TILDE:
+    case TOKEN_XOR:
+        return true;
+    }
+}
+
 
 struct Token {
     Token_Type type = TOKEN_NONE;

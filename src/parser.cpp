@@ -91,7 +91,33 @@ inline Ast_Type_Definition *make_type_definition(Ast_Type_Definition *base) {
     return type_definition;
 }
 
-Ast_Expression *Parser::parse_expression() {
+inline Ast_Unary_Expression *make_unary_expression(Token_Type op) {
+    Ast_Unary_Expression *unary = AST_NEW(Ast_Unary_Expression);
+    unary->op = op;
+    return unary;
+}
+
+inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
+    Ast_Index_Expression *index_expression = AST_NEW(Ast_Index_Expression);
+    index_expression->array = array;
+    index_expression->index = index;
+    return index_expression;
+}
+
+inline Ast_Field_Expression *make_field_expression(Ast_Expression *operand, Ast_Expression *field) {
+    Ast_Field_Expression *field_expression = AST_NEW(Ast_Field_Expression);
+    field_expression->operand = operand;
+    field_expression->field = field;
+    return field_expression;
+}
+
+inline Ast_Call_Expression *make_call_expression(Ast_Expression *operand) {
+    Ast_Call_Expression *call_expression = AST_NEW(Ast_Call_Expression);
+    call_expression->operand = operand;
+    return call_expression;
+}
+
+Ast_Expression *Parser::parse_operand() {
     switch (lexer->token.type) {
     case TOKEN_IDENT:
     {
@@ -119,6 +145,63 @@ Ast_Expression *Parser::parse_expression() {
     }
     }
     return nullptr;
+}
+
+
+Ast_Expression *Parser::parse_primary_expression() {
+    Ast_Expression *operand = parse_operand();
+    switch (lexer->token.type) {
+    default:
+        return operand;
+    case TOKEN_LBRACE:
+    {
+        lexer->next_token();
+        Ast_Expression *index = parse_expression();
+        Ast_Index_Expression *index_expression = make_index_expression(operand, index);
+        expect(TOKEN_RBRACE);
+        return index_expression;
+    }
+    case TOKEN_DOT:
+    {
+        lexer->next_token();
+        Ast_Expression *field = parse_expression();
+        Ast_Field_Expression *field_expression = make_field_expression(operand, field);
+        return field_expression;
+    }
+    case TOKEN_LPAREN:
+    {
+        lexer->next_token();
+        Ast_Call_Expression *call_expression = make_call_expression(operand);
+        while (!lexer->match_token(TOKEN_RPAREN)) {
+            if (lexer->is_token(TOKEN_SEMICOLON)) {
+                error("';' before ')'");
+            }
+            Ast_Expression *argument = parse_expression();
+            call_expression->arguments.push(argument);
+        }
+        return call_expression;
+    }
+    // case TOKEN_ASSIGN:
+    }
+}
+
+Ast_Expression *Parser::parse_unary_expression() {
+    if (is_unary_operator(lexer->token.type)) {
+        Token_Type op = lexer->token.type;
+        lexer->next_token();
+        Ast_Unary_Expression *expression = make_unary_expression(op);
+        expression->expression = parse_unary_expression();
+        expression->op = op;
+        return expression;
+    } else {
+        Ast_Expression *expression = parse_primary_expression();
+        return expression;
+    }
+}
+
+Ast_Expression *Parser::parse_expression() {
+    Ast_Expression *expression = parse_unary_expression();
+    return expression;
 }
 
 Ast_Statement *Parser::parse_init_statement(Ast_Expression *lhs) {
