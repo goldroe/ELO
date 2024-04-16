@@ -1,6 +1,22 @@
-int
-10
-324432423.0
+Entity :: struct {
+    id: uint64;
+    name: string;
+    px: float32;
+    py: float32;
+    dpx: float32;
+    dpy: float32;
+}
 
-if
-foo
+test_proc :: (arg1: int, arg2: float) -> int {
+    e: Entity;
+    x := 1.69;
+    y := "foo";
+    f: float = 80.0;
+
+    i: int = 0;
+    while i < 10 {
+        i += 1;
+    }
+
+    return 0;
+}
