@@ -1,10 +1,10 @@
 #include "lexer.h"
+#include "common.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-
-// @todo string interning
+#include <assert.h>
 
 uint64 hash_djb2(unsigned const char *str) {
     uint64_t hash = 5381;
@@ -12,6 +12,50 @@ uint64 hash_djb2(unsigned const char *str) {
     while (c = *str++)
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
     return hash;
+}
+
+struct Atom_Map {
+    Atom **atoms;
+    int count;
+};
+
+Atom_Map *atom_map;
+Arena atom_arena;
+
+Atom_Map *make_atom_map() {
+    Atom_Map *map = (Atom_Map *)malloc(sizeof(Atom_Map));
+    map->count = 256;
+    map->atoms = (Atom **)calloc(256, sizeof(Atom *));
+    return map;
+}
+
+void init_atom_map() {
+    atom_map = make_atom_map();
+    atom_arena = make_arena();
+}
+
+Atom *make_atom(const char *str, size_t len) {
+    uint64 hash = hash_djb2((unsigned const char *)str);
+    uint64 index = hash % atom_map->count;
+
+    Atom *first = atom_map->atoms[index];
+    for (Atom *it = first; it; it = it->next) {
+        if (it->count == len && strncmp(it->name, str, len) == 0) {
+            return it;
+        }
+    }
+
+    Atom *atom = (Atom *)arena_alloc(&atom_arena, offsetof(Atom, name) + len + 1);
+    strncpy(atom->name, str, len);
+    atom->name[len] = 0;
+    atom->count = len;
+    atom->next = first;
+    atom_map->atoms[index] = atom;
+    return atom;
+}
+
+Atom *make_atom(const char *str) {
+    return make_atom(str, strlen(str));
 }
 
 struct Keyword_Entry {
@@ -62,14 +106,13 @@ void keyword_insert(const char *keyword) {
     Keyword_Entry *first = keyword_table->entries[index];
     entry->next = first;
     keyword_table->entries[index] = entry;
-
-    printf("  entry %s: '%s' #%lld %lld\n", token_type_to_string(entry->token), keyword, hash, index);
+    //printf("  entry %s: '%s' #%lld %lld\n", token_type_to_string(entry->token), keyword, hash, index);
 }
 
 void init_keywords() {
     keyword_table = make_keyword_table();
 
-    printf("initializing keyword table...\n");
+    //printf("initializing keyword table...\n");
     for (int i = TOKEN_KEYWORD_FIRST + 1; i < TOKEN_KEYWORD_LAST; i++) {
         const char *keyword = token_type_to_string((Token_Type)i);
         keyword_insert(keyword);
@@ -266,16 +309,14 @@ begin:
             advance();
         }
         int len = stream_pos - start_pos;
-        char *ident = (char *)malloc(len + 1);
-        strncpy(ident, start, len);
-        ident[len] = 0;
+        Atom *atom = make_atom(start, len);
 
-        Keyword_Entry *key = keyword_lookup(ident);
+        Keyword_Entry *key = keyword_lookup(atom->name);
         if (key) {
             tok.type = key->token;
         } else {
             tok.type = TOKEN_IDENT;
-            tok.strlit = ident;
+            tok.name = atom;
         }
         break;
     }

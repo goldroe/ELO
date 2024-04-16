@@ -7,6 +7,12 @@
 #include "types.h"
 #include "path.h"
 
+struct Atom {
+    int64 count;
+    Atom *next;
+    char name[];
+};
+
 #define TOKENS() \
     TOK(TOKEN_EOF, ""), \
     TOK(TOKEN_NONE, ""), \
@@ -118,7 +124,7 @@ inline const char *token_type_to_string(Token_Type type) {
 }
 
 void init_keywords();
-
+void init_atom_map();
 
 
 inline bool is_assign_operator(Token_Type op) {
@@ -145,6 +151,7 @@ struct Token {
     Source_Range source_range = {};
 
     union {
+        Atom *name;
         uint64 intlit = 0;
         float64 floatlit;
         char *strlit;
@@ -161,6 +168,11 @@ struct Lexer {
 
     int line_number = 0;
     int column_number = 1;
+
+    int c0;
+    int c1;
+    int l0;
+    int l1;
 
     Token token;
 

@@ -182,7 +182,7 @@ struct Ast_Literal : Ast_Expression {
 
 struct Ast_Ident : Ast_Expression {
     Ast_Ident() { type = AST_IDENT; }
-    char *name;
+    Atom *name;
 };
 
 struct Parser {

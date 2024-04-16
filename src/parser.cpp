@@ -10,7 +10,7 @@ char *type_definition_to_string(Ast_Type_Definition *type_definition) {
     for (Ast_Type_Definition *it = type_definition; it; it = it->base) {
         if (it->type_flags & TYPE_DEFINITION_POINTER) strcat(buffer, "*");
         else if (it->type_flags & TYPE_DEFINITION_ARRAY) strcat(buffer, "[]");
-        else if (it->type_flags & TYPE_DEFINITION_IDENT) strcat(buffer, it->ident->name);
+        else if (it->type_flags & TYPE_DEFINITION_IDENT) strcat(buffer, it->ident->name->name);
     }
     return buffer;
 }
@@ -44,9 +44,9 @@ static inline Ast_Root *make_root() {
     return root;
 }
 
-static inline Ast_Ident *make_ident(char *name) {
+static inline Ast_Ident *make_ident(Atom *name) {
     Ast_Ident *ident = AST_NEW(Ast_Ident);
-    ident->name =  name;
+    ident->name = name;
     return ident;
 }
 
@@ -174,12 +174,11 @@ static inline Ast_Struct_Field *make_struct_field(Ast_Ident *ident, Ast_Type_Def
     return field;
 }
 
-
 Ast_Expression *Parser::parse_operand() {
     switch (lexer->token.type) {
     case TOKEN_IDENT:
     {
-        Ast_Ident *ident = make_ident(lexer->token.strlit);
+        Ast_Ident *ident = make_ident(lexer->token.name);
         lexer->next_token();
         return ident;
     }
@@ -442,14 +441,14 @@ Ast_Procedure_Declaration *Parser::parse_procedure_declaration(Ast_Ident *ident)
     assert(lexer->match_token(TOKEN_LPAREN));
 
     if (lexer->is_token(TOKEN_IDENT)) {
-        Ast_Ident *ident = make_ident(lexer->token.strlit);
+        Ast_Ident *ident = make_ident(lexer->token.name);
         lexer->next_token();
         Ast_Variable *variable = parse_variable_declaration(ident);
         procedure->parameters.push(variable);
 
         while (lexer->match_token(TOKEN_COMMA)) {
             if (lexer->is_token(TOKEN_IDENT)) {
-                ident = make_ident(lexer->token.strlit);
+                ident = make_ident(lexer->token.name);
                 lexer->next_token();
                 variable = parse_variable_declaration(ident);
                 procedure->parameters.push(variable);
@@ -475,7 +474,7 @@ Ast_Type_Definition *Parser::parse_type_definition() {
             return type_definition;
         case TOKEN_IDENT:
             type_definition = make_type_definition(type_definition);
-            type_definition->ident = make_ident(lexer->token.strlit);
+            type_definition->ident = make_ident(lexer->token.name);
             type_definition->type_flags = TYPE_DEFINITION_IDENT;
             lexer->next_token();
             break;
@@ -518,7 +517,7 @@ Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
 
     Ast_Struct_Declaration *struct_declaration = make_struct_declaration(ident);
     while (lexer->is_token(TOKEN_IDENT)) {
-        Ast_Ident *ident = make_ident(lexer->token.strlit);
+        Ast_Ident *ident = make_ident(lexer->token.name);
         lexer->next_token();
         expect(TOKEN_COLON);
         Ast_Type_Definition *type_definition = parse_type_definition();
@@ -535,7 +534,7 @@ Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
 Ast_Declaration *Parser::parse_declaration() {
     Ast_Ident *ident = nullptr;
     if (lexer->is_token(TOKEN_IDENT)) {
-        char *name = lexer->token.strlit;
+        Atom *name = lexer->token.name;
         lexer->next_token();
         ident = make_ident(name);
     } else {

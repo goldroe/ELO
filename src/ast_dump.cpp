@@ -25,7 +25,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_STRUCT:
     {
         Ast_Struct_Declaration *struct_declaration = static_cast<Ast_Struct_Declaration *>(node);
-        print("STRUCT %s\n", struct_declaration->ident->name);
+        print("STRUCT %s\n", struct_declaration->ident->name->name);
 
         indent();
         for (int i = 0; i <struct_declaration->fields.count; i++) {
@@ -37,7 +37,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_STRUCT_FIELD:
     {
         Ast_Struct_Field *field = static_cast<Ast_Struct_Field *>(node);
-        print("STRUCT FIELD %s\n", field->ident->name);
+        print("STRUCT FIELD %s\n", field->ident->name->name);
         indent();
         print("'%s'\n", type_definition_to_string(field->type_definition));
         outdent();
@@ -46,7 +46,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_PROCEDURE:
     {
         Ast_Procedure_Declaration *procedure = static_cast<Ast_Procedure_Declaration *>(node);
-        print("PROCEDURE %s: '%s'\n", procedure->ident->name, type_definition_to_string(procedure->return_type));
+        print("PROCEDURE %s: '%s'\n", procedure->ident->name->name, type_definition_to_string(procedure->return_type));
         indent();
         for (int i = 0; i < procedure->parameters.count; i++) {
             Ast_Variable *variable = procedure->parameters[i];
@@ -59,7 +59,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_VARIABLE:
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(node);
-        print("VARIABLE %s: '%s'\n", variable->ident->name, type_definition_to_string(variable->type_definition));
+        print("VARIABLE %s: '%s'\n", variable->ident->name->name, type_definition_to_string(variable->type_definition));
         break;
     }
     case AST_DECLARATION_STATEMENT:
@@ -139,7 +139,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_IDENT:
     {
         Ast_Ident *ident = static_cast<Ast_Ident *>(node);
-        print("IDENT %s\n", ident->name);
+        print("IDENT %s\n", ident->name->name);
         break;
     }
     }
