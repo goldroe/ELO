@@ -96,7 +96,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <DisableSpecificWarnings>4996;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4200;4996;</DisableSpecificWarnings>
       <PreprocessToFile>false</PreprocessToFile>
       <AdditionalIncludeDirectories>src\</AdditionalIncludeDirectories>
     </ClCompile>
@@ -114,7 +114,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <DisableSpecificWarnings>4996;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4200;4996;</DisableSpecificWarnings>
       <PreprocessToFile>false</PreprocessToFile>
       <AdditionalIncludeDirectories>src\</AdditionalIncludeDirectories>
     </ClCompile>
@@ -132,7 +132,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <DisableSpecificWarnings>4996;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4200;4996;</DisableSpecificWarnings>
       <PreprocessToFile>false</PreprocessToFile>
       <AdditionalIncludeDirectories>src\</AdditionalIncludeDirectories>
     </ClCompile>
@@ -150,7 +150,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <DisableSpecificWarnings>4996;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4200;4996;</DisableSpecificWarnings>
       <PreprocessToFile>false</PreprocessToFile>
       <AdditionalIncludeDirectories>src\</AdditionalIncludeDirectories>
     </ClCompile>
@@ -164,6 +164,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\ast_dump.cpp" />
+    <ClCompile Include="src\common.cpp" />
     <ClCompile Include="src\elo.cpp" />
     <ClCompile Include="src\lexer.cpp" />
     <ClCompile Include="src\parser.cpp" />
@@ -172,6 +173,7 @@
   <ItemGroup>
     <ClInclude Include="src\array.h" />
     <ClInclude Include="src\ast_dump.h" />
+    <ClInclude Include="src\common.h" />
     <ClInclude Include="src\lexer.h" />
     <ClInclude Include="src\parser.h" />
     <ClInclude Include="src\path.h" />
