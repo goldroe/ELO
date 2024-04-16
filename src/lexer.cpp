@@ -27,7 +27,7 @@ struct Keyword_Table {
 
 Keyword_Table *make_keyword_table() {
     Keyword_Table *table = (Keyword_Table *)malloc(sizeof(Keyword_Table));
-    table->count = 64;
+    table->count = 128;
     table->entries = (Keyword_Entry **)calloc(table->count, sizeof(Keyword_Entry * ));
     return table;
 }

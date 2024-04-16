@@ -178,6 +178,22 @@ struct Lexer {
         return token.type == type; 
     }
 
+    Token peek_token() {
+        char *_stream = stream;
+        int _pos = stream_pos;
+        int _line = line_number;
+        int _column = column_number;
+
+        Token tok = scan();
+
+        // rewind
+        stream = _stream;
+        stream_pos = _pos;
+        line_number = _line;
+        column_number = _column;
+        return tok;
+    }
+
     inline bool match_token(Token_Type type) {
         if (is_token(type)) {
             next_token();
@@ -191,7 +207,7 @@ struct Lexer {
         token = tok;
     }
 
-    inline void advance() {
+    void advance() {
         if (*stream == '\n') {
             line_number++;
             column_number = 1;
