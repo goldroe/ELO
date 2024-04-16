@@ -15,6 +15,7 @@ enum Ast_Type {
     AST_PROCEDURE,
     AST_VARIABLE,
     AST_STRUCT,
+    AST_STRUCT_FIELD,
     AST_UNION,
     AST_ENUM,
 
@@ -34,7 +35,6 @@ enum Ast_Type {
     AST_INDEX_EXPRESSION,
     AST_FIELD_EXPRESSION,
     AST_CALL_EXPRESSION,
-    // AST_ASSIGN_EXPRESSION,
     AST_LITERAL,
     AST_IDENT,
 };
@@ -47,6 +47,9 @@ struct Ast_Block;
 
 struct Ast {
     Ast_Type type = AST_NONE;
+
+    bool resolved = false;
+    bool resolving = false;
 };
 
 struct Ast_Expression : Ast {
@@ -91,6 +94,16 @@ struct Ast_Procedure_Declaration : Ast_Declaration {
     Array<Ast_Variable *> parameters;
     Ast_Type_Definition *return_type;
     Ast_Block *body;
+};
+
+struct Ast_Struct_Field : Ast_Declaration {
+    Ast_Struct_Field() { type = AST_STRUCT_FIELD; }
+    Ast_Type_Definition *type_definition;
+};
+
+struct Ast_Struct_Declaration : Ast_Declaration {
+    Ast_Struct_Declaration() { type = AST_STRUCT; }
+    Array<Ast_Struct_Field *> fields;
 };
 
 struct Ast_Declaration_Statement : Ast_Statement {
@@ -190,17 +203,24 @@ struct Parser {
     Ast_Expression *parse_unary_expression();
     Ast_Expression *parse_operand();
     Ast_Expression *parse_binary_expression(Ast_Expression *lhs, int precedence);
+
     Ast_Statement *parse_statement();
     Ast_Statement *parse_init_statement(Ast_Expression *lhs);
     Ast_Statement *parse_simple_statement();
     Ast_If *parse_if_statement();
     Ast_While *parse_while_statement();
+    Ast_Return *parse_return_statement();
+
     Ast_Declaration *parse_declaration();
     Ast_Variable *parse_variable_declaration(Ast_Ident *identfier);
     Ast_Procedure_Declaration *parse_procedure_declaration(Ast_Ident *ident);
+    Ast_Struct_Declaration *parse_struct_declaration(Ast_Ident *ident);
+
     Ast_Block *parse_block();
     Ast_Type_Definition *parse_type_definition();
     Ast_Root *parse_root();
 };
+
+char *type_definition_to_string(Ast_Type_Definition *type_definition);
 
 #endif // PARSER_H

@@ -4,6 +4,17 @@
 
 #include "parser.h"
 
+char *type_definition_to_string(Ast_Type_Definition *type_definition) {
+    static char buffer[1024];
+    memset(buffer, 0, 1024);
+    for (Ast_Type_Definition *it = type_definition; it; it = it->base) {
+        if (it->type_flags & TYPE_DEFINITION_POINTER) strcat(buffer, "*");
+        else if (it->type_flags & TYPE_DEFINITION_ARRAY) strcat(buffer, "[]");
+        else if (it->type_flags & TYPE_DEFINITION_IDENT) strcat(buffer, it->ident->name);
+    }
+    return buffer;
+}
+
 void Parser::error(const char *fmt, ...) {
     printf("error: ");
     va_list args;
@@ -22,49 +33,54 @@ bool Parser::expect(Token_Type type) {
     return false;
 }
 
-inline Ast *allocate_ast_node(size_t size) {
+static inline Ast *allocate_ast_node(size_t size) {
     Ast *result = (Ast *)calloc(size, 1);
     return result;
 }
 #define AST_NEW(AST_T) (AST_T *)(&(*allocate_ast_node(sizeof(AST_T)) = AST_T()))
 
-inline Ast_Ident *make_ident(char *name) {
+static inline Ast_Root *make_root() {
+    Ast_Root *root = AST_NEW(Ast_Root);
+    return root;
+}
+
+static inline Ast_Ident *make_ident(char *name) {
     Ast_Ident *ident = AST_NEW(Ast_Ident);
     ident->name =  name;
     return ident;
 }
 
-inline Ast_Procedure_Declaration *make_procedure_declaration(Ast_Ident *ident) {
+static inline Ast_Procedure_Declaration *make_procedure_declaration(Ast_Ident *ident) {
     Ast_Procedure_Declaration *procedure = AST_NEW(Ast_Procedure_Declaration);
     procedure->ident = ident;
     return procedure;
 }
 
-inline Ast_Declaration_Statement *make_declaration_statement(Ast_Declaration *declaration) {
+static inline Ast_Declaration_Statement *make_declaration_statement(Ast_Declaration *declaration) {
     Ast_Declaration_Statement *declaration_statement = AST_NEW(Ast_Declaration_Statement);
     declaration_statement->declaration = declaration;
     return declaration_statement;
 }
 
-inline Ast_Expression_Statement *make_expression_statement(Ast_Expression *expression) {
+static inline Ast_Expression_Statement *make_expression_statement(Ast_Expression *expression) {
     Ast_Expression_Statement *expression_statement = AST_NEW(Ast_Expression_Statement);
     expression_statement->expression = expression;
     return expression_statement;
 }
 
-inline Ast_Block *make_block() {
+static inline Ast_Block *make_block() {
     Ast_Block *block = AST_NEW(Ast_Block);
     return block;
 }
 
-inline Ast_Literal *make_integer_literal(int64 value) {
+static inline Ast_Literal *make_integer_literal(int64 value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
     literal->literal_flags |= LITERAL_NUMBER;
     literal->int_value = value;
     return literal;
 }
 
-inline Ast_Literal *make_float_literal(float64 value) {
+static inline Ast_Literal *make_float_literal(float64 value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
     literal->literal_flags |= LITERAL_NUMBER;
     literal->literal_flags |= LITERAL_FLOAT;
@@ -72,32 +88,32 @@ inline Ast_Literal *make_float_literal(float64 value) {
     return literal;
 }
 
-inline Ast_Literal *make_string_literal(char *value) {
+static inline Ast_Literal *make_string_literal(char *value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
     literal->literal_flags |= LITERAL_STRING;
     literal->string_value = value;
     return literal;
 }
 
-inline Ast_Variable *make_variable_declaration(Ast_Ident *ident) {
+static inline Ast_Variable *make_variable_declaration(Ast_Ident *ident) {
     Ast_Variable *variable = AST_NEW(Ast_Variable);
     variable->ident = ident;
     return variable;
 }
 
-inline Ast_Type_Definition *make_type_definition(Ast_Type_Definition *base) {
+static inline Ast_Type_Definition *make_type_definition(Ast_Type_Definition *base) {
     Ast_Type_Definition *type_definition = AST_NEW(Ast_Type_Definition);
     type_definition->base = base;
     return type_definition;
 }
 
-inline Ast_Unary_Expression *make_unary_expression(Token_Type op) {
+static inline Ast_Unary_Expression *make_unary_expression(Token_Type op) {
     Ast_Unary_Expression *unary = AST_NEW(Ast_Unary_Expression);
     unary->op = op;
     return unary;
 }
 
-inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_Expression *lhs, Ast_Expression *rhs) {
+static inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_Expression *lhs, Ast_Expression *rhs) {
     Ast_Binary_Expression *binary_expression = AST_NEW(Ast_Binary_Expression);
     binary_expression->op = op;
     binary_expression->lhs = lhs;
@@ -105,38 +121,57 @@ inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_Expressi
     return binary_expression;
 }
 
-inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
+static inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
     Ast_Index_Expression *index_expression = AST_NEW(Ast_Index_Expression);
     index_expression->array = array;
     index_expression->index = index;
     return index_expression;
 }
 
-inline Ast_Field_Expression *make_field_expression(Ast_Expression *operand, Ast_Expression *field) {
+static inline Ast_Field_Expression *make_field_expression(Ast_Expression *operand, Ast_Expression *field) {
     Ast_Field_Expression *field_expression = AST_NEW(Ast_Field_Expression);
     field_expression->operand = operand;
     field_expression->field = field;
     return field_expression;
 }
 
-inline Ast_Call_Expression *make_call_expression(Ast_Expression *operand) {
+static inline Ast_Call_Expression *make_call_expression(Ast_Expression *operand) {
     Ast_Call_Expression *call_expression = AST_NEW(Ast_Call_Expression);
     call_expression->operand = operand;
     return call_expression;
 }
 
-Ast_If *make_if_statement(Ast_Expression *condition, Ast_Block *block) {
+static inline Ast_If *make_if_statement(Ast_Expression *condition, Ast_Block *block) {
     Ast_If *if_statement = AST_NEW(Ast_If);
     if_statement->condition = condition;
     if_statement->block = block;
     return if_statement;
 }
 
-Ast_While *make_while_statement(Ast_Expression *condition, Ast_Block *block) {
+static inline Ast_While *make_while_statement(Ast_Expression *condition, Ast_Block *block) {
     Ast_While *while_statement = AST_NEW(Ast_While);
     while_statement->condition = condition;
     while_statement->block = block;
     return while_statement;
+}
+
+static inline Ast_Return *make_return_statement(Ast_Expression *expression) {
+    Ast_Return *return_statement = AST_NEW(Ast_Return);
+    return_statement->expression = expression;
+    return return_statement;
+}
+
+static inline Ast_Struct_Declaration *make_struct_declaration(Ast_Ident *ident) {
+    Ast_Struct_Declaration *declaration = AST_NEW(Ast_Struct_Declaration);
+    declaration->ident = ident;
+    return declaration;
+}
+
+static inline Ast_Struct_Field *make_struct_field(Ast_Ident *ident, Ast_Type_Definition *type_definition) {
+    Ast_Struct_Field *field = AST_NEW(Ast_Struct_Field);
+    field->ident = ident;
+    field->type_definition = type_definition;
+    return field;
 }
 
 
@@ -169,7 +204,6 @@ Ast_Expression *Parser::parse_operand() {
     }
     return nullptr;
 }
-
 
 Ast_Expression *Parser::parse_primary_expression() {
     Ast_Expression *operand = parse_operand();
@@ -253,21 +287,17 @@ int precedence_table(Token_Type op) {
     switch (op) {
     default:
         return -1;
-    case TOKEN_STAR:
-    case TOKEN_SLASH:
-    case TOKEN_PERCENT:
-        return 200;
+    case TOKEN_STAR: case TOKEN_SLASH: case TOKEN_PERCENT:
+        return 500;
     case TOKEN_PLUS:
     case TOKEN_MINUS:
+        return 400;
+    case TOKEN_LT: case TOKEN_LTEQ: case TOKEN_GT: case TOKEN_GTEQ:
+        return 300;
+    case TOKEN_ASSIGN: case TOKEN_ADD_ASSIGN: case TOKEN_SUB_ASSIGN: case TOKEN_MUL_ASSIGN: case TOKEN_DIV_ASSIGN: case TOKEN_MOD_ASSIGN: case TOKEN_AND_ASSIGN: case TOKEN_XOR_ASSIGN: case TOKEN_OR_ASSIGN:
         return 100;
-    case TOKEN_LT:
-    case TOKEN_LTEQ:
-    case TOKEN_GT:
-    case TOKEN_GTEQ:
+    case TOKEN_EQUAL: case TOKEN_NEQ:
         return 20;
-    case TOKEN_EQUAL:
-    case TOKEN_NEQ:
-        return 10;
     }
 }
 
@@ -311,6 +341,7 @@ Ast_Statement *Parser::parse_init_statement(Ast_Expression *lhs) {
     }
     Ast_Variable *variable = parse_variable_declaration(static_cast<Ast_Ident *>(lhs));
     Ast_Declaration_Statement *declaration_statement = make_declaration_statement(variable);
+    expect(TOKEN_SEMICOLON);
     return declaration_statement;
 }
 
@@ -322,6 +353,7 @@ Ast_Statement *Parser::parse_simple_statement() {
     default:
     {
         Ast_Expression_Statement *expression_statement = make_expression_statement(lhs);
+        expect(TOKEN_SEMICOLON);
         return expression_statement;
     }
     case TOKEN_COLON:
@@ -349,22 +381,33 @@ Ast_While *Parser::parse_while_statement() {
     return while_statement;
 }
 
+Ast_Return *Parser::parse_return_statement() {
+    assert(lexer->match_token(TOKEN_RETURN));
+    Ast_Expression *expression = parse_expression();
+    Ast_Return *return_statement = make_return_statement(expression);
+    expect(TOKEN_SEMICOLON);
+    return return_statement;
+}
+
 Ast_Statement *Parser::parse_statement() {
     Ast_Statement *statement = nullptr;
     switch (lexer->token.type) {
     default:
     {
         statement = parse_simple_statement();
-        if (statement) {
-            expect(TOKEN_SEMICOLON);
-        }
         break;
     }
+    case TOKEN_SEMICOLON:
+        lexer->next_token();
+        break;
     case TOKEN_IF:
         statement = parse_if_statement();
         break;
     case TOKEN_WHILE:
         statement = parse_while_statement();
+        break;
+    case TOKEN_RETURN:
+        statement = parse_return_statement();
         break;
     case TOKEN_ELSE:
     case TOKEN_DO:
@@ -372,7 +415,6 @@ Ast_Statement *Parser::parse_statement() {
     case TOKEN_CASE:
     case TOKEN_CONTINUE:
     case TOKEN_BREAK:
-    case TOKEN_RETURN:
         break;
     }
     return statement;
@@ -388,6 +430,7 @@ Ast_Block *Parser::parse_block() {
             }
 
             Ast_Statement *statement = parse_statement();
+            if (statement) block->statements.push(statement);
         } while (!lexer->match_token(TOKEN_RBRACE));
     }
     return block;
@@ -396,17 +439,29 @@ Ast_Block *Parser::parse_block() {
 Ast_Procedure_Declaration *Parser::parse_procedure_declaration(Ast_Ident *ident) {
     Ast_Procedure_Declaration *procedure = make_procedure_declaration(ident);
     assert(lexer->match_token(TOKEN_COLON2));
+    assert(lexer->match_token(TOKEN_LPAREN));
 
-    if (expect(TOKEN_LPAREN)) {
-        // @todo Parse parameters
-        expect(TOKEN_RPAREN);
+    if (lexer->is_token(TOKEN_IDENT)) {
+        Ast_Ident *ident = make_ident(lexer->token.strlit);
+        lexer->next_token();
+        Ast_Variable *variable = parse_variable_declaration(ident);
+        procedure->parameters.push(variable);
 
-        if (lexer->match_token(TOKEN_ARROW)) {
-            procedure->return_type = parse_type_definition();
+        while (lexer->match_token(TOKEN_COMMA)) {
+            if (lexer->is_token(TOKEN_IDENT)) {
+                ident = make_ident(lexer->token.strlit);
+                lexer->next_token();
+                variable = parse_variable_declaration(ident);
+                procedure->parameters.push(variable);
+            }
         }
-
-        procedure->body = parse_block();
     }
+    expect(TOKEN_RPAREN);
+
+    if (lexer->match_token(TOKEN_ARROW)) {
+        procedure->return_type = parse_type_definition();
+    }
+    procedure->body = parse_block();
 
     return procedure;
 }
@@ -455,32 +510,60 @@ Ast_Variable *Parser::parse_variable_declaration(Ast_Ident *ident) {
     return variable;
 }
 
+Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
+    assert(lexer->match_token(TOKEN_COLON2));
+    assert(lexer->match_token(TOKEN_STRUCT));
+
+    expect(TOKEN_LBRACE);
+
+    Ast_Struct_Declaration *struct_declaration = make_struct_declaration(ident);
+    while (lexer->is_token(TOKEN_IDENT)) {
+        Ast_Ident *ident = make_ident(lexer->token.strlit);
+        lexer->next_token();
+        expect(TOKEN_COLON);
+        Ast_Type_Definition *type_definition = parse_type_definition();
+        if (!expect(TOKEN_SEMICOLON)) {
+            break;
+        }
+        Ast_Struct_Field *field = make_struct_field(ident, type_definition);
+        struct_declaration->fields.push(field);
+    }
+    expect(TOKEN_RBRACE);
+    return struct_declaration;
+}
+
 Ast_Declaration *Parser::parse_declaration() {
+    Ast_Ident *ident = nullptr;
     if (lexer->is_token(TOKEN_IDENT)) {
         char *name = lexer->token.strlit;
         lexer->next_token();
-        Ast_Ident *ident = make_ident(name);
+        ident = make_ident(name);
+    } else {
+        return nullptr;
+    }
 
-        switch (lexer->token.type) {
-        case TOKEN_COLON:
-        {
-            Ast_Variable *variable = parse_variable_declaration(ident);
-            expect(TOKEN_SEMICOLON);
-            return variable;
-        }
-        case TOKEN_COLON2:
+    if (lexer->is_token(TOKEN_COLON)) {
+        Ast_Variable *variable = parse_variable_declaration(ident);
+        expect(TOKEN_SEMICOLON);
+        return variable;
+    } else if (lexer->is_token(TOKEN_COLON2)) {
+        Token token = lexer->peek_token();
+        switch (token.type) {
+        case TOKEN_LPAREN:
         {
             Ast_Procedure_Declaration *procedure = parse_procedure_declaration(ident);
             return procedure;
         }
+        case TOKEN_STRUCT:
+        {
+            Ast_Struct_Declaration *struct_declaration = parse_struct_declaration(ident);
+            return struct_declaration;
+        }
+        case TOKEN_ENUM:
+            break;
         }
     }
     return nullptr;
-}
-
-inline Ast_Root *make_root() {
-    Ast_Root *root = AST_NEW(Ast_Root);
-    return root;
 }
 
 Ast_Root *Parser::parse_root() {
