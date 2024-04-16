@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #include "lexer.h"
 #include "parser.h"
+#include "ast_dump.h"
 
 int main(int argc, char **argv) {
     argc--; argv++;
@@ -17,5 +19,8 @@ int main(int argc, char **argv) {
     init_keywords();
     
     Parser parser(file_name);
+
+    Ast_Dump ast_dump;
+    ast_dump.dump(parser.root);
     return 0;
 }
