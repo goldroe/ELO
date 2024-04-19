@@ -1,22 +1,35 @@
-Entity :: struct {
-    id: uint64;
-    name: string;
-    px: float32;
-    py: float32;
-    dpx: float32;
-    dpy: float32;
+
+main :: () -> int {
+    x : int;
+    y: int = x;
+
+    a: *int;
+    b: **int; 
+    c: *int;
+    a = b = c;
+    return 0;
 }
 
-test_proc :: (arg1: int, arg2: float) -> int {
-    e: Entity;
-    x := 1.69;
-    y := "foo";
-    f: float = 80.0;
+// make_vector :: (x: float32, y: float32) -> vector2 {
+//     v: vector2;
+//     v.x = x;
+//     v.y = y;
+// }
 
-    i: int = 0;
-    while i < 10 {
-        i += 1;
-    }
+// make_entity :: (position: vector2) -> Entity {
+//     e: Entity;
+//     e.id = 0;
+//     e.position = position;
+//     e.velocity = make_vector2(0.0, 0.0);
+// }
 
-    return 0;
+vector2 :: struct {
+    x: float32;
+    y: float32;
+}
+
+Entity :: struct {
+    id: uint64;
+    position: vector2;
+    velocity: vector2;
 }
