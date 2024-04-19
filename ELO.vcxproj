@@ -169,6 +169,7 @@
     <ClCompile Include="src\lexer.cpp" />
     <ClCompile Include="src\parser.cpp" />
     <ClCompile Include="src\path.cpp" />
+    <ClCompile Include="src\semantic.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\array.h" />
@@ -177,6 +178,7 @@
     <ClInclude Include="src\lexer.h" />
     <ClInclude Include="src\parser.h" />
     <ClInclude Include="src\path.h" />
+    <ClInclude Include="src\semantic.h" />
     <ClInclude Include="src\types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
