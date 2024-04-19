@@ -2,15 +2,72 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "common.h"
 #include "parser.h"
+
+Arena ast_arena = make_arena();
+
+char *type_to_string(Ast_Type_Info *type) {
+    static char buffer[1024];
+    memset(buffer, 0, 1024);
+    
+    for (Ast_Type_Info *it = type; it; it = it->base) {
+        switch (it->kind) {
+        case TYPE_POINTER:
+            strcat(buffer, "*");
+            break;
+        case TYPE_ARRAY:
+            strcat(buffer, "[]");
+            break;
+        case TYPE_FLOAT32:
+            strcat(buffer, "float32");
+            break;
+        case TYPE_FLOAT64:
+            strcat(buffer, "float64");
+            break;
+        case TYPE_INT:
+            strcat(buffer, "int");
+            break;
+        case TYPE_INT8:
+            strcat(buffer, "int8");
+            break;
+        case TYPE_INT16:
+            strcat(buffer, "int16");
+            break;
+        case TYPE_INT32:
+            strcat(buffer, "int32");
+            break;
+        case TYPE_INT64:
+            strcat(buffer, "int64");
+            break;
+        case TYPE_UINT:
+            strcat(buffer, "uint");
+            break;
+        case TYPE_UINT8:
+            strcat(buffer, "uint8");
+            break;
+        case TYPE_UINT16:
+            strcat(buffer, "uint16");
+            break;
+        case TYPE_UINT32:
+            strcat(buffer, "uint32");
+            break;
+        case TYPE_UINT64:
+            strcat(buffer, "uint64");
+            break;
+        }
+    }
+    return buffer;
+}
 
 char *type_definition_to_string(Ast_Type_Definition *type_definition) {
     static char buffer[1024];
     memset(buffer, 0, 1024);
+    if (!type_definition) strcat(buffer, "<auto>");
     for (Ast_Type_Definition *it = type_definition; it; it = it->base) {
-        if (it->type_flags & TYPE_DEFINITION_POINTER) strcat(buffer, "*");
-        else if (it->type_flags & TYPE_DEFINITION_ARRAY) strcat(buffer, "[]");
-        else if (it->type_flags & TYPE_DEFINITION_IDENT) strcat(buffer, it->ident->name->name);
+        if (it->defn_flags & TYPE_DEFN_POINTER) strcat(buffer, "*");
+        else if (it->defn_flags & TYPE_DEFN_ARRAY) strcat(buffer, "[]");
+        else if (it->defn_flags & TYPE_DEFN_IDENT) strcat(buffer, it->ident->name->name);
     }
     return buffer;
 }
@@ -34,26 +91,62 @@ bool Parser::expect(Token_Type type) {
 }
 
 static inline Ast *allocate_ast_node(size_t size) {
-    Ast *result = (Ast *)calloc(size, 1);
+    Ast *result = (Ast *)arena_alloc(&ast_arena, size);
     return result;
 }
 #define AST_NEW(AST_T) (AST_T *)(&(*allocate_ast_node(sizeof(AST_T)) = AST_T()))
+
+Ast_Declaration *make_declaration(Ast_Ident *ident) {
+    Ast_Declaration *declaration = AST_NEW(Ast_Declaration);
+    declaration->ident = ident;
+    return declaration;
+}
 
 static inline Ast_Root *make_root() {
     Ast_Root *root = AST_NEW(Ast_Root);
     return root;
 }
 
-static inline Ast_Ident *make_ident(Atom *name) {
+Ast_Ident *make_ident(Atom *name) {
     Ast_Ident *ident = AST_NEW(Ast_Ident);
     ident->name = name;
     return ident;
 }
 
+Ast_Type_Info *make_type_info(Type_Kind kind, int flags, int bits, Ast_Type_Info *base) {
+    Ast_Type_Info *type_info = AST_NEW(Ast_Type_Info);
+    type_info->kind = kind;
+    type_info->type_flags |= flags;
+    type_info->bits = bits;
+    type_info->base = base;
+    return type_info;
+}
+
+static inline Ast_Variable *make_variable_declaration(Ast_Ident *ident) {
+    Ast_Variable *variable = AST_NEW(Ast_Variable);
+    variable->ident = ident;
+    return variable;
+}
+
 static inline Ast_Procedure_Declaration *make_procedure_declaration(Ast_Ident *ident) {
     Ast_Procedure_Declaration *procedure = AST_NEW(Ast_Procedure_Declaration);
     procedure->ident = ident;
+    procedure->declaration_flags |= DECLARATION_GLOBAL;
     return procedure;
+}
+
+static inline Ast_Struct_Declaration *make_struct_declaration(Ast_Ident *ident) {
+    Ast_Struct_Declaration *declaration = AST_NEW(Ast_Struct_Declaration);
+    declaration->ident = ident;
+    declaration->declaration_flags |= DECLARATION_GLOBAL;
+    return declaration;
+}
+
+static inline Ast_Struct_Field *make_struct_field(Atom *name, Ast_Type_Definition *type_definition) {
+    Ast_Struct_Field *field = AST_NEW(Ast_Struct_Field);
+    field->name = name;
+    field->type_definition = type_definition;
+    return field;
 }
 
 static inline Ast_Declaration_Statement *make_declaration_statement(Ast_Declaration *declaration) {
@@ -68,12 +161,18 @@ static inline Ast_Expression_Statement *make_expression_statement(Ast_Expression
     return expression_statement;
 }
 
+static inline Ast_Block_Statement *make_block_statement(Ast_Block *block) {
+    Ast_Block_Statement *block_statement = AST_NEW(Ast_Block_Statement);
+    block_statement->block = block;
+    return block_statement;
+}
+
 static inline Ast_Block *make_block() {
     Ast_Block *block = AST_NEW(Ast_Block);
     return block;
 }
 
-static inline Ast_Literal *make_integer_literal(int64 value) {
+static inline Ast_Literal *make_integer_literal(uint64 value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
     literal->literal_flags |= LITERAL_NUMBER;
     literal->int_value = value;
@@ -93,12 +192,6 @@ static inline Ast_Literal *make_string_literal(char *value) {
     literal->literal_flags |= LITERAL_STRING;
     literal->string_value = value;
     return literal;
-}
-
-static inline Ast_Variable *make_variable_declaration(Ast_Ident *ident) {
-    Ast_Variable *variable = AST_NEW(Ast_Variable);
-    variable->ident = ident;
-    return variable;
 }
 
 static inline Ast_Type_Definition *make_type_definition(Ast_Type_Definition *base) {
@@ -161,24 +254,12 @@ static inline Ast_Return *make_return_statement(Ast_Expression *expression) {
     return return_statement;
 }
 
-static inline Ast_Struct_Declaration *make_struct_declaration(Ast_Ident *ident) {
-    Ast_Struct_Declaration *declaration = AST_NEW(Ast_Struct_Declaration);
-    declaration->ident = ident;
-    return declaration;
-}
-
-static inline Ast_Struct_Field *make_struct_field(Ast_Ident *ident, Ast_Type_Definition *type_definition) {
-    Ast_Struct_Field *field = AST_NEW(Ast_Struct_Field);
-    field->ident = ident;
-    field->type_definition = type_definition;
-    return field;
-}
-
 Ast_Expression *Parser::parse_operand() {
     switch (lexer->token.type) {
     case TOKEN_IDENT:
     {
         Ast_Ident *ident = make_ident(lexer->token.name);
+        ident->expr_flags |= EXPR_LVALUE;
         lexer->next_token();
         return ident;
     }
@@ -228,16 +309,14 @@ Ast_Expression *Parser::parse_primary_expression() {
     {
         lexer->next_token();
         Ast_Call_Expression *call_expression = make_call_expression(operand);
-        while (!lexer->match_token(TOKEN_RPAREN)) {
-            if (lexer->is_token(TOKEN_SEMICOLON)) {
-                error("missing ')' before ';'");
-            }
+        do {
             Ast_Expression *argument = parse_expression();
+            if (!argument) break;
             call_expression->arguments.push(argument);
-        }
+        } while (lexer->match_token(TOKEN_COMMA));
+        expect(TOKEN_RPAREN);
         return call_expression;
     }
-    // case TOKEN_ASSIGN:
     }
 }
 
@@ -396,6 +475,12 @@ Ast_Statement *Parser::parse_statement() {
         statement = parse_simple_statement();
         break;
     }
+    case TOKEN_LBRACE:
+    {
+        Ast_Block *block = parse_block();
+        statement = make_block_statement(block);
+        break;
+    }
     case TOKEN_SEMICOLON:
         lexer->next_token();
         break;
@@ -475,13 +560,13 @@ Ast_Type_Definition *Parser::parse_type_definition() {
         case TOKEN_IDENT:
             type_definition = make_type_definition(type_definition);
             type_definition->ident = make_ident(lexer->token.name);
-            type_definition->type_flags = TYPE_DEFINITION_IDENT;
+            type_definition->defn_flags = TYPE_DEFN_IDENT;
             lexer->next_token();
             break;
         case TOKEN_STAR:
             lexer->next_token();
             type_definition = make_type_definition(type_definition);
-            type_definition->type_flags = TYPE_DEFINITION_POINTER;
+            type_definition->defn_flags = TYPE_DEFN_POINTER;
             break;
         case TOKEN_LBRACKET:
             lexer->next_token();
@@ -517,14 +602,14 @@ Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
 
     Ast_Struct_Declaration *struct_declaration = make_struct_declaration(ident);
     while (lexer->is_token(TOKEN_IDENT)) {
-        Ast_Ident *ident = make_ident(lexer->token.name);
+        Atom *name = lexer->token.name;
         lexer->next_token();
         expect(TOKEN_COLON);
         Ast_Type_Definition *type_definition = parse_type_definition();
         if (!expect(TOKEN_SEMICOLON)) {
             break;
         }
-        Ast_Struct_Field *field = make_struct_field(ident, type_definition);
+        Ast_Struct_Field *field = make_struct_field(name, type_definition);
         struct_declaration->fields.push(field);
     }
     expect(TOKEN_RBRACE);
@@ -543,6 +628,7 @@ Ast_Declaration *Parser::parse_declaration() {
 
     if (lexer->is_token(TOKEN_COLON)) {
         Ast_Variable *variable = parse_variable_declaration(ident);
+        variable->declaration_flags |= DECLARATION_GLOBAL;
         expect(TOKEN_SEMICOLON);
         return variable;
     } else if (lexer->is_token(TOKEN_COLON2)) {
@@ -561,6 +647,8 @@ Ast_Declaration *Parser::parse_declaration() {
         case TOKEN_ENUM:
             break;
         }
+    } else {
+        error("expected ':' or '::' for declaration, got '%s'", token_type_to_string(lexer->token.type));
     }
     return nullptr;
 }
@@ -570,7 +658,7 @@ Ast_Root *Parser::parse_root() {
     for (;;) {
         if (lexer->is_token(TOKEN_EOF))
             break;
-        
+
         Ast_Declaration *declaration = parse_declaration();
         if (declaration) {
             root->declarations.push(declaration);

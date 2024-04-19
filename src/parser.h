@@ -9,6 +9,7 @@ enum Ast_Type {
 
     AST_ROOT,
     AST_TYPE_DEFINITION,
+    AST_TYPE_INFO,
     AST_BLOCK,
 
     AST_DECLARATION,
@@ -28,6 +29,7 @@ enum Ast_Type {
     AST_CONTINUE,
     AST_DECLARATION_STATEMENT,
     AST_EXPRESSION_STATEMENT,
+    AST_BLOCK_STATEMENT,
 
     AST_EXPRESSION,
     AST_BINARY_EXPRESSION,
@@ -48,18 +50,67 @@ struct Ast_Block;
 struct Ast {
     Ast_Type type = AST_NONE;
 
+    bool poisoned;
+};
+
+enum Type_Kind {
+    TYPE_NONE,
+    TYPE_POINTER,
+    TYPE_ARRAY,
+    TYPE_STRUCT,
+    TYPE_ENUM,
+
+    TYPE_BOOL,
+    TYPE_INT,
+    TYPE_INT8,
+    TYPE_INT16,
+    TYPE_INT32,
+    TYPE_INT64,
+    TYPE_UINT,
+    TYPE_UINT8,
+    TYPE_UINT16,
+    TYPE_UINT32,
+    TYPE_UINT64,
+    TYPE_FLOAT32,
+    TYPE_FLOAT64,
+};
+
+#define TYPE_BASIC 0x1
+#define TYPE_INTEGER 0x2
+#define TYPE_FLOAT 0x4
+#define TYPE_SIGNED 0x8
+
+struct Ast_Type_Info : Ast {
+    Ast_Type_Info() { type = AST_TYPE_INFO; }
+    Type_Kind kind;
+    int type_flags;
+    int bits;
+    Ast_Type_Info *base;
+};
+
+#define EXPR_LVALUE 0x1
+
+struct Ast_Expression : Ast {
+    Ast_Expression() { type = AST_EXPRESSION; }
+    int expr_flags;
+    Ast_Type_Info *inferred_type;
+};
+
+
+#define DECLARATION_GLOBAL 0x1
+
+struct Ast_Declaration : Ast {
+    Ast_Declaration() { type = AST_DECLARATION; }
+    int declaration_flags;
+    Ast_Ident *ident;
+    Ast_Type_Info *inferred_type;
+
     bool resolved = false;
     bool resolving = false;
 };
 
-struct Ast_Expression : Ast {
-};
-
-struct Ast_Declaration : Ast {
-    Ast_Ident *ident;
-};
-
 struct Ast_Statement : Ast {
+    Ast_Statement() { type = AST_STATEMENT; }
 };
 
 struct Ast_Root : Ast {
@@ -67,15 +118,15 @@ struct Ast_Root : Ast {
     Array<Ast_Declaration *> declarations;
 };
 
-constexpr int TYPE_DEFINITION_POINTER = 0x1;
-constexpr int TYPE_DEFINITION_ARRAY = 0x2;
-constexpr int TYPE_DEFINITION_IDENT = 0x4;
+constexpr int TYPE_DEFN_POINTER = 0x1;
+constexpr int TYPE_DEFN_ARRAY = 0x2;
+constexpr int TYPE_DEFN_IDENT = 0x4;
 
 struct Ast_Type_Definition : Ast {
     Ast_Type_Definition() {type = AST_TYPE_DEFINITION;}
-    int type_flags;
-    Ast_Ident *ident;
     Ast_Type_Definition *base;
+    int defn_flags;
+    Ast_Ident *ident;
 };
 
 struct Ast_Block : Ast {
@@ -96,9 +147,11 @@ struct Ast_Procedure_Declaration : Ast_Declaration {
     Ast_Block *body;
 };
 
-struct Ast_Struct_Field : Ast_Declaration {
+struct Ast_Struct_Field : Ast {
     Ast_Struct_Field() { type = AST_STRUCT_FIELD; }
+    Atom *name;
     Ast_Type_Definition *type_definition;
+    Ast_Type_Info *inferred_type;
 };
 
 struct Ast_Struct_Declaration : Ast_Declaration {
@@ -114,6 +167,11 @@ struct Ast_Declaration_Statement : Ast_Statement {
 struct Ast_Expression_Statement : Ast_Statement {
     Ast_Expression_Statement() { type = AST_EXPRESSION_STATEMENT; }
     Ast_Expression *expression;
+};
+
+struct Ast_Block_Statement : Ast_Statement {
+    Ast_Block_Statement() { type = AST_BLOCK_STATEMENT; }
+    Ast_Block *block;
 };
 
 struct Ast_If : Ast_Statement {
@@ -166,15 +224,15 @@ struct Ast_Field_Expression : Ast_Expression {
     Ast_Expression *field;
 };
 
-constexpr int LITERAL_NUMBER = 0x1;
-constexpr int LITERAL_STRING = 0x2;
-constexpr int LITERAL_FLOAT = 0x4;
+#define LITERAL_NUMBER 0x1
+#define LITERAL_STRING 0x2
+#define LITERAL_FLOAT 0x4
 
 struct Ast_Literal : Ast_Expression {
     Ast_Literal() { type = AST_LITERAL; }
     int literal_flags;
     union {
-        int64 int_value;
+        uint64 int_value;
         float64 float_value;
         char *string_value;
     };
@@ -221,6 +279,12 @@ struct Parser {
     Ast_Root *parse_root();
 };
 
+Ast_Ident *make_ident(Atom *name);
+Ast_Declaration *make_declaration(Ast_Ident *ident);
+
 char *type_definition_to_string(Ast_Type_Definition *type_definition);
+char *type_to_string(Ast_Type_Info *type);
+
+Ast_Type_Info *make_type_info(Type_Kind kind, int flags, int bits, Ast_Type_Info *base = nullptr);
 
 #endif // PARSER_H
