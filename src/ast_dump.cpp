@@ -37,7 +37,7 @@ void Ast_Dump::dump(Ast *node) {
     case AST_STRUCT_FIELD:
     {
         Ast_Struct_Field *field = static_cast<Ast_Struct_Field *>(node);
-        print("STRUCT FIELD %s\n", field->ident->name->name);
+        print("STRUCT FIELD %s\n", field->name->name);
         indent();
         print("'%s'\n", type_definition_to_string(field->type_definition));
         outdent();
@@ -60,6 +60,9 @@ void Ast_Dump::dump(Ast *node) {
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(node);
         print("VARIABLE %s: '%s'\n", variable->ident->name->name, type_definition_to_string(variable->type_definition));
+        indent();
+        dump(variable->initializer);
+        outdent();
         break;
     }
     case AST_DECLARATION_STATEMENT:
@@ -132,7 +135,7 @@ void Ast_Dump::dump(Ast *node) {
     {
         Ast_Literal *literal = static_cast<Ast_Literal *>(node);
         if (literal->literal_flags & LITERAL_FLOAT) print("FLOAT %f\n", literal->float_value);
-        else if (literal->literal_flags & LITERAL_NUMBER) print("INTEGER %d\n", literal->int_value);
+        else if (literal->literal_flags & LITERAL_NUMBER) print("INTEGER %llu\n", literal->int_value);
         else if (literal->literal_flags & LITERAL_STRING) print("STRING \"%s\"\n", literal->string_value);
         break;
     }
