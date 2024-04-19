@@ -13,6 +13,10 @@ struct Atom {
     char name[];
 };
 
+Atom *make_atom(const char *str, int len);
+Atom *make_atom(const char *str);
+bool atoms_match(Atom *first, Atom *last);
+
 #define TOKENS() \
     TOK(TOKEN_EOF, ""), \
     TOK(TOKEN_NONE, ""), \
@@ -229,6 +233,12 @@ struct Lexer {
 
         stream_pos++;
         stream++;
+    }
+
+    void eat_line() {
+        while (*stream != '\n') {
+            advance();
+        }
     }
 
     int64 scan_integer();

@@ -6,11 +6,13 @@
 #include <stdarg.h>
 #include <assert.h>
 
-uint64 hash_djb2(unsigned const char *str) {
+uint64 hash_djb2(unsigned const char *str, size_t len) {
     uint64_t hash = 5381;
     int c;
-    while (c = *str++)
+    for (size_t i = 0; i < len; i++) {
+        c = str[i];
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
     return hash;
 }
 
@@ -25,7 +27,7 @@ Arena atom_arena;
 Atom_Map *make_atom_map() {
     Atom_Map *map = (Atom_Map *)malloc(sizeof(Atom_Map));
     map->count = 256;
-    map->atoms = (Atom **)calloc(256, sizeof(Atom *));
+    map->atoms = (Atom **)calloc(map->count, sizeof(Atom *));
     return map;
 }
 
@@ -34,13 +36,14 @@ void init_atom_map() {
     atom_arena = make_arena();
 }
 
-Atom *make_atom(const char *str, size_t len) {
-    uint64 hash = hash_djb2((unsigned const char *)str);
+Atom *make_atom(const char *str, int len) {
+    uint64 hash = hash_djb2((unsigned const char *)str, len);
     uint64 index = hash % atom_map->count;
 
     Atom *first = atom_map->atoms[index];
     for (Atom *it = first; it; it = it->next) {
         if (it->count == len && strncmp(it->name, str, len) == 0) {
+            // printf("FOUND ATOM: '%s' #%llu %p\n", it->name, hash, it);
             return it;
         }
     }
@@ -51,11 +54,16 @@ Atom *make_atom(const char *str, size_t len) {
     atom->count = len;
     atom->next = first;
     atom_map->atoms[index] = atom;
+    // printf("NEW ATOM: '%s' #%llu %p\n", atom->name, hash, atom);
     return atom;
 }
 
 Atom *make_atom(const char *str) {
-    return make_atom(str, strlen(str));
+    return make_atom(str, (int)strlen(str));
+}
+
+bool atoms_match(Atom *first, Atom *last) {
+    return first == last;
 }
 
 struct Keyword_Entry {
@@ -80,7 +88,7 @@ Keyword_Table *keyword_table;
 
 
 Keyword_Entry *keyword_lookup(const char *str) {
-    uint64 hash = hash_djb2((unsigned const char *)str);
+    uint64 hash = hash_djb2((unsigned const char *)str, strlen(str));
     uint64 index = hash % keyword_table->count;
 
     Keyword_Entry *first = keyword_table->entries[index];
@@ -101,7 +109,7 @@ void keyword_insert(const char *keyword) {
         }
     }
 
-    uint64 hash = hash_djb2((unsigned const char *)keyword);
+    uint64 hash = hash_djb2((unsigned const char *)keyword, strlen(keyword));
     uint64 index = hash % keyword_table->count;
     Keyword_Entry *first = keyword_table->entries[index];
     entry->next = first;
@@ -168,6 +176,8 @@ float64 Lexer::scan_float() {
     return result;
 }
 
+
+
 Token Lexer::scan() {
     Token tok;
 begin:
@@ -221,7 +231,6 @@ begin:
         CASE2('+', TOKEN_PLUS, '=', TOKEN_ADD_ASSIGN);
         CASE3('-', TOKEN_MINUS, '=', TOKEN_SUB_ASSIGN, '>', TOKEN_ARROW);
         CASE2('*', TOKEN_STAR, '=', TOKEN_MUL_ASSIGN);
-        CASE2('/', TOKEN_SLASH, '=', TOKEN_DIV_ASSIGN);
         CASE2('%', TOKEN_PERCENT, '=', TOKEN_MOD_ASSIGN);
         CASE2('^', TOKEN_XOR, '=', TOKEN_XOR_ASSIGN);
         CASE2('~', TOKEN_TILDE, '=', TOKEN_NOT_ASSIGN);
@@ -230,6 +239,18 @@ begin:
         CASE2('=', TOKEN_ASSIGN, '=', TOKEN_EQUAL);
 
         CASE3(':', TOKEN_COLON, ':', TOKEN_COLON2, '=', TOKEN_COLON_ASSIGN);
+
+    case '/':
+        advance();
+        tok.type = TOKEN_SLASH;
+        if (*stream == '=') {
+            advance();
+            tok.type = TOKEN_DIV_ASSIGN;
+        } else if (*stream == '/') {
+            eat_line();
+            goto begin;
+        }
+        break;
 
     case '&':
         advance();
