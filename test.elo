@@ -1,27 +1,61 @@
-
 main :: () -> int {
-    x : int;
+    y := "foo";
+    x: int;
     y: int = x;
 
     a: *int;
     b: **int; 
     c: *int;
     a = b = c;
-    return 0;
+
+    integer_array: [10]int;
+
+    it := 0;
+    while it < 0 {
+        integer_array[it] = i;
+        it++;
+    }
+
+    for i: 0..10 {
+        integer_array[i] = i + i - 1;
+    }
+    for a: integer_array {
+        if a == 7 {
+            break;
+        }
+    }
+
+    f := 0;
+    v: vector2;
+
+    if f < -1 {
+        v.x = 0;
+        v.y = -1;
+    }
+    else if f > 0 {
+        v.x = .1;
+        v.y = .4;
+    }
+    else {
+        v.x = -.3;
+        v.y = -.1;
+    }
+    
+    return a;
 }
 
-// make_vector :: (x: float32, y: float32) -> vector2 {
-//     v: vector2;
-//     v.x = x;
-//     v.y = y;
-// }
+make_vector :: (x: float32, y: float32) -> vector2 {
+    v: vector2;
+    v.x = x;
+    v.y = y;
+}
 
-// make_entity :: (position: vector2) -> Entity {
-//     e: Entity;
-//     e.id = 0;
-//     e.position = position;
-//     e.velocity = make_vector2(0.0, 0.0);
-// }
+make_entity :: (position: vector2) -> Entity {
+    e: Entity;
+    e.id = 0;
+    e.position = position;
+    e.velocity = make_vector2(.0, .0);
+}
 
 vector2 :: struct {
     x: float32;
@@ -30,6 +64,15 @@ vector2 :: struct {
 
 Entity :: struct {
     id: uint64;
+    type: Entity_Type;
     position: vector2;
     velocity: vector2;
+}
+
+Entity_Type :: enum {
+    Nil,
+    Tile,
+    Crate,
+    Mob,
+    Guy
 }
