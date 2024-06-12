@@ -1,5 +1,5 @@
 #include "lexer.h"
-#include "common.h"
+#include "core.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -346,7 +346,8 @@ begin:
         while (isalnum(*stream)) {
             advance();
         }
-        if (*stream == '.') {
+        //@todo handling ellipsis conflict
+        if (*stream == '.' && *(stream + 1) != '.') {
             stream = start;
             tok.type = Token_Floatlit;
             tok.floatlit = scan_float();

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "common.h"
+#include "core.h"
 #include "lexer.h"
 #include "parser.h"
 #include "ast_dump.h"
