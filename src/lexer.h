@@ -152,6 +152,7 @@ inline bool is_unary_operator(Token_Type op) {
 
 struct Token {
     Token_Type type = Token_None;
+    Source_Loc start;
 
     union {
         Atom *name;
@@ -234,7 +235,7 @@ struct Lexer {
     }
 
     void eat_line() {
-        while (*stream != '\n') {
+        while (*stream != '\n' && *stream != '\r') {
             advance();
         }
     }

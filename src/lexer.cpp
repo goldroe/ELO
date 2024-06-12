@@ -373,6 +373,9 @@ begin:
 #undef TOK1
 #undef TOK2
 #undef TOK3
+
+    tok.start = {line_number, column_number};
+
     l0 = line_number;
     c0 = column_number;
 
