@@ -20,6 +20,7 @@ enum Ast_Kind {
     AstKind_StructField,
     AstKind_Union,
     AstKind_Enum,
+    AstKind_EnumField,
 
     AstKind_Statement,
     AstKind_If,
@@ -105,9 +106,10 @@ enum Decl_Flags {
 DEFINE_ENUM_FLAG_OPERATORS(Decl_Flags);
 
 enum Type_Defn_Flags {
-    TypeDefnFlag_Pointer = (1 << 0),
-    TypeDefnFlag_Array   = (1 << 1),
-    TypeDefnFlag_Ident   = (1 << 2),
+    TypeDefnFlag_Ident        = (1<<0),
+    TypeDefnFlag_Pointer      = (1<<1),
+    TypeDefnFlag_Array        = (1<<2),
+    TypeDefnFlag_DynamicArray = (1<<3),
 };
 DEFINE_ENUM_FLAG_OPERATORS(Type_Defn_Flags);
 
@@ -149,6 +151,7 @@ struct Ast_Type_Definition : Ast {
     Ast_Type_Definition *base;
     Type_Defn_Flags defn_flags;
     Ast_Ident *ident;
+    Ast_Expression *array_size;
 };
 
 struct Ast_Block : Ast {
@@ -181,6 +184,17 @@ struct Ast_Struct_Declaration : Ast_Declaration {
     Array<Ast_Struct_Field *> fields;
 };
 
+struct Ast_Enum_Field : Ast {
+    Ast_Enum_Field() { kind = AstKind_EnumField; }
+    Atom * name;
+    int64 value;
+};
+
+struct Ast_Enum_Declaration : Ast_Declaration {
+    Ast_Enum_Declaration() { kind = AstKind_Enum; }
+    Array<Ast_Enum_Field *> fields;
+};
+
 struct Ast_Declaration_Statement : Ast_Statement {
     Ast_Declaration_Statement() { kind = AstKind_DeclarationStatement; }
     Ast_Declaration *declaration;
@@ -200,8 +214,7 @@ struct Ast_If : Ast_Statement {
     Ast_If() { kind = AstKind_If; }
     Ast_Expression *condition;
     Ast_Block *block;
-
-    Ast_If *else_if;
+    Ast_If *next;
 };
 
 struct Ast_While : Ast_Statement {
@@ -225,7 +238,6 @@ struct Ast_For : Ast_Statement {
 
 struct Ast_Break : Ast_Statement {
     Ast_Break() { kind = AstKind_Break; }
-    Ast_Expression *expression;
 };
 
 struct Ast_Return : Ast_Statement {
@@ -333,6 +345,7 @@ struct Parser {
     Ast_Variable *parse_variable_declaration(Ast_Ident *identfier);
     Ast_Procedure_Declaration *parse_procedure_declaration(Ast_Ident *ident);
     Ast_Struct_Declaration *parse_struct_declaration(Ast_Ident *ident);
+    Ast_Enum_Declaration *parse_enum_declaration(Ast_Ident *ident);
 
     Ast_Block *parse_block();
     Ast_Type_Definition *parse_type_definition();

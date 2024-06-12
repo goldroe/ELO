@@ -92,6 +92,8 @@ void Parser::error(const char *fmt, ...) {
     vprintf(fmt, args);
     va_end(args);
     printf("\n");
+    //@todo error handling
+    // while (!lexer->is_token(Token_Semicolon) && !lexer->is_token(Token_CloseBrace)) lexer->next_token();
 }
 
 bool Parser::expect(Token_Type type) {
@@ -159,6 +161,19 @@ static inline Ast_Struct_Field *make_struct_field(Atom *name, Ast_Type_Definitio
     Ast_Struct_Field *field = AST_NEW(Ast_Struct_Field);
     field->name = name;
     field->type_definition = type_definition;
+    return field;
+}
+
+static inline Ast_Enum_Declaration *make_enum_declaration(Ast_Ident *ident) {
+    Ast_Enum_Declaration *declaration = AST_NEW(Ast_Enum_Declaration);
+    declaration->ident = ident;
+    return declaration;
+}
+
+static inline Ast_Enum_Field *make_enum_field(Atom *name, int64 value) {
+    Ast_Enum_Field *field = AST_NEW(Ast_Enum_Field);
+    field->name = name;
+    field->value = value;
     return field;
 }
 
@@ -274,6 +289,11 @@ static inline Ast_For *make_for_statement(Ast_Ident *iterator, Ast_Range_Express
     for_statement->range = range;
     for_statement->block = block;
     return for_statement;
+}
+
+static inline Ast_Break *make_break_statement() {
+    Ast_Break *break_statement = AST_NEW(Ast_Break);
+    return break_statement;
 }
 
 static inline Ast_Return *make_return_statement(Ast_Expression *expression) {
@@ -436,13 +456,13 @@ int precedence_table(Token_Type op) {
 
 Ast_Expression *Parser::parse_binary_expression(Ast_Expression *lhs, int precedence) {
     for (;;) {
-        int op_precedence = precedence_table(lexer->token.type);
+        Token op = lexer->token;
+        int op_precedence = precedence_table(op.type);
         // leaf expression
         if (op_precedence < precedence) {
             return lhs;
         }
 
-        Token_Type op = lexer->token.type;
         lexer->next_token();
 
         Ast_Expression *rhs = parse_unary_expression();
@@ -459,7 +479,8 @@ Ast_Expression *Parser::parse_binary_expression(Ast_Expression *lhs, int precede
             }
         }
 
-        lhs = make_binary_expression(op, lhs, rhs);
+        lhs = make_binary_expression(op.type, lhs, rhs);
+        lhs->start = op.start;
     }
 }
 
@@ -514,6 +535,24 @@ Ast_If *Parser::parse_if_statement() {
     Ast_If *if_statement = make_if_statement(condition, block);
     if_statement->start = start;
     end_loc(if_statement);
+
+    Ast_If *tail = if_statement;
+    while (lexer->match_token(Token_Else)) {
+        bool last = false;
+        Source_Loc start = get_start_loc();
+        Ast_Expression *condition = nullptr;
+        if (lexer->match_token(Token_If)) {
+            condition = parse_expression();
+        } else last = true;
+        Ast_Block *block = parse_block();
+        Ast_If *elif = make_if_statement(condition, block);
+        tail->next = elif;
+        tail = elif;
+        elif->start = start;
+        end_loc(elif);
+        
+        if (last) break;
+    }
     return if_statement;
 }
 
@@ -561,8 +600,9 @@ Ast_For *Parser::parse_for_statement() {
 
 Ast_Break *Parser::parse_break_statement() {
     assert(expect(Token_Break));
-    Ast_Expression *expression = parse_expression();
-    return nullptr;
+    Ast_Break *break_statement = make_break_statement();
+    expect(Token_Semicolon);
+    return break_statement; 
 }
 
 Ast_Return *Parser::parse_return_statement() {
@@ -596,6 +636,10 @@ Ast_Statement *Parser::parse_statement() {
     case Token_If:
         statement = parse_if_statement();
         break;
+    case Token_Else:
+        error("illegal else without matching if");
+        lexer->next_token();
+        break;
     case Token_While:
         statement = parse_while_statement();
         break;
@@ -608,7 +652,6 @@ Ast_Statement *Parser::parse_statement() {
     case Token_Return:
         statement = parse_return_statement();
         break;
-    case Token_Else:
     case Token_Do:
     case Token_Case:
     case Token_Continue:
@@ -674,18 +717,24 @@ Ast_Type_Definition *Parser::parse_type_definition() {
         case Token_Ident:
             type_definition = make_type_definition(type_definition);
             type_definition->ident = make_ident(lexer->token.name);
-            type_definition->defn_flags = TypeDefnFlag_Ident;
+            type_definition->defn_flags |= TypeDefnFlag_Ident;
             lexer->next_token();
             break;
         case Token_Star:
             lexer->next_token();
             type_definition = make_type_definition(type_definition);
-            type_definition->defn_flags = TypeDefnFlag_Pointer;
+            type_definition->defn_flags |= TypeDefnFlag_Pointer;
             break;
         case Token_OpenBracket:
             lexer->next_token();
-            expect(Token_CloseBracket);
             type_definition = make_type_definition(type_definition);
+            if (lexer->match_token(Token_Ellipsis)) {
+                type_definition->defn_flags |= TypeDefnFlag_DynamicArray;
+            } else {
+                type_definition->defn_flags |= TypeDefnFlag_Array;
+                type_definition->array_size = parse_expression();
+            }
+            expect(Token_CloseBracket);
             break;
         }
     }
@@ -737,6 +786,28 @@ Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
     return struct_declaration;
 }
 
+Ast_Enum_Declaration *Parser::parse_enum_declaration(Ast_Ident *ident) {
+    assert(expect(Token_Colon2));
+    assert(expect(Token_Enum));
+    assert(expect(Token_OpenBrace));
+
+    int64 field_value = 0;
+    Ast_Enum_Declaration *enum_declaration = make_enum_declaration(ident);
+    do {
+        if (!lexer->is_token(Token_Ident)) break;
+
+        Atom *name = lexer->token.name;
+        lexer->next_token();
+        Ast_Enum_Field *field = make_enum_field(name, field_value++);
+        enum_declaration->fields.push(field);
+        field->start = ident->start;
+        end_loc(field);
+    } while (lexer->match_token(Token_Comma));
+
+    expect(Token_CloseBrace);
+    return enum_declaration;
+}
+
 Ast_Ident *Parser::parse_ident() {
     assert(lexer->is_token(Token_Ident));
     Token name = lexer->token;
@@ -777,6 +848,7 @@ Ast_Declaration *Parser::parse_declaration() {
             break;
         }
         case Token_Enum:
+            Ast_Enum_Declaration *enum_declaration = parse_enum_declaration(ident);
             break;
         }
     } else {
