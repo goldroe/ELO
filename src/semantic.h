@@ -26,6 +26,8 @@ struct Sema_Analyzer {
 
     Scope *global_scope;
     Scope *current_scope;
+    
+    void error(Source_Loc loc, const char *fmt, ...);
 
     void enter_scope() {
         Scope *scope = new Scope();
@@ -57,12 +59,12 @@ struct Sema_Analyzer {
 void init_builtin_types(Scope *scope);
 
 inline bool is_pointer_type(Ast_Type_Info *type) {
-    bool result = type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY;
+    bool result = type->kind == TypeKind_Pointer || type->kind == TypeKind_Array;
     return result;
 }
 
 inline bool is_basic_type(Ast_Type_Info *type) {
-    bool result = type->type_flags & TYPE_BASIC;
+    bool result = type->type_flags & TypeInfoFlag_Basic;
     return result;
 }
 

@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "semantic.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 Ast_Type_Info *t_uint;
 Ast_Type_Info *t_int;
@@ -16,6 +17,15 @@ Ast_Type_Info *t_float32;
 Ast_Type_Info *t_float64;
 Ast_Type_Info *t_bool;
 
+void Sema_Analyzer::error(Source_Loc loc, const char *fmt, ...) {
+    printf("%s(%d,%d) error: ", parser->lexer->source_name, loc.line, loc.column);
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    printf("\n");
+}
+
 Ast_Declaration *make_builtin_type(Scope *scope, Atom *name, Ast_Type_Info *bt) {
     Ast_Ident *ident = make_ident(name);
     Ast_Declaration *declaration = make_declaration(ident);
@@ -26,19 +36,19 @@ Ast_Declaration *make_builtin_type(Scope *scope, Atom *name, Ast_Type_Info *bt) 
 }
 
 void init_builtin_types(Scope *scope) {
-    t_uint    = make_type_info(TYPE_UINT, TYPE_BASIC | TYPE_INTEGER, 32);
-    t_int     = make_type_info(TYPE_INT, TYPE_BASIC | TYPE_INTEGER | TYPE_SIGNED, 32);
-    t_uint8   = make_type_info(TYPE_UINT8, TYPE_BASIC | TYPE_INTEGER, 8);
-    t_uint16  = make_type_info(TYPE_UINT16, TYPE_BASIC | TYPE_INTEGER, 16);
-    t_uint32  = make_type_info(TYPE_UINT32, TYPE_BASIC | TYPE_INTEGER, 32);
-    t_uint64  = make_type_info(TYPE_UINT64, TYPE_BASIC | TYPE_INTEGER, 64);
-    t_int8    = make_type_info(TYPE_INT8, TYPE_BASIC | TYPE_INTEGER | TYPE_SIGNED, 8);
-    t_int16   = make_type_info(TYPE_INT16, TYPE_BASIC | TYPE_INTEGER | TYPE_SIGNED, 16);
-    t_int32   = make_type_info(TYPE_INT32, TYPE_BASIC | TYPE_INTEGER | TYPE_SIGNED, 32);
-    t_int64   = make_type_info(TYPE_INT64, TYPE_BASIC | TYPE_INTEGER | TYPE_SIGNED, 64);
-    t_float32 = make_type_info(TYPE_FLOAT32, TYPE_BASIC | TYPE_FLOAT | TYPE_SIGNED, 32);
-    t_float32 = make_type_info(TYPE_FLOAT64, TYPE_BASIC | TYPE_FLOAT | TYPE_SIGNED, 64);
-    t_bool    = make_type_info(TYPE_BOOL, TYPE_BASIC | TYPE_INTEGER, 32);
+    t_uint    = make_type_info(TypeKind_Uint,    TypeInfoFlag_Basic|TypeInfoFlag_Integer, 32);
+    t_uint8   = make_type_info(TypeKind_Uint8,   TypeInfoFlag_Basic|TypeInfoFlag_Integer, 8);
+    t_uint16  = make_type_info(TypeKind_Uint16,  TypeInfoFlag_Basic|TypeInfoFlag_Integer, 16);
+    t_uint32  = make_type_info(TypeKind_Uint32,  TypeInfoFlag_Basic|TypeInfoFlag_Integer, 32);
+    t_uint64  = make_type_info(TypeKind_Uint64,  TypeInfoFlag_Basic|TypeInfoFlag_Integer, 64);
+    t_int     = make_type_info(TypeKind_Int,     TypeInfoFlag_Basic|TypeInfoFlag_Integer|TypeInfoFlag_Signed, 32);
+    t_int8    = make_type_info(TypeKind_Int8,    TypeInfoFlag_Basic|TypeInfoFlag_Integer|TypeInfoFlag_Signed, 8);
+    t_int16   = make_type_info(TypeKind_Int16,   TypeInfoFlag_Basic|TypeInfoFlag_Integer|TypeInfoFlag_Signed, 16);
+    t_int32   = make_type_info(TypeKind_Int32,   TypeInfoFlag_Basic|TypeInfoFlag_Integer|TypeInfoFlag_Signed, 32);
+    t_int64   = make_type_info(TypeKind_Int64,   TypeInfoFlag_Basic|TypeInfoFlag_Integer|TypeInfoFlag_Signed, 64);
+    t_float32 = make_type_info(TypeKind_Float32, TypeInfoFlag_Basic|TypeInfoFlag_Float  |TypeInfoFlag_Signed, 32);
+    t_float32 = make_type_info(TypeKind_Float64, TypeInfoFlag_Basic|TypeInfoFlag_Float  |TypeInfoFlag_Signed, 64);
+    t_bool    = make_type_info(TypeKind_Bool,    TypeInfoFlag_Basic|TypeInfoFlag_Integer, 32);
 
     make_builtin_type(scope, make_atom("uint"), t_uint);
     make_builtin_type(scope, make_atom("int"), t_int);
@@ -83,7 +93,7 @@ void Sema_Analyzer::register_global_declarations() {
 
         Ast_Declaration *lookup = scope_lookup(global_scope, declaration->ident->name);
         if (lookup) {
-            printf("'%s' already declared\n", lookup->ident->name->name);
+            error(declaration->ident->start, "'%s' already declared", lookup->ident->name->name);
         } else {
             global_scope->declarations.push(declaration);
         }
@@ -109,18 +119,18 @@ Ast_Type_Info *Sema_Analyzer::resolve_type_definition(Ast_Type_Definition *defn)
     
     Ast_Type_Info *type_info = nullptr;
     for (Ast_Type_Definition *it = defn; it; it = it->base) {
-        if (it->defn_flags & TYPE_DEFN_POINTER)
-            type_info = make_type_info(TYPE_POINTER, 0, 64, type_info);
-        else if (it->defn_flags & TYPE_DEFN_ARRAY)
-            type_info = make_type_info(TYPE_ARRAY, 0, 64, type_info);
-        else if (it->defn_flags & TYPE_DEFN_IDENT) {
+        if (it->defn_flags & TypeDefnFlag_Pointer)
+            type_info = make_type_info(TypeKind_Pointer, TypeInfoFlag_Nil, 64, type_info);
+        else if (it->defn_flags & TypeDefnFlag_Array)
+            type_info = make_type_info(TypeKind_Array, TypeInfoFlag_Nil, 64, type_info);
+        else if (it->defn_flags & TypeDefnFlag_Ident) {
             Ast_Declaration *decl = scope_lookup(current_scope, it->ident->name);
             if (decl) {
                 resolve_declaration(decl);
                 if (type_info) type_info->base = decl->inferred_type;
                 else type_info = decl->inferred_type;
             } else {
-                printf("undeclared identifier '%s'\n", it->ident->name->name);
+                error(it->ident->start, "undeclared identifier '%s'\n", it->ident->name->name);
             }
         }
     }
@@ -129,42 +139,44 @@ Ast_Type_Info *Sema_Analyzer::resolve_type_definition(Ast_Type_Definition *defn)
 
 void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
     if (!expression) return;
-    switch (expression->type) {
-    case AST_IDENT:
+    switch (expression->kind) {
+    case AstKind_Ident:
     {
         Ast_Ident *ident = static_cast<Ast_Ident *>(expression);
         Ast_Declaration *lookup = scope_lookup(current_scope, ident->name);
-        if (!lookup) {
-            printf("undeclared identifier '%s'\n", ident->name->name);
+        if (lookup) {
+            resolve_declaration(lookup);
+            ident->inferred_type = lookup->inferred_type;
         }
-        resolve_declaration(lookup);
-        ident->inferred_type = lookup->inferred_type;
+        else {
+            error(ident->start, "undeclared identifier '%s'", ident->name->name);
+        }
         break;
     }
-    case AST_LITERAL:
+    case AstKind_Literal:
     {
         Ast_Literal *literal = static_cast<Ast_Literal *>(expression);
         Ast_Type_Info *type_info = nullptr;
-        if (literal->literal_flags & LITERAL_NUMBER) {
-            if (literal->literal_flags & LITERAL_FLOAT) {
+        if (literal->literal_flags & LiteralFlag_Number) {
+            if (literal->literal_flags & LiteralFlag_Float) {
                 type_info = t_float32;
             } else {
                 type_info = t_int32; 
             }
         }
-        // else if (literal->literal_flags & LITERAL_STRING) {
+        // else if (literal->literal_flags & LiteralFlag_String) {
             // type_info = t_string;
         // }
         literal->inferred_type = type_info;
         break;
     }
-    case AST_UNARY_EXPRESSION:
+    case AstKind_UnaryExpression:
     {
         Ast_Unary_Expression *unary = static_cast<Ast_Unary_Expression *>(expression);
         resolve_expression(unary->expression);
         break;
     }
-    case AST_BINARY_EXPRESSION:
+    case AstKind_BinaryExpression:
     {
         Ast_Binary_Expression *binary = static_cast<Ast_Binary_Expression *>(expression);
         resolve_expression(binary->lhs);
@@ -197,18 +209,21 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
         }
 
         if (!convertible) {
-            printf("cannot convert from '%s' ", type_to_string(binary->rhs->inferred_type));
-            printf("to '%s'\n", type_to_string(binary->lhs->inferred_type));
+            char *rhs_str = type_to_string(binary->rhs->inferred_type);
+            char *lhs_str = type_to_string(binary->lhs->inferred_type);
+            error(binary->start, "cannot convert from '%s' to '%s'", lhs_str, rhs_str);
+            free(rhs_str);
+            free(lhs_str);
         }
 
         if (is_assign_operator(binary->op)) {
-            if (!(binary->lhs->expr_flags & EXPR_LVALUE)) {
-                printf("left operand must be l-value\n");
+            if (!(binary->lhs->expr_flags & ExprFlag_Lvalue)) {
+                error(binary->lhs->start, "left operand must be l-value");
             }
 
             // @note if lhs is lvalue then whole expression is lvalue
-            if (binary->lhs->expr_flags & EXPR_LVALUE) {
-                binary->expr_flags |= EXPR_LVALUE;
+            if (binary->lhs->expr_flags & ExprFlag_Lvalue) {
+                binary->expr_flags |= ExprFlag_Lvalue;
             }
             
         }
@@ -224,8 +239,8 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
 void Sema_Analyzer::resolve_statement(Ast_Statement *statement) {
     if (!statement) return;
 
-    switch (statement->type) {
-    case AST_BLOCK_STATEMENT:
+    switch (statement->kind) {
+    case AstKind_BlockStatement:
     {
         Ast_Block_Statement *block_statement = static_cast<Ast_Block_Statement *>(statement);
         Ast_Block *block = block_statement->block;
@@ -237,13 +252,13 @@ void Sema_Analyzer::resolve_statement(Ast_Statement *statement) {
         exit_scope();
         break;
     }
-    case AST_DECLARATION_STATEMENT:
+    case AstKind_DeclarationStatement:
     {
         Ast_Declaration_Statement *decl_statement = static_cast<Ast_Declaration_Statement *>(statement);
         resolve_declaration(decl_statement->declaration);
         break;
     }
-    case AST_EXPRESSION_STATEMENT:
+    case AstKind_ExpressionStatement:
     {
         Ast_Expression_Statement *expression_statement = static_cast<Ast_Expression_Statement *>(statement);
         resolve_expression(expression_statement->expression);
@@ -263,17 +278,17 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
 
     // @note Name resolution of local declarations.
     // Does not check global declarations because they already get checked in register_global_declarations.
-    if (!(declaration->declaration_flags & DECLARATION_GLOBAL)) {
+    if (!(declaration->declaration_flags & DeclFlag_Global)) {
         Ast_Declaration *lookup = scope_lookup(current_scope, declaration->ident->name);
         if (lookup) {
-            printf("'%s' already declared\n", lookup->ident->name->name);
+            error(lookup->ident->start, "'%s' already declared", lookup->ident->name->name);
         } else {
             scope_add_declaration(current_scope, declaration);
         }
     }
 
-    switch (declaration->type) {
-    case AST_STRUCT:
+    switch (declaration->kind) {
+    case AstKind_Struct:
     {
         Ast_Struct_Declaration *struct_declaration = static_cast<Ast_Struct_Declaration *>(declaration);
         for (int i = 0; i < struct_declaration->fields.count; i++) {
@@ -283,7 +298,7 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
         }
         break;
     }
-    case AST_PROCEDURE:
+    case AstKind_Procedure:
     {
         Ast_Procedure_Declaration *procedure = static_cast<Ast_Procedure_Declaration *>(declaration);
         Ast_Type_Info *type_info = resolve_type_definition(procedure->return_type);
@@ -302,7 +317,7 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
         exit_scope();
         break;
     }
-    case AST_VARIABLE:
+    case AstKind_Variable:
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(declaration);
         Ast_Type_Info *type_info = resolve_type_definition(variable->type_definition);

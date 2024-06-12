@@ -38,7 +38,6 @@ int main(int argc, char **argv) {
     
     Parser parser(file_name);
 
-
     Sema_Analyzer sema_analyzer;
     sema_analyzer.init(&parser);
     sema_analyzer.resolve();

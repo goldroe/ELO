@@ -6,6 +6,20 @@
 #include <stdarg.h>
 #include <assert.h>
 
+struct Atom_Map {
+    Atom **atoms;
+    int count;
+};
+
+const char *_token_type_strings[Token_Terminator + 1] = {
+#define TOK(Tok, Str) Str
+    TOKENS()
+#undef TOK
+};
+
+Atom_Map *atom_map;
+Arena atom_arena;
+
 uint64 hash_djb2(unsigned const char *str, size_t len) {
     uint64_t hash = 5381;
     int c;
@@ -15,14 +29,6 @@ uint64 hash_djb2(unsigned const char *str, size_t len) {
     }
     return hash;
 }
-
-struct Atom_Map {
-    Atom **atoms;
-    int count;
-};
-
-Atom_Map *atom_map;
-Arena atom_arena;
 
 Atom_Map *make_atom_map() {
     Atom_Map *map = (Atom_Map *)malloc(sizeof(Atom_Map));
@@ -103,9 +109,9 @@ Keyword_Entry *keyword_lookup(const char *str) {
 void keyword_insert(const char *keyword) {
     Keyword_Entry *entry = (Keyword_Entry *)malloc(sizeof(Keyword_Entry));
     entry->key = keyword;
-    for (int token = TOKEN_KEYWORD_FIRST + 1; token < TOKEN_KEYWORD_LAST; token++) {
-        if (strcmp(token_type_to_string((Token_Type)token), keyword) == 0) {
-            entry->token = (Token_Type)token;
+    for (Token_Type token = (Token_Type)((int)Token_KeywordFirst + 1); token < Token_KeywordLast; token++) {
+        if (strcmp(token_type_to_string(token), keyword) == 0) {
+            entry->token = token;
         }
     }
 
@@ -121,20 +127,14 @@ void init_keywords() {
     keyword_table = make_keyword_table();
 
     //printf("initializing keyword table...\n");
-    for (int i = TOKEN_KEYWORD_FIRST + 1; i < TOKEN_KEYWORD_LAST; i++) {
-        const char *keyword = token_type_to_string((Token_Type)i);
+    for (Token_Type token = (Token_Type)((int)Token_KeywordFirst + 1); token < Token_KeywordLast; token++) {
+        const char *keyword = token_type_to_string(token);
         keyword_insert(keyword);
     }
 }
 
-const char *_token_type_strings[TOKEN_TERMINATOR + 1] = {
-#define TOK(Tok, Str) Str
-    TOKENS()
-#undef TOK
-};
-
 void Lexer::error(const char *fmt, ...) {
-    printf("error: ");
+    printf("%s(%d,%d) syntax error: ", source_name, l1, c1);
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
@@ -176,21 +176,20 @@ float64 Lexer::scan_float() {
     return result;
 }
 
-
-
 Token Lexer::scan() {
-    Token tok;
+    Token tok{};
 begin:
     char *start = stream;
-    int start_pos = stream_pos;
+    int line_number = l1;
+    int column_number = c1;
 
-#define CASE1(C0, T0) \
+#define TOK1(C0, T0) \
     case C0: \
         advance(); \
         tok.type = T0; \
         break; \
 
-#define CASE2(C0, T0, C1, T1) \
+#define TOK2(C0, T0, C1, T1) \
     case C0: \
         advance(); \
         tok.type = T0; \
@@ -200,7 +199,7 @@ begin:
         } \
         break; \
 
-#define CASE3(C0, T0, C1, T1, C2, T2) \
+#define TOK3(C0, T0, C1, T1, C2, T2) \
     case C0: \
         advance(); \
         tok.type = T0; \
@@ -214,38 +213,38 @@ begin:
         break; \
     
     switch (*stream) {
-        CASE1(';', TOKEN_SEMICOLON);
-        CASE1('#', TOKEN_HASH);
-        CASE1(',', TOKEN_COMMA);
-        CASE2('.', TOKEN_DOT, '.', TOKEN_ELLIPSIS);
+        TOK1(';', Token_Semicolon);
+        TOK1('#', Token_Hash);
+        TOK1(',', Token_Comma);
+        TOK2('.', Token_Dot, '.', Token_Ellipsis);
 
-        CASE1('(', TOKEN_LPAREN);
-        CASE1(')', TOKEN_RPAREN);
-        CASE1('[', TOKEN_LBRACKET);
-        CASE1(']', TOKEN_RBRACKET);
-        CASE1('{', TOKEN_LBRACE);
-        CASE1('}', TOKEN_RBRACE);
+        TOK1('(', Token_OpenParen);
+        TOK1(')', Token_CloseParen);
+        TOK1('[', Token_OpenBracket);
+        TOK1(']', Token_CloseBracket);
+        TOK1('{', Token_OpenBrace);
+        TOK1('}', Token_CloseBrace);
 
-        CASE1('?', TOKEN_QUESTION);
+        TOK1('?', Token_Question);
 
-        CASE2('+', TOKEN_PLUS, '=', TOKEN_ADD_ASSIGN);
-        CASE3('-', TOKEN_MINUS, '=', TOKEN_SUB_ASSIGN, '>', TOKEN_ARROW);
-        CASE2('*', TOKEN_STAR, '=', TOKEN_MUL_ASSIGN);
-        CASE2('%', TOKEN_PERCENT, '=', TOKEN_MOD_ASSIGN);
-        CASE2('^', TOKEN_XOR, '=', TOKEN_XOR_ASSIGN);
-        CASE2('~', TOKEN_TILDE, '=', TOKEN_NOT_ASSIGN);
+        TOK2('+', Token_Plus,    '=', Token_AddAssign);
+        TOK3('-', Token_Minus,   '=', Token_SubAssign, '>', Token_Arrow);
+        TOK2('*', Token_Star,    '=', Token_MulAssign);
+        TOK2('%', Token_Percent, '=', Token_ModAssign);
+        TOK2('^', Token_Xor,     '=', Token_XorAssign);
+        TOK2('~', Token_Tilde,   '=', Token_NotAssign);
 
-        CASE2('!', TOKEN_BANG, '=', TOKEN_NEQ);
-        CASE2('=', TOKEN_ASSIGN, '=', TOKEN_EQUAL);
+        TOK2('!', Token_Bang, '=', Token_Neq);
+        TOK2('=', Token_Assign, '=', Token_Equal);
 
-        CASE3(':', TOKEN_COLON, ':', TOKEN_COLON2, '=', TOKEN_COLON_ASSIGN);
+        TOK3(':', Token_Colon, ':', Token_Colon2, '=', Token_ColonAssign);
 
     case '/':
         advance();
-        tok.type = TOKEN_SLASH;
+        tok.type = Token_Slash;
         if (*stream == '=') {
             advance();
-            tok.type = TOKEN_DIV_ASSIGN;
+            tok.type = Token_DivAssign;
         } else if (*stream == '/') {
             eat_line();
             goto begin;
@@ -254,46 +253,46 @@ begin:
 
     case '&':
         advance();
-        tok.type = TOKEN_AMPER;
+        tok.type = Token_Amper;
         if (*stream == '&') {
             advance();
-            tok.type = TOKEN_AND;
+            tok.type = Token_And;
         } else if (*stream == '=') {
             advance();
-            tok.type = TOKEN_AND_ASSIGN;
+            tok.type = Token_AndAssign;
         }
         break;
     case '|':
         advance();
-        tok.type = TOKEN_BAR;
+        tok.type = Token_Bar;
         if (*stream == '|') {
             advance();
-            tok.type = TOKEN_OR;
+            tok.type = Token_Or;
         } else if (*stream == '=') {
             advance();
-            tok.type = TOKEN_OR_ASSIGN;
+            tok.type = Token_OrAssign;
         }
         break;
     case '<':
         advance();
-        tok.type = TOKEN_LT;
+        tok.type = Token_Lt;
         if (*stream == '=') {
             advance();
-            tok.type = TOKEN_LTEQ;
+            tok.type = Token_Lteq;
         } else if (*stream == '<') {
             advance();
-            tok.type = TOKEN_LSHIFT;
+            tok.type = Token_Lshift;
         }
         break;
     case '>':
         advance();
-        tok.type = TOKEN_GT;
+        tok.type = Token_Gt;
         if (*stream == '=') {
             advance();
-            tok.type = TOKEN_GTEQ;
+            tok.type = Token_Gteq;
         } else if (*stream == '>') {
             advance();
-            tok.type = TOKEN_RSHIFT;
+            tok.type = Token_Rshift;
         }
         break;
 
@@ -316,8 +315,8 @@ begin:
         }
     string_end:
 
-        int len = stream_pos - start_pos - 2;
-        tok.type = TOKEN_STRLIT;
+        int len = (int)(stream - start) - 2;
+        tok.type = Token_Strlit;
         tok.strlit = (char *)malloc(len + 1);
         strncpy(tok.strlit, start + 1, len);
         tok.strlit[len] = 0;
@@ -329,14 +328,14 @@ begin:
         while (isalnum(*stream) || *stream == '_') {
             advance();
         }
-        int len = stream_pos - start_pos;
+        int len = (int)(stream - start);
         Atom *atom = make_atom(start, len);
 
         Keyword_Entry *key = keyword_lookup(atom->name);
         if (key) {
             tok.type = key->token;
         } else {
-            tok.type = TOKEN_IDENT;
+            tok.type = Token_Ident;
             tok.name = atom;
         }
         break;
@@ -349,13 +348,11 @@ begin:
         }
         if (*stream == '.') {
             stream = start;
-            stream_pos = start_pos;
-            tok.type = TOKEN_FLOATLIT;
+            tok.type = Token_Floatlit;
             tok.floatlit = scan_float();
         } else {
             stream = start;
-            stream_pos = start_pos;
-            tok.type = TOKEN_INTLIT;
+            tok.type = Token_Intlit;
             tok.intlit = scan_integer();
         }
         break;
@@ -369,11 +366,16 @@ begin:
         break;
 
     case 0:
-        tok.type = TOKEN_EOF;
+        tok.type = Token_EOF;
         break;
     }
-#undef CASE1
-#undef CASE2
+#undef TOK1
+#undef TOK2
+#undef TOK3
+    l0 = line_number;
+    c0 = column_number;
+
+    // printf("%s (%d,%d)->(%d,%d)\n", token_type_to_string(tok.type), l0, c0, l1, c1);
 
     return tok;
 }

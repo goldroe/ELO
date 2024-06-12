@@ -2,8 +2,8 @@
 
 void Ast_Dump::dump(Ast *node) {
     if (!node) return;
-    switch (node->type) {
-    case AST_ROOT:
+    switch (node->kind) {
+    case AstKind_Root:
     {
         Ast_Root *root = static_cast<Ast_Root*>(node);
         for (int i = 0; i < root->declarations.count; i++) {
@@ -11,7 +11,7 @@ void Ast_Dump::dump(Ast *node) {
         }
         break;
     }
-    case AST_BLOCK:
+    case AstKind_Block:
     {
         Ast_Block *block = static_cast<Ast_Block *>(node);
         print("BLOCK\n");
@@ -22,7 +22,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_STRUCT:
+    case AstKind_Struct:
     {
         Ast_Struct_Declaration *struct_declaration = static_cast<Ast_Struct_Declaration *>(node);
         print("STRUCT %s\n", struct_declaration->ident->name->name);
@@ -34,7 +34,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_STRUCT_FIELD:
+    case AstKind_StructField:
     {
         Ast_Struct_Field *field = static_cast<Ast_Struct_Field *>(node);
         print("STRUCT FIELD %s\n", field->name->name);
@@ -43,7 +43,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_PROCEDURE:
+    case AstKind_Procedure:
     {
         Ast_Procedure_Declaration *procedure = static_cast<Ast_Procedure_Declaration *>(node);
         print("PROCEDURE %s: '%s'\n", procedure->ident->name->name, type_definition_to_string(procedure->return_type));
@@ -56,7 +56,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_VARIABLE:
+    case AstKind_Variable:
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(node);
         print("VARIABLE %s: '%s'\n", variable->ident->name->name, type_definition_to_string(variable->type_definition));
@@ -65,7 +65,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_DECLARATION_STATEMENT:
+    case AstKind_DeclarationStatement:
     {
         Ast_Declaration_Statement *declaration_statement = static_cast<Ast_Declaration_Statement *>(node);
         print("DECLARATION STATEMENT\n");
@@ -74,7 +74,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_EXPRESSION_STATEMENT:
+    case AstKind_ExpressionStatement:
     {
         Ast_Expression_Statement *expression_statement = static_cast<Ast_Expression_Statement *>(node);
         print("EXPRESSION STATEMENT\n");
@@ -83,7 +83,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_WHILE:
+    case AstKind_While:
     {
         Ast_While *while_statement = static_cast<Ast_While *>(node);
         print("WHILE STATEMENT\n");
@@ -93,7 +93,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_IF:
+    case AstKind_If:
     {
         Ast_If *if_statement = static_cast<Ast_If *>(node);
         print("IF STATEMENT\n");
@@ -103,7 +103,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_RETURN:
+    case AstKind_Return:
     {
         Ast_Return *return_statement = static_cast<Ast_Return *>(node);
         print("RETURN STATEMENT\n");
@@ -112,7 +112,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_BINARY_EXPRESSION:
+    case AstKind_BinaryExpression:
     {
         Ast_Binary_Expression *binary_expression = static_cast<Ast_Binary_Expression *>(node);
         print("BINARY '%s'\n", token_type_to_string(binary_expression->op));
@@ -122,7 +122,7 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_UNARY_EXPRESSION:
+    case AstKind_UnaryExpression:
     {
         Ast_Unary_Expression *unary_expression = static_cast<Ast_Unary_Expression *>(node);
         print("UNARY '%s'\n", token_type_to_string(unary_expression->op));
@@ -131,15 +131,15 @@ void Ast_Dump::dump(Ast *node) {
         outdent();
         break;
     }
-    case AST_LITERAL:
+    case AstKind_Literal:
     {
         Ast_Literal *literal = static_cast<Ast_Literal *>(node);
-        if (literal->literal_flags & LITERAL_FLOAT) print("FLOAT %f\n", literal->float_value);
-        else if (literal->literal_flags & LITERAL_NUMBER) print("INTEGER %llu\n", literal->int_value);
-        else if (literal->literal_flags & LITERAL_STRING) print("STRING \"%s\"\n", literal->string_value);
+        if (literal->literal_flags & LiteralFlag_Float) print("FLOAT %f\n", literal->float_value);
+        else if (literal->literal_flags & LiteralFlag_Number) print("INTEGER %llu\n", literal->int_value);
+        else if (literal->literal_flags & LiteralFlag_String) print("STRING \"%s\"\n", literal->string_value);
         break;
     }
-    case AST_IDENT:
+    case AstKind_Ident:
     {
         Ast_Ident *ident = static_cast<Ast_Ident *>(node);
         print("IDENT %s\n", ident->name->name);

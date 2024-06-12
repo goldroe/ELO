@@ -13,51 +13,56 @@ char *type_to_string(Ast_Type_Info *type) {
     
     for (Ast_Type_Info *it = type; it; it = it->base) {
         switch (it->kind) {
-        case TYPE_POINTER:
+        case TypeKind_Pointer:
             strcat(buffer, "*");
             break;
-        case TYPE_ARRAY:
+        case TypeKind_Array:
             strcat(buffer, "[]");
             break;
-        case TYPE_FLOAT32:
+        case TypeKind_Float32:
             strcat(buffer, "float32");
             break;
-        case TYPE_FLOAT64:
+        case TypeKind_Float64:
             strcat(buffer, "float64");
             break;
-        case TYPE_INT:
+        case TypeKind_Int:
             strcat(buffer, "int");
             break;
-        case TYPE_INT8:
+        case TypeKind_Int8:
             strcat(buffer, "int8");
             break;
-        case TYPE_INT16:
+        case TypeKind_Int16:
             strcat(buffer, "int16");
             break;
-        case TYPE_INT32:
+        case TypeKind_Int32:
             strcat(buffer, "int32");
             break;
-        case TYPE_INT64:
+        case TypeKind_Int64:
             strcat(buffer, "int64");
             break;
-        case TYPE_UINT:
+        case TypeKind_Uint:
             strcat(buffer, "uint");
             break;
-        case TYPE_UINT8:
+        case TypeKind_Uint8:
             strcat(buffer, "uint8");
             break;
-        case TYPE_UINT16:
+        case TypeKind_Uint16:
             strcat(buffer, "uint16");
             break;
-        case TYPE_UINT32:
+        case TypeKind_Uint32:
             strcat(buffer, "uint32");
             break;
-        case TYPE_UINT64:
+        case TypeKind_Uint64:
             strcat(buffer, "uint64");
             break;
         }
     }
-    return buffer;
+
+    size_t len = strlen(buffer);
+    char *str = (char *)malloc(len + 1);
+    memcpy(str, buffer, len);
+    str[len] = 0;
+    return str;
 }
 
 char *type_definition_to_string(Ast_Type_Definition *type_definition) {
@@ -65,15 +70,20 @@ char *type_definition_to_string(Ast_Type_Definition *type_definition) {
     memset(buffer, 0, 1024);
     if (!type_definition) strcat(buffer, "<auto>");
     for (Ast_Type_Definition *it = type_definition; it; it = it->base) {
-        if (it->defn_flags & TYPE_DEFN_POINTER) strcat(buffer, "*");
-        else if (it->defn_flags & TYPE_DEFN_ARRAY) strcat(buffer, "[]");
-        else if (it->defn_flags & TYPE_DEFN_IDENT) strcat(buffer, it->ident->name->name);
+        if (it->defn_flags & TypeDefnFlag_Pointer) strcat(buffer, "*");
+        else if (it->defn_flags & TypeDefnFlag_Array) strcat(buffer, "[]");
+        else if (it->defn_flags & TypeDefnFlag_Ident) strcat(buffer, it->ident->name->name);
     }
-    return buffer;
+
+    size_t len = strlen(buffer);
+    char *str = (char *)malloc(len + 1);
+    memcpy(str, buffer, len);
+    str[len] = 0;
+    return str;
 }
 
 void Parser::error(const char *fmt, ...) {
-    printf("error: ");
+    printf("%s(%d,%d) error: ", lexer->source_name, lexer->l0, lexer->c0);
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
@@ -113,9 +123,9 @@ Ast_Ident *make_ident(Atom *name) {
     return ident;
 }
 
-Ast_Type_Info *make_type_info(Type_Kind kind, int flags, int bits, Ast_Type_Info *base) {
+Ast_Type_Info *make_type_info(Type_Kind kind, Type_Info_Flags flags, int bits, Ast_Type_Info *base) {
     Ast_Type_Info *type_info = AST_NEW(Ast_Type_Info);
-    type_info->kind = kind;
+    type_info->type_kind = kind;
     type_info->type_flags |= flags;
     type_info->bits = bits;
     type_info->base = base;
@@ -131,14 +141,14 @@ static inline Ast_Variable *make_variable_declaration(Ast_Ident *ident) {
 static inline Ast_Procedure_Declaration *make_procedure_declaration(Ast_Ident *ident) {
     Ast_Procedure_Declaration *procedure = AST_NEW(Ast_Procedure_Declaration);
     procedure->ident = ident;
-    procedure->declaration_flags |= DECLARATION_GLOBAL;
+    procedure->declaration_flags |= DeclFlag_Global;
     return procedure;
 }
 
 static inline Ast_Struct_Declaration *make_struct_declaration(Ast_Ident *ident) {
     Ast_Struct_Declaration *declaration = AST_NEW(Ast_Struct_Declaration);
     declaration->ident = ident;
-    declaration->declaration_flags |= DECLARATION_GLOBAL;
+    declaration->declaration_flags |= DeclFlag_Global;
     return declaration;
 }
 
@@ -174,22 +184,22 @@ static inline Ast_Block *make_block() {
 
 static inline Ast_Literal *make_integer_literal(uint64 value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
-    literal->literal_flags |= LITERAL_NUMBER;
+    literal->literal_flags |= LiteralFlag_Number;
     literal->int_value = value;
     return literal;
 }
 
 static inline Ast_Literal *make_float_literal(float64 value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
-    literal->literal_flags |= LITERAL_NUMBER;
-    literal->literal_flags |= LITERAL_FLOAT;
+    literal->literal_flags |= LiteralFlag_Number;
+    literal->literal_flags |= LiteralFlag_Float;
     literal->float_value = value;
     return literal;
 }
 
 static inline Ast_Literal *make_string_literal(char *value) {
     Ast_Literal *literal = AST_NEW(Ast_Literal);
-    literal->literal_flags |= LITERAL_STRING;
+    literal->literal_flags |= LiteralFlag_String;
     literal->string_value = value;
     return literal;
 }
@@ -255,57 +265,70 @@ static inline Ast_Return *make_return_statement(Ast_Expression *expression) {
 }
 
 Ast_Expression *Parser::parse_operand() {
+    Ast_Expression *expression = nullptr;
+    Source_Loc start = get_start_loc();
     switch (lexer->token.type) {
-    case TOKEN_IDENT:
+    case Token_Ident:
     {
         Ast_Ident *ident = make_ident(lexer->token.name);
-        ident->expr_flags |= EXPR_LVALUE;
+        ident->expr_flags |= ExprFlag_Lvalue;
         lexer->next_token();
-        return ident;
+        expression = ident;
+        break;
     }
-    case TOKEN_INTLIT: 
+    case Token_Intlit: 
     {
         Ast_Literal *literal = make_integer_literal(lexer->token.intlit);
         lexer->next_token();
-        return literal;
+        expression = literal;
+        break;
     }
-    case TOKEN_FLOATLIT:
+    case Token_Floatlit:
     {
         Ast_Literal *literal = make_float_literal(lexer->token.floatlit);
         lexer->next_token();
-        return literal;
+        expression = literal;
+        break;
     }
-    case TOKEN_STRLIT:
+    case Token_Strlit:
     {
         Ast_Literal *literal = make_string_literal(lexer->token.strlit);
         lexer->next_token();
-        return literal;
+        expression = literal;
+        break;
     }
     }
-    return nullptr;
+
+    if (expression) {
+        expression->start = start;
+        end_loc(expression);
+    }
+    return expression;
 }
 
 Ast_Expression *Parser::parse_primary_expression() {
+    Source_Loc start = get_start_loc();
     Ast_Expression *operand = parse_operand();
+    Ast_Expression *primary = operand;
     switch (lexer->token.type) {
-    default:
-        return operand;
-    case TOKEN_LBRACKET:
+    case Token_OpenBracket:
     {
         lexer->next_token();
         Ast_Expression *index = parse_expression();
         Ast_Index_Expression *index_expression = make_index_expression(operand, index);
-        expect(TOKEN_RBRACKET);
-        return index_expression;
+        expect(Token_CloseBracket);
+        primary = index_expression;
+        break;
     }
-    case TOKEN_DOT:
+    case Token_Dot:
     {
         lexer->next_token();
         Ast_Expression *field = parse_expression();
         Ast_Field_Expression *field_expression = make_field_expression(operand, field);
-        return field_expression;
+        primary = field_expression;
+        break;
     }
-    case TOKEN_LPAREN:
+    case Token_OpenParen:
     {
         lexer->next_token();
         Ast_Call_Expression *call_expression = make_call_expression(operand);
@@ -313,25 +336,39 @@ Ast_Expression *Parser::parse_primary_expression() {
             Ast_Expression *argument = parse_expression();
             if (!argument) break;
             call_expression->arguments.push(argument);
-        } while (lexer->match_token(TOKEN_COMMA));
-        expect(TOKEN_RPAREN);
-        return call_expression;
+        } while (lexer->match_token(Token_Comma));
+        expect(Token_CloseParen);
+        primary = call_expression;
+        break;
     }
     }
+
+    if (primary) {
+        primary->start = start;
+        end_loc(primary);
+    }
+    return primary;
 }
 
 Ast_Expression *Parser::parse_unary_expression() {
+    Ast_Expression *expression = nullptr;
+    Source_Loc start = get_start_loc();
     if (is_unary_operator(lexer->token.type)) {
         Token_Type op = lexer->token.type;
         lexer->next_token();
-        Ast_Unary_Expression *expression = make_unary_expression(op);
-        expression->expression = parse_unary_expression();
-        expression->op = op;
-        return expression;
+        Ast_Unary_Expression *unary = make_unary_expression(op);
+        unary->expression = parse_unary_expression();
+        unary->op = op;
+        expression = unary;
     } else {
-        Ast_Expression *expression = parse_primary_expression();
-        return expression;
+        Ast_Expression *primary = parse_primary_expression();
+        expression = primary;
     }
+    if (expression) {
+        expression->start = start;
+        end_loc(expression);
+    }
+    return expression;
 }
 
 // 10 + 3 * 2
@@ -365,16 +402,16 @@ int precedence_table(Token_Type op) {
     switch (op) {
     default:
         return -1;
-    case TOKEN_STAR: case TOKEN_SLASH: case TOKEN_PERCENT:
+    case Token_Star: case Token_Slash: case Token_Percent:
         return 500;
-    case TOKEN_PLUS:
-    case TOKEN_MINUS:
+    case Token_Plus:
+    case Token_Minus:
         return 400;
-    case TOKEN_LT: case TOKEN_LTEQ: case TOKEN_GT: case TOKEN_GTEQ:
+    case Token_Lt: case Token_Lteq: case Token_Gt: case Token_Gteq:
         return 300;
-    case TOKEN_ASSIGN: case TOKEN_ADD_ASSIGN: case TOKEN_SUB_ASSIGN: case TOKEN_MUL_ASSIGN: case TOKEN_DIV_ASSIGN: case TOKEN_MOD_ASSIGN: case TOKEN_AND_ASSIGN: case TOKEN_XOR_ASSIGN: case TOKEN_OR_ASSIGN:
+    case Token_Assign: case Token_AddAssign: case Token_SubAssign: case Token_MulAssign: case Token_DivAssign: case Token_ModAssign: case Token_AndAssign: case Token_XorAssign: case Token_OrAssign:
         return 100;
-    case TOKEN_EQUAL: case TOKEN_NEQ:
+    case Token_Equal: case Token_Neq:
         return 20;
     }
 }
@@ -398,7 +435,10 @@ Ast_Expression *Parser::parse_binary_expression(Ast_Expression *lhs, int precede
         int next_precedence = precedence_table(lexer->token.type);
         if (op_precedence < next_precedence) {
             rhs = parse_binary_expression(rhs, op_precedence + 1);
-            if (!rhs) return nullptr;
+            if (rhs) {
+            } else {
+                return nullptr;
+            }
         }
 
         lhs = make_binary_expression(op, lhs, rhs);
@@ -408,62 +448,76 @@ Ast_Expression *Parser::parse_binary_expression(Ast_Expression *lhs, int precede
 Ast_Expression *Parser::parse_expression() {
     Ast_Expression *expression = parse_unary_expression();
     expression = parse_binary_expression(expression, 0);
-    
     return expression;
 }
 
 Ast_Statement *Parser::parse_init_statement(Ast_Expression *lhs) {
-    if (lhs->type != AST_IDENT) {
-        error("variable initialization must be preceded by an ident");
+    assert(lhs);
+    if (lhs->kind != AstKind_Ident) {
+        error("variable initialization must be begin with an identifier");
         return nullptr;
     }
     Ast_Variable *variable = parse_variable_declaration(static_cast<Ast_Ident *>(lhs));
     Ast_Declaration_Statement *declaration_statement = make_declaration_statement(variable);
-    expect(TOKEN_SEMICOLON);
+    expect(Token_Semicolon);
     return declaration_statement;
 }
 
 Ast_Statement *Parser::parse_simple_statement() {
     Ast_Expression *lhs = parse_expression();
     if (!lhs) return nullptr;
-    
+
+    Ast_Statement *statement = nullptr;
     switch (lexer->token.type) {
     default:
     {
         Ast_Expression_Statement *expression_statement = make_expression_statement(lhs);
-        expect(TOKEN_SEMICOLON);
-        return expression_statement;
+        expect(Token_Semicolon);
+        statement = expression_statement;
+        break;
     }
-    case TOKEN_COLON:
-    case TOKEN_COLON_ASSIGN: 
+    case Token_Colon:
+    case Token_ColonAssign:
     {
-        Ast_Statement *statement = parse_init_statement(lhs);
-        return statement;
+        statement = parse_init_statement(lhs);
+        break;
     }
     }
+    statement->start = lhs->start;
+    end_loc(statement);
+    return statement;
 }
 
 Ast_If *Parser::parse_if_statement() {
-    assert(lexer->match_token(TOKEN_IF));
+    assert(lexer->match_token(Token_If));
+    Source_Loc start = get_start_loc();
     Ast_Expression *condition = parse_expression();
     Ast_Block *block = parse_block();
     Ast_If *if_statement = make_if_statement(condition, block);
+    if_statement->start = start;
+    end_loc(if_statement);
     return if_statement;
 }
 
 Ast_While *Parser::parse_while_statement() {
-    assert(lexer->match_token(TOKEN_WHILE));
+    assert(lexer->match_token(Token_While));
+    Source_Loc start = get_start_loc();
     Ast_Expression *condition = parse_expression();
     Ast_Block *block = parse_block();
     Ast_While *while_statement = make_while_statement(condition, block);
+    while_statement->start = start;
+    end_loc(while_statement);
     return while_statement;
 }
 
 Ast_Return *Parser::parse_return_statement() {
-    assert(lexer->match_token(TOKEN_RETURN));
+    assert(expect(Token_Return));
+    Source_Loc start = get_start_loc();
     Ast_Expression *expression = parse_expression();
     Ast_Return *return_statement = make_return_statement(expression);
-    expect(TOKEN_SEMICOLON);
+    expect(Token_Semicolon);
+    return_statement->start = start;
+    end_loc(return_statement);
     return return_statement;
 }
 
@@ -475,64 +529,66 @@ Ast_Statement *Parser::parse_statement() {
         statement = parse_simple_statement();
         break;
     }
-    case TOKEN_LBRACE:
+    case Token_OpenBrace:
     {
         Ast_Block *block = parse_block();
         statement = make_block_statement(block);
         break;
     }
-    case TOKEN_SEMICOLON:
+    case Token_Semicolon:
         lexer->next_token();
         break;
-    case TOKEN_IF:
+    case Token_If:
         statement = parse_if_statement();
         break;
-    case TOKEN_WHILE:
+    case Token_While:
         statement = parse_while_statement();
         break;
-    case TOKEN_RETURN:
+    case Token_Return:
         statement = parse_return_statement();
         break;
-    case TOKEN_ELSE:
-    case TOKEN_DO:
-    case TOKEN_FOR:
-    case TOKEN_CASE:
-    case TOKEN_CONTINUE:
-    case TOKEN_BREAK:
+    case Token_Else:
+    case Token_Do:
+    case Token_For:
+    case Token_Case:
+    case Token_Continue:
+    case Token_Break:
         break;
     }
     return statement;
 }
 
 Ast_Block *Parser::parse_block() {
+    assert(expect(Token_OpenBrace));
     Ast_Block *block = make_block();
-    if (expect(TOKEN_LBRACE)) {
-        do {
-            if (lexer->is_token(TOKEN_EOF)) {
-                error("unexpected end of file in block");
-                break; 
-            }
+    start_loc(block);
+    do {
+        if (lexer->is_token(Token_EOF)) {
+            error("unexpected end of file in block");
+            break; 
+        }
 
-            Ast_Statement *statement = parse_statement();
-            if (statement) block->statements.push(statement);
-        } while (!lexer->match_token(TOKEN_RBRACE));
-    }
+        Ast_Statement *statement = parse_statement();
+        if (statement) block->statements.push(statement);
+    } while (!lexer->match_token(Token_CloseBrace));
+    end_loc(block);
     return block;
 }
 
 Ast_Procedure_Declaration *Parser::parse_procedure_declaration(Ast_Ident *ident) {
-    Ast_Procedure_Declaration *procedure = make_procedure_declaration(ident);
-    assert(lexer->match_token(TOKEN_COLON2));
-    assert(lexer->match_token(TOKEN_LPAREN));
+    assert(lexer->match_token(Token_Colon2));
+    assert(lexer->match_token(Token_OpenParen));
 
-    if (lexer->is_token(TOKEN_IDENT)) {
+    Ast_Procedure_Declaration *procedure = make_procedure_declaration(ident);
+
+    if (lexer->is_token(Token_Ident)) {
         Ast_Ident *ident = make_ident(lexer->token.name);
         lexer->next_token();
         Ast_Variable *variable = parse_variable_declaration(ident);
         procedure->parameters.push(variable);
 
-        while (lexer->match_token(TOKEN_COMMA)) {
-            if (lexer->is_token(TOKEN_IDENT)) {
+        while (lexer->match_token(Token_Comma)) {
+            if (lexer->is_token(Token_Ident)) {
                 ident = make_ident(lexer->token.name);
                 lexer->next_token();
                 variable = parse_variable_declaration(ident);
@@ -540,54 +596,58 @@ Ast_Procedure_Declaration *Parser::parse_procedure_declaration(Ast_Ident *ident)
             }
         }
     }
-    expect(TOKEN_RPAREN);
+    expect(Token_CloseParen);
 
-    if (lexer->match_token(TOKEN_ARROW)) {
+    if (lexer->match_token(Token_Arrow)) {
         procedure->return_type = parse_type_definition();
     }
     procedure->body = parse_block();
-
     return procedure;
 }
 
-
 Ast_Type_Definition *Parser::parse_type_definition() {
+    Source_Loc start = get_start_loc();
     Ast_Type_Definition *type_definition = nullptr;
     for (;;) {
         switch (lexer->token.type) {
         default:
-            return type_definition;
-        case TOKEN_IDENT:
+            goto end_defn;
+        case Token_Ident:
             type_definition = make_type_definition(type_definition);
             type_definition->ident = make_ident(lexer->token.name);
-            type_definition->defn_flags = TYPE_DEFN_IDENT;
+            type_definition->defn_flags = TypeDefnFlag_Ident;
             lexer->next_token();
             break;
-        case TOKEN_STAR:
+        case Token_Star:
             lexer->next_token();
             type_definition = make_type_definition(type_definition);
-            type_definition->defn_flags = TYPE_DEFN_POINTER;
+            type_definition->defn_flags = TypeDefnFlag_Pointer;
             break;
-        case TOKEN_LBRACKET:
+        case Token_OpenBracket:
             lexer->next_token();
-            expect(TOKEN_RBRACKET);
+            expect(Token_CloseBracket);
             type_definition = make_type_definition(type_definition);
             break;
         }
+    }
+end_defn:
+    if (type_definition) {
+        type_definition->start = start;
+        end_loc(type_definition);
     }
     return type_definition;
 }
 
 Ast_Variable *Parser::parse_variable_declaration(Ast_Ident *ident) {
     Ast_Variable *variable = make_variable_declaration(ident);
-    if (lexer->match_token(TOKEN_COLON)) {
+    if (lexer->match_token(Token_Colon)) {
         Ast_Type_Definition *type_definition = parse_type_definition();
         variable->type_definition = type_definition;
-        if (lexer->match_token(TOKEN_ASSIGN)) {
+        if (lexer->match_token(Token_Assign)) {
             Ast_Expression *rhs = parse_expression();
             variable->initializer = rhs;
         }
-    } else if (lexer->match_token(TOKEN_COLON_ASSIGN)) {
+    } else if (lexer->match_token(Token_ColonAssign)) {
         Ast_Expression *expression = parse_expression();
         variable->initializer = expression;
     }
@@ -595,68 +655,86 @@ Ast_Variable *Parser::parse_variable_declaration(Ast_Ident *ident) {
 }
 
 Ast_Struct_Declaration *Parser::parse_struct_declaration(Ast_Ident *ident) {
-    assert(lexer->match_token(TOKEN_COLON2));
-    assert(lexer->match_token(TOKEN_STRUCT));
-
-    expect(TOKEN_LBRACE);
+    assert(lexer->match_token(Token_Colon2));
+    assert(lexer->match_token(Token_Struct));
+    expect(Token_OpenBrace);
 
     Ast_Struct_Declaration *struct_declaration = make_struct_declaration(ident);
-    while (lexer->is_token(TOKEN_IDENT)) {
-        Atom *name = lexer->token.name;
+    while (lexer->is_token(Token_Ident)) {
+        Source_Loc start = get_start_loc();
+        Token name = lexer->token;
         lexer->next_token();
-        expect(TOKEN_COLON);
+        expect(Token_Colon);
         Ast_Type_Definition *type_definition = parse_type_definition();
-        if (!expect(TOKEN_SEMICOLON)) {
+        Ast_Struct_Field *field = make_struct_field(name.name, type_definition);
+        struct_declaration->fields.push(field);
+        field->start = start;
+        end_loc(field);
+        if (!expect(Token_Semicolon)) {
             break;
         }
-        Ast_Struct_Field *field = make_struct_field(name, type_definition);
-        struct_declaration->fields.push(field);
     }
-    expect(TOKEN_RBRACE);
+    expect(Token_CloseBrace);
     return struct_declaration;
+}
+
+Ast_Ident *Parser::parse_ident() {
+    assert(lexer->is_token(Token_Ident));
+    Token name = lexer->token;
+    Ast_Ident *ident = make_ident(name.name);
+    start_loc(ident);
+    end_loc(ident);
+    lexer->next_token();
+    return ident;
 }
 
 Ast_Declaration *Parser::parse_declaration() {
     Ast_Ident *ident = nullptr;
-    if (lexer->is_token(TOKEN_IDENT)) {
-        Atom *name = lexer->token.name;
-        lexer->next_token();
-        ident = make_ident(name);
+    if (lexer->is_token(Token_Ident)) {
+        ident = parse_ident(); 
     } else {
         return nullptr;
     }
 
-    if (lexer->is_token(TOKEN_COLON)) {
+    Ast_Declaration *declaration = nullptr;
+    if (lexer->is_token(Token_Colon)) {
         Ast_Variable *variable = parse_variable_declaration(ident);
-        variable->declaration_flags |= DECLARATION_GLOBAL;
-        expect(TOKEN_SEMICOLON);
-        return variable;
-    } else if (lexer->is_token(TOKEN_COLON2)) {
+        variable->declaration_flags |= DeclFlag_Global;
+        expect(Token_Semicolon);
+        declaration = variable;
+    } else if (lexer->is_token(Token_Colon2)) {
         Token token = lexer->peek_token();
         switch (token.type) {
-        case TOKEN_LPAREN:
+        case Token_OpenParen:
         {
             Ast_Procedure_Declaration *procedure = parse_procedure_declaration(ident);
-            return procedure;
+            declaration = procedure;
+            break;
         }
-        case TOKEN_STRUCT:
+        case Token_Struct:
         {
             Ast_Struct_Declaration *struct_declaration = parse_struct_declaration(ident);
-            return struct_declaration;
+            declaration = struct_declaration;
+            break;
         }
-        case TOKEN_ENUM:
+        case Token_Enum:
             break;
         }
     } else {
         error("expected ':' or '::' for declaration, got '%s'", token_type_to_string(lexer->token.type));
     }
-    return nullptr;
+    
+    if (declaration) {
+        declaration->start = ident->start;
+        end_loc(declaration);
+    }
+    return declaration;
 }
 
 Ast_Root *Parser::parse_root() {
     Ast_Root *root = make_root();
     for (;;) {
-        if (lexer->is_token(TOKEN_EOF))
+        if (lexer->is_token(Token_EOF))
             break;
 
         Ast_Declaration *declaration = parse_declaration();

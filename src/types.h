@@ -13,13 +13,9 @@ typedef int64_t int64;
 typedef float float32;
 typedef double float64;
 
-struct Source_Range {
-    int line_begin;
-    int line_end;
-    int column_begin;
-    int column_end;
-    int char_begin;
-    int char_end;
+struct Source_Loc {
+    int line;
+    int column;
 };
 
 #endif // TYPES_H
