@@ -30,10 +30,10 @@
     <ClCompile Include="src\ast_dump.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\common.cpp">
+    <ClCompile Include="src\semantic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\semantic.cpp">
+    <ClCompile Include="src\core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -42,9 +42,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\path.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\array.h">
@@ -56,10 +53,10 @@
     <ClInclude Include="src\ast_dump.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\common.h">
+    <ClInclude Include="src\semantic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\semantic.h">
+    <ClInclude Include="src\core.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

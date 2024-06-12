@@ -164,7 +164,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\ast_dump.cpp" />
-    <ClCompile Include="src\common.cpp" />
+    <ClCompile Include="src\core.cpp" />
     <ClCompile Include="src\elo.cpp" />
     <ClCompile Include="src\lexer.cpp" />
     <ClCompile Include="src\parser.cpp" />
@@ -174,12 +174,11 @@
   <ItemGroup>
     <ClInclude Include="src\array.h" />
     <ClInclude Include="src\ast_dump.h" />
-    <ClInclude Include="src\common.h" />
+    <ClInclude Include="src\core.h" />
     <ClInclude Include="src\lexer.h" />
     <ClInclude Include="src\parser.h" />
     <ClInclude Include="src\path.h" />
     <ClInclude Include="src\semantic.h" />
-    <ClInclude Include="src\types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
