@@ -1,7 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "common.h"
+#include "core.h"
 #include "lexer.h"
 #include "array.h"
 
@@ -38,6 +38,7 @@ enum Ast_Kind {
     AstKind_IndexExpression,
     AstKind_FieldExpression,
     AstKind_CallExpression,
+    AstKind_RangeExpression,
     AstKind_Literal,
     AstKind_Ident,
 };
@@ -209,6 +210,24 @@ struct Ast_While : Ast_Statement {
     Ast_Block *block;
 };
 
+struct Ast_Range_Expression : Ast_Expression {
+    Ast_Range_Expression() { kind = AstKind_RangeExpression; }
+    Ast_Expression *first;
+    Ast_Expression *last;
+};
+
+struct Ast_For : Ast_Statement {
+    Ast_For() { kind = AstKind_For; }
+    Ast_Ident *iterator;
+    Ast_Range_Expression *range;
+    Ast_Block *block;
+};
+
+struct Ast_Break : Ast_Statement {
+    Ast_Break() { kind = AstKind_Break; }
+    Ast_Expression *expression;
+};
+
 struct Ast_Return : Ast_Statement {
     Ast_Return() { kind = AstKind_Return; }
     Ast_Expression *expression;
@@ -299,12 +318,15 @@ struct Parser {
     Ast_Expression *parse_unary_expression();
     Ast_Expression *parse_operand();
     Ast_Expression *parse_binary_expression(Ast_Expression *lhs, int precedence);
+    Ast_Range_Expression *parse_range_expression();
 
     Ast_Statement *parse_statement();
     Ast_Statement *parse_init_statement(Ast_Expression *lhs);
     Ast_Statement *parse_simple_statement();
     Ast_If *parse_if_statement();
     Ast_While *parse_while_statement();
+    Ast_For *parse_for_statement();
+    Ast_Break *parse_break_statement();
     Ast_Return *parse_return_statement();
 
     Ast_Declaration *parse_declaration();

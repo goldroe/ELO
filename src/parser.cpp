@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "common.h"
+#include "core.h"
 #include "parser.h"
 
 Arena ast_arena = make_arena();
@@ -12,7 +12,10 @@ char *type_to_string(Ast_Type_Info *type) {
     memset(buffer, 0, 1024);
     
     for (Ast_Type_Info *it = type; it; it = it->base) {
-        switch (it->kind) {
+        switch (it->type_kind) {
+        default:
+            assert(0);
+            break;
         case TypeKind_Pointer:
             strcat(buffer, "*");
             break;
@@ -224,6 +227,13 @@ static inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_E
     return binary_expression;
 }
 
+static inline Ast_Range_Expression *make_range_expression(Ast_Expression *first, Ast_Expression *last) {
+    Ast_Range_Expression *range_expression = AST_NEW(Ast_Range_Expression);
+    range_expression->first = first;
+    range_expression->last = last;
+    return range_expression;
+}
+
 static inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
     Ast_Index_Expression *index_expression = AST_NEW(Ast_Index_Expression);
     index_expression->array = array;
@@ -256,6 +266,14 @@ static inline Ast_While *make_while_statement(Ast_Expression *condition, Ast_Blo
     while_statement->condition = condition;
     while_statement->block = block;
     return while_statement;
+}
+
+static inline Ast_For *make_for_statement(Ast_Ident *iterator, Ast_Range_Expression *range, Ast_Block *block) {
+    Ast_For *for_statement = AST_NEW(Ast_For);
+    for_statement->iterator = iterator;
+    for_statement->range = range;
+    for_statement->block = block;
+    return for_statement;
 }
 
 static inline Ast_Return *make_return_statement(Ast_Expression *expression) {
@@ -510,6 +528,43 @@ Ast_While *Parser::parse_while_statement() {
     return while_statement;
 }
 
+Ast_Range_Expression *Parser::parse_range_expression() {
+    Ast_Expression *first = parse_expression();
+    expect(Token_Ellipsis);
+    Ast_Expression *last = parse_expression();
+    assert(first && last);
+    Ast_Range_Expression *expression = make_range_expression(first, last);
+    return expression;
+}
+
+Ast_For *Parser::parse_for_statement() {
+    assert(lexer->match_token(Token_For));
+    Source_Loc start = get_start_loc();
+
+    Ast_Ident *ident = parse_ident();
+    expect(Token_Colon);
+    Ast_Range_Expression *range_expression = nullptr;
+    if (lexer->is_token(Token_Ident)) {
+        //@todo iterable type like Array
+        Ast_Ident *iteratable = parse_ident();
+    } else {
+        range_expression = parse_range_expression();
+    }
+
+    Ast_Block *block = parse_block();
+
+    Ast_For *for_statement = make_for_statement(ident, range_expression, block);
+    for_statement->start = start;
+    end_loc(for_statement);
+    return for_statement;
+}
+
+Ast_Break *Parser::parse_break_statement() {
+    assert(expect(Token_Break));
+    Ast_Expression *expression = parse_expression();
+    return nullptr;
+}
+
 Ast_Return *Parser::parse_return_statement() {
     assert(expect(Token_Return));
     Source_Loc start = get_start_loc();
@@ -544,15 +599,19 @@ Ast_Statement *Parser::parse_statement() {
     case Token_While:
         statement = parse_while_statement();
         break;
+    case Token_For:
+        statement = parse_for_statement();
+        break;
+    case Token_Break:
+        statement = parse_break_statement();
+        break;
     case Token_Return:
         statement = parse_return_statement();
         break;
     case Token_Else:
     case Token_Do:
-    case Token_For:
     case Token_Case:
     case Token_Continue:
-    case Token_Break:
         break;
     }
     return statement;
@@ -565,7 +624,7 @@ Ast_Block *Parser::parse_block() {
     do {
         if (lexer->is_token(Token_EOF)) {
             error("unexpected end of file in block");
-            break; 
+            break;
         }
 
         Ast_Statement *statement = parse_statement();
