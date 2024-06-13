@@ -216,7 +216,6 @@ begin:
         TOK1(';', Token_Semicolon);
         TOK1('#', Token_Hash);
         TOK1(',', Token_Comma);
-        TOK2('.', Token_Dot, '.', Token_Ellipsis);
 
         TOK1('(', Token_OpenParen);
         TOK1(')', Token_CloseParen);
@@ -238,6 +237,20 @@ begin:
         TOK2('=', Token_Assign, '=', Token_Equal);
 
         TOK3(':', Token_Colon, ':', Token_Colon2, '=', Token_ColonAssign);
+
+    case '.':
+        advance();
+        if (isdigit(*stream)) {
+            stream = start;
+            tok.type = Token_Floatlit;
+            tok.floatlit = scan_float();
+        } else if (*stream == '.') {
+            advance();
+            tok.type = Token_Ellipsis;
+        } else {
+            tok.type = Token_Dot;
+        }
+        break;
 
     case '/':
         advance();
@@ -346,7 +359,7 @@ begin:
         while (isalnum(*stream)) {
             advance();
         }
-        //@todo handling ellipsis conflict
+        //@Note Fixes ellipsis conflict
         if (*stream == '.' && *(stream + 1) != '.') {
             stream = start;
             tok.type = Token_Floatlit;
