@@ -8,12 +8,19 @@ main :: () -> int {
     c: *int;
     a = b = c;
 
+    entities: [12]Entity;
+
+    while i < 12 {
+        entities[i].type = Entity_Type.Crate;
+        i += 1;
+    }
+
     integer_array: [10]int;
 
     it := 0;
     while it < 0 {
         integer_array[it] = i;
-        it++;
+        it += 1;
     }
 
     for i: 0..10 {
@@ -54,19 +61,12 @@ make_entity :: (position: vector2) -> Entity {
     e: Entity;
     e.id = 0;
     e.position = position;
-    e.velocity = make_vector2(.0, .0);
+    e.velocity = make_vector2(0.0, 0.0);
 }
 
 vector2 :: struct {
     x: float32;
     y: float32;
-}
-
-Entity :: struct {
-    id: uint64;
-    type: Entity_Type;
-    position: vector2;
-    velocity: vector2;
 }
 
 Entity_Type :: enum {
@@ -76,3 +76,11 @@ Entity_Type :: enum {
     Mob,
     Guy
 }
+
+Entity :: struct {
+    id: uint64;
+    type: Entity_Type;
+    position: vector2;
+    velocity: vector2;
+}
+
