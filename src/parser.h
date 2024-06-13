@@ -186,7 +186,7 @@ struct Ast_Struct_Declaration : Ast_Declaration {
 
 struct Ast_Enum_Field : Ast {
     Ast_Enum_Field() { kind = AstKind_EnumField; }
-    Atom * name;
+    Atom *name;
     int64 value;
 };
 

@@ -124,6 +124,7 @@ static inline Ast_Root *make_root() {
 
 Ast_Ident *make_ident(Atom *name) {
     Ast_Ident *ident = AST_NEW(Ast_Ident);
+    ident->expr_flags |= ExprFlag_Lvalue;
     ident->name = name;
     return ident;
 }
@@ -166,6 +167,7 @@ static inline Ast_Struct_Field *make_struct_field(Atom *name, Ast_Type_Definitio
 
 static inline Ast_Enum_Declaration *make_enum_declaration(Ast_Ident *ident) {
     Ast_Enum_Declaration *declaration = AST_NEW(Ast_Enum_Declaration);
+    declaration->declaration_flags |= DeclFlag_Global;
     declaration->ident = ident;
     return declaration;
 }
@@ -251,6 +253,7 @@ static inline Ast_Range_Expression *make_range_expression(Ast_Expression *first,
 
 static inline Ast_Index_Expression *make_index_expression(Ast_Expression *array, Ast_Expression *index) {
     Ast_Index_Expression *index_expression = AST_NEW(Ast_Index_Expression);
+    index_expression->expr_flags |= ExprFlag_Lvalue;
     index_expression->array = array;
     index_expression->index = index;
     return index_expression;
@@ -258,6 +261,7 @@ static inline Ast_Index_Expression *make_index_expression(Ast_Expression *array,
 
 static inline Ast_Field_Expression *make_field_expression(Ast_Expression *operand, Ast_Expression *field) {
     Ast_Field_Expression *field_expression = AST_NEW(Ast_Field_Expression);
+    field_expression->expr_flags |= ExprFlag_Lvalue;
     field_expression->operand = operand;
     field_expression->field = field;
     return field_expression;
@@ -309,7 +313,6 @@ Ast_Expression *Parser::parse_operand() {
     case Token_Ident:
     {
         Ast_Ident *ident = make_ident(lexer->token.name);
-        ident->expr_flags |= ExprFlag_Lvalue;
         lexer->next_token();
         expression = ident;
         break;
@@ -347,38 +350,48 @@ Ast_Expression *Parser::parse_operand() {
 Ast_Expression *Parser::parse_primary_expression() {
     Source_Loc start = get_start_loc();
     Ast_Expression *operand = parse_operand();
+    if (!operand) {
+        return nullptr;
+    }
+
     Ast_Expression *primary = operand;
-    switch (lexer->token.type) {
-    case Token_OpenBracket:
-    {
-        lexer->next_token();
-        Ast_Expression *index = parse_expression();
-        Ast_Index_Expression *index_expression = make_index_expression(operand, index);
-        expect(Token_CloseBracket);
-        primary = index_expression;
-        break;
-    }
-    case Token_Dot:
-    {
-        lexer->next_token();
-        Ast_Expression *field = parse_expression();
-        Ast_Field_Expression *field_expression = make_field_expression(operand, field);
-        primary = field_expression;
-        break;
-    }
-    case Token_OpenParen:
-    {
-        lexer->next_token();
-        Ast_Call_Expression *call_expression = make_call_expression(operand);
-        do {
-            Ast_Expression *argument = parse_expression();
-            if (!argument) break;
-            call_expression->arguments.push(argument);
-        } while (lexer->match_token(Token_Comma));
-        expect(Token_CloseParen);
-        primary = call_expression;
-        break;
-    }
+    bool keep_going = true;
+    while (keep_going) {
+        switch (lexer->token.type) {
+        default:
+            keep_going = false;
+            break;
+        case Token_OpenBracket:
+        {
+            lexer->next_token();
+            Ast_Expression *index = parse_expression();
+            Ast_Index_Expression *index_expression = make_index_expression(primary, index);
+            expect(Token_CloseBracket);
+            primary = index_expression;
+            break;
+        }
+        case Token_Dot:
+        {
+            lexer->next_token();
+            Ast_Expression *field = parse_operand();
+            Ast_Field_Expression *field_expression = make_field_expression(primary, field);
+            primary = field_expression;
+            break;
+        }
+        case Token_OpenParen:
+        {
+            lexer->next_token();
+            Ast_Call_Expression *call_expression = make_call_expression(primary);
+            do {
+                Ast_Expression *argument = parse_expression();
+                if (!argument) break;
+                call_expression->arguments.push(argument);
+            } while (lexer->match_token(Token_Comma));
+            expect(Token_CloseParen);
+            primary = call_expression;
+            break;
+        }
+        }
     }
 
     if (primary) {
@@ -416,8 +429,6 @@ Ast_Expression *Parser::parse_unary_expression() {
 //   /     *
 //  10    / \
 //       3   2
-//
-
 // 10 * 3 + 2
 // (10 * 3) + 2
 //     *
@@ -425,7 +436,6 @@ Ast_Expression *Parser::parse_unary_expression() {
 //   /     +
 //  10    / \
 //       3   2
-
 // 10 * 3 + 2 * 4
 // (10 * 3) + (2 * 4)
 //        +
@@ -849,16 +859,17 @@ Ast_Declaration *Parser::parse_declaration() {
         }
         case Token_Enum:
             Ast_Enum_Declaration *enum_declaration = parse_enum_declaration(ident);
+            declaration = enum_declaration;
             break;
         }
     } else {
         error("expected ':' or '::' for declaration, got '%s'", token_type_to_string(lexer->token.type));
+        return nullptr;
     }
     
-    if (declaration) {
-        declaration->start = ident->start;
-        end_loc(declaration);
-    }
+    assert(declaration);
+    declaration->start = ident->start;
+    end_loc(declaration);
     return declaration;
 }
 
