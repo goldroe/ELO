@@ -100,3 +100,11 @@ void Array<T>::reserve(size_t num_elements) {
     data = (T *)malloc(num_elements * sizeof(T));
     capacity = num_elements;
 }
+
+// Custom foreach iterator for custom Array container
+// Maybe don't include the zero intializer? 
+// Maybe put the entire declaration (typed) inside the for loop or innerscope?
+#define Foreach(Var, Arr) \
+    if (Arr.count > 0) Var = Arr[0]; \
+    else Var = {0}; \
+    for (size_t _iterator = 0; _iterator < Arr.count; _iterator++, Var = Arr.data[_iterator]) \
