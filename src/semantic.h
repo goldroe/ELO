@@ -58,6 +58,10 @@ struct Sema_Analyzer {
 
 void init_builtin_types(Scope *scope);
 
+inline void poison(Ast *node) {
+    node->poisoned = true;
+}
+
 inline bool is_pointer_type(Ast_Type_Info *type) {
     bool result = type->kind == TypeKind_Pointer || type->kind == TypeKind_Array;
     return result;
@@ -65,6 +69,11 @@ inline bool is_pointer_type(Ast_Type_Info *type) {
 
 inline bool is_basic_type(Ast_Type_Info *type) {
     bool result = type->type_flags & TypeInfoFlag_Basic;
+    return result;
+}
+
+inline bool is_integral_type(Ast_Type_Info *type) {
+    bool result = type->type_flags & TypeInfoFlag_Integer;
     return result;
 }
 
