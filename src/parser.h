@@ -49,12 +49,13 @@ struct Ast_Expression;
 struct Ast_Declaration;
 struct Ast_Ident;
 struct Ast_Block;
+struct Ast_Type_Info;
 
 struct Ast {
     Ast_Kind kind = AstKind_Nil;
-    Source_Loc start, end;
-
-    bool poisoned;
+    Source_Loc start = {};
+    Source_Loc end = {};
+    bool32 poisoned = false;
 };
 
 enum Type_Kind {
@@ -63,6 +64,7 @@ enum Type_Kind {
     TypeKind_Array,
     TypeKind_Struct,
     TypeKind_Enum,
+    TypeKind_Procedure,
 
     TypeKind_Bool,
     TypeKind_Int,
@@ -113,12 +115,35 @@ enum Type_Defn_Flags {
 };
 DEFINE_ENUM_FLAG_OPERATORS(Type_Defn_Flags);
 
+struct Field_Type {
+    Atom *name;
+    Ast_Type_Info *type;
+    uint32 offset;
+};
+
+struct Param_Type {
+    Atom *name;
+    Ast_Type_Info *type;
+};
+
 struct Ast_Type_Info : Ast {
     Ast_Type_Info() { kind = AstKind_TypeInfo; }
     Type_Kind type_kind;
     Type_Info_Flags type_flags;
-    int bits;
+    uint32 bits;
+    uint32 align;
+    uint32 padding;
     Ast_Type_Info *base;
+    union {
+        struct {
+            Atom *name;
+            Array<Field_Type> fields;
+        } aggregate;
+        struct {
+            Array<Param_Type> params;
+            Ast_Type_Info *return_type;
+        } procedure;
+    };
 };
 
 struct Ast_Expression : Ast {
@@ -167,7 +192,7 @@ struct Ast_Variable : Ast_Declaration {
 
 struct Ast_Procedure_Declaration : Ast_Declaration {
     Ast_Procedure_Declaration() { kind = AstKind_Procedure; }
-    Array<Ast_Variable *> parameters;
+    Array<Ast_Variable*> parameters;
     Ast_Type_Definition *return_type;
     Ast_Block *body;
 };

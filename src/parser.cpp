@@ -16,6 +16,9 @@ char *type_to_string(Ast_Type_Info *type) {
         default:
             assert(0);
             break;
+        case TypeKind_Struct:
+            snprintf(buffer, sizeof(buffer), "%s", type->aggregate.name->name);
+            break;
         case TypeKind_Pointer:
             strcat(buffer, "*");
             break;
