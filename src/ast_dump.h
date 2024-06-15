@@ -7,13 +7,14 @@
 #include "parser.h"
 
 class Ast_Dump {
+    FILE *dump_file = nullptr;
     int spaces = 0;
 
     void print(const char *fmt, ...) {
-        printf("%*.s", spaces, "");
+        fprintf(dump_file, "%*.s", spaces, "");
         va_list args;
         va_start(args, fmt);
-        vprintf(fmt, args);
+        vfprintf(dump_file, fmt, args);
         va_end(args);
     }
     void indent() {
@@ -25,7 +26,17 @@ class Ast_Dump {
     }
 
 public:
+    Ast_Dump() {
+        dump_file = stdout;
+    }
+    Ast_Dump(const char *file_name) {
+        dump_file = fopen(file_name, "w+");
+        if (dump_file == nullptr) {
+            printf("FAILED TO OPEN FILE\n");
+        }
+    }
     void dump(Ast *node);
+    void dump_ast(Ast *root);
 };
 
 #endif // AST_DUMP_H

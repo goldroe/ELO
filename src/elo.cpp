@@ -43,9 +43,8 @@ int main(int argc, char **argv) {
     sema_analyzer.resolve();
 
     if (do_ast_dump) {
-        printf("\n");
-        Ast_Dump ast_dump;
-        ast_dump.dump(parser.root);
+        Ast_Dump ast_dump("dump.ast");
+        ast_dump.dump_ast(parser.root);
     }
 
     return 0;

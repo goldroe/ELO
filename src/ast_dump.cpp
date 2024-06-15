@@ -1,5 +1,12 @@
 #include "ast_dump.h"
 
+void Ast_Dump::dump_ast(Ast *root) {
+    dump(root);
+    if (dump_file != stdout && dump_file != nullptr) {
+        fclose(dump_file);
+    }
+}
+
 void Ast_Dump::dump(Ast *node) {
     if (!node) return;
     switch (node->kind) {
