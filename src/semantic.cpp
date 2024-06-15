@@ -16,6 +16,7 @@ Ast_Type_Info *t_int64;
 Ast_Type_Info *t_float32;
 Ast_Type_Info *t_float64;
 Ast_Type_Info *t_bool;
+Ast_Type_Info *t_string;
 
 void Sema_Analyzer::error(Source_Loc loc, const char *fmt, ...) {
     printf("%s(%d,%d) error: ", parser->lexer->source_name, loc.line, loc.column);
@@ -49,6 +50,7 @@ void init_builtin_types(Scope *scope) {
     t_float32 = make_type_info(TypeKind_Float32, TypeInfoFlag_Basic|TypeInfoFlag_Float  |TypeInfoFlag_Signed, 32);
     t_float64 = make_type_info(TypeKind_Float64, TypeInfoFlag_Basic|TypeInfoFlag_Float  |TypeInfoFlag_Signed, 64);
     t_bool    = make_type_info(TypeKind_Bool,    TypeInfoFlag_Basic|TypeInfoFlag_Integer, 32);
+    t_string  = make_type_info(TypeKind_String,  TypeInfoFlag_Nil, 0);
 
     make_builtin_type(scope, make_atom("uint"), t_uint);
     make_builtin_type(scope, make_atom("int"), t_int);
@@ -63,6 +65,7 @@ void init_builtin_types(Scope *scope) {
     make_builtin_type(scope, make_atom("float32"), t_float32);
     make_builtin_type(scope, make_atom("float64"), t_float64);
     make_builtin_type(scope, make_atom("bool"), t_bool);
+    make_builtin_type(scope, make_atom("string"), t_string);
 }
 
 Ast_Declaration *scope_lookup(Scope *local_scope, Atom *name) {
@@ -135,6 +138,76 @@ Ast_Type_Info *Sema_Analyzer::resolve_type_definition(Ast_Type_Definition *defn)
     return type_info;
 }
 
+Ast_Type_Info *get_bigger_type(Ast_Type_Info *first, Ast_Type_Info *last) {
+    Ast_Type_Info *result;
+    if (first->bits >= last->bits) {
+        result = first;
+    } else {
+        result = last;
+    }
+    return result;
+}
+
+void Sema_Analyzer::typecheck_arithmetic_expression(Ast_Binary_Expression *expression) {
+    Token_Type op = expression->op;
+    Ast_Expression *lhs = expression->lhs;
+    Ast_Expression *rhs = expression->rhs;
+    Ast_Type_Info *result = lhs->inferred_type;
+
+    switch (op) {
+    case Token_Plus:
+    case Token_Minus:
+    case Token_Star:
+    case Token_Slash:
+    case Token_Amper:
+    case Token_Bar:
+    case Token_Xor:
+    {
+        if (lhs->inferred_type->type_kind == TypeKind_Struct || lhs->inferred_type->type_kind == TypeKind_Procedure) {
+            char *type_s = type_to_string(lhs->inferred_type);
+            error(expression->start, "invalid '%s', left operand is '%s'", token_type_to_string(op), type_s);
+            free(type_s);
+        }
+        if (rhs->inferred_type->type_kind == TypeKind_Struct || rhs->inferred_type->type_kind == TypeKind_Procedure) {
+            char *type_s = type_to_string(rhs->inferred_type);
+            error(expression->start, "invalid '%s', right operand is '%s'", token_type_to_string(op), type_s);
+            free(type_s);
+        }
+        break;
+    }
+
+    case Token_Percent:
+    {
+        bool lhs_valid = is_integral_type(lhs->inferred_type);
+        bool rhs_valid = is_integral_type(rhs->inferred_type);
+        if (!lhs_valid) {
+            char *type = type_to_string(lhs->inferred_type);
+            error(expression->lhs->start, "invalid '%', left operand is '%s'", type);
+            free(type);
+        }
+        if (!rhs_valid) {
+            char *type = type_to_string(rhs->inferred_type);
+            error(expression->start, "invalid '%', right operand is '%s'", type);
+            free(type);
+        }
+        break;
+    }
+    }
+
+    Ast_Type_Info *left_type = lhs->inferred_type;
+    Ast_Type_Info *right_type = rhs->inferred_type;
+    if (left_type->type_flags & TypeInfoFlag_Integer && right_type->type_flags & TypeInfoFlag_Integer) {
+        result = get_bigger_type(left_type, right_type);
+    } else if (left_type->type_flags & TypeInfoFlag_Float && right_type->type_flags & TypeInfoFlag_Float) {
+        result = get_bigger_type(left_type, right_type);
+    } else if (is_numeric_type(left_type) && is_numeric_type(right_type)) {
+        //@Note differing types (type promotion)
+        Ast_Type_Info *promotion = (left_type->type_flags & TypeInfoFlag_Float) ? left_type : right_type;
+        result = promotion;
+    }
+    expression->inferred_type = result;
+}
+
 void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
     if (!expression) return;
     switch (expression->kind) {
@@ -163,9 +236,9 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
                 type_info = t_int32; 
             }
         }
-        // else if (literal->literal_flags & LiteralFlag_String) {
-            // type_info = t_string;
-        // }
+        else if (literal->literal_flags & LiteralFlag_String) {
+            type_info = t_string;
+        }
         literal->inferred_type = type_info;
         break;
     }
@@ -183,6 +256,7 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
 
     case AstKind_BinaryExpression:
     {
+        int **x = (int**)(int *)expression;
         Ast_Binary_Expression *binary = static_cast<Ast_Binary_Expression *>(expression);
         resolve_expression(binary->lhs);
         resolve_expression(binary->rhs);
@@ -192,56 +266,78 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
             break;
         }
 
-        bool convertible = true;
+        if (is_arithmetic_op(binary->op)) {
+            typecheck_arithmetic_expression(binary);
+        }
+
+        // -- Type Checking
+        // unary
+        // '-': makes sense for numeric types (e.g int, float)
+        // '+': makes sense for numeric and pointer types
+
+        // binary
+        // -, +  : makes sense for numeric and pointer types
+        // *, /  : makes sense for numeric types
+        
+        bool valid_check = true;
         Ast_Type_Info *lhs = binary->lhs->inferred_type;
         Ast_Type_Info *rhs = binary->rhs->inferred_type;
-        // assert(lhs && rhs);
+        assert(lhs && rhs);
 
         while (lhs || rhs) {
             if (lhs && rhs) {
                 // eg. int = *int
                 if (is_pointer_type(lhs) && !is_pointer_type(rhs) ||
                     !is_pointer_type(lhs) && is_pointer_type(rhs)) {
-                    convertible = false;
+                    valid_check = false;
                     break;
                 }
                 // eg. int = struct
                 if (is_basic_type(lhs) && !is_basic_type(rhs) ||
                     !is_basic_type(lhs) && is_basic_type(rhs)) {
-                    convertible = false;
+                    valid_check = false;
                     break;
                 }
             } else {
                 // @note different levels of indirection
-                convertible = false;
+                valid_check = false;
                 break;
             }
             lhs = lhs->base;
             rhs = rhs->base;
         }
 
-        if (!convertible) {
-            char *rhs_str = type_to_string(binary->rhs->inferred_type);
-            char *lhs_str = type_to_string(binary->lhs->inferred_type);
-            error(binary->start, "cannot convert from '%s' to '%s'", lhs_str, rhs_str);
-            free(rhs_str);
-            free(lhs_str);
-        }
+        char *lhs_str = type_to_string(binary->lhs->inferred_type);
+        char *rhs_str = type_to_string(binary->rhs->inferred_type);
 
         if (is_assign_operator(binary->op)) {
-            if (!(binary->lhs->expr_flags & ExprFlag_Lvalue)) {
-                error(binary->lhs->start, "left operand must be l-value");
+            if (!valid_check) {
+                error(binary->start, "cannot convert from '%s' to '%s'", lhs_str, rhs_str);
             }
 
-            // @note if lhs is lvalue then whole expression is lvalue
+            if (!(binary->lhs->expr_flags & ExprFlag_Lvalue)) {
+                error(binary->lhs->start, "left operand must be l-value");
+                poison(binary);
+            }
+
+            //@Note if lhs is lvalue then whole expression is lvalue
             if (binary->lhs->expr_flags & ExprFlag_Lvalue) {
                 binary->expr_flags |= ExprFlag_Lvalue;
             }
+        } else {
+            if (!valid_check) {
+                error(binary->start, "invalid operands for binary '%s', '%s' and '%s'", token_type_to_string(binary->op), lhs_str, rhs_str);
+            }
         }
 
-        if (convertible) {
+        if (valid_check) {
             binary->inferred_type = binary->lhs->inferred_type;
+        } else {
+            poison(binary);
         }
+
+        free(lhs_str);
+        free(rhs_str);
         break; 
     }
 
@@ -275,10 +371,10 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
                 int x = 0;
             }
         }
-
-
+        call_expr->inferred_type = call_expr->operand->inferred_type->procedure.return_type;
         break;
     }
+
     case AstKind_IndexExpression:
     {
         Ast_Index_Expression *index_expr = static_cast<Ast_Index_Expression*>(expression);
@@ -286,16 +382,18 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
         resolve_expression(index_expr->index);
         if (index_expr->array->poisoned || index_expr->index->poisoned) poison(index_expr);
         if (!index_expr->array->poisoned) {
-            if (!is_pointer_type(index_expr->inferred_type)) {
+            if (!is_pointer_type(index_expr->array->inferred_type)) {
                 error(index_expr->start, "array index requires array or pointer type");
                 poison(index_expr);
             }
         }
         
-        if (!index_expr->index->poisoned && !is_integral_type(index_expr->inferred_type)) {
+        if (!index_expr->index->poisoned && !is_integral_type(index_expr->index->inferred_type)) {
             error(index_expr->index->start, "array index is not of integral type");
             poison(index_expr);
         }
+
+        index_expr->inferred_type = deref_type(index_expr->array->inferred_type);
         break;
     }
 
@@ -475,10 +573,26 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
     case AstKind_Variable:
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(declaration);
-        Ast_Type_Info *type_info = resolve_type_definition(variable->type_definition);
-        // @todo check specified type and intiializer are compatible
+        assert(variable->type_definition || variable->initializer);
+        
         resolve_expression(variable->initializer);
-        variable->inferred_type = type_info;
+        Ast_Type_Info *defined_type = resolve_type_definition(variable->type_definition);
+        Ast_Type_Info *initialized_type = variable->initializer ? variable->initializer->inferred_type : nullptr;
+        variable->inferred_type = (defined_type != nullptr) ? defined_type : initialized_type;
+
+        //@Note Check defined type and type of initializer are compatible
+        if (defined_type && initialized_type) {
+            if (is_numeric_type(defined_type) && !is_numeric_type(initialized_type) ||
+                !is_numeric_type(defined_type) && is_numeric_type(initialized_type)) {
+                char *def_s = type_to_string(defined_type);
+                char *init_s = type_to_string(initialized_type);
+                error(variable->start, "error initializing, cannot convert from '%s' to '%s'", init_s, def_s);
+                free(def_s);
+                free(init_s);
+            }
+            
+        }
+
         break;
     }
     }

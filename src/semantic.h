@@ -3,19 +3,6 @@
 
 #include "parser.h"
 
-extern Ast_Type_Info *t_uint;
-extern Ast_Type_Info *t_int;
-extern Ast_Type_Info *t_uint8;
-extern Ast_Type_Info *t_uint16;
-extern Ast_Type_Info *t_uint32;
-extern Ast_Type_Info *t_uint64;
-extern Ast_Type_Info *t_float32;
-extern Ast_Type_Info *t_float64;
-extern Ast_Type_Info *t_bool;
-extern Ast_Type_Info *t_uint;
-extern Ast_Type_Info *t_int;
-extern Ast_Type_Info *t_bool;
-
 struct Scope {
     Scope *parent = nullptr;
     Array<Ast_Declaration *> declarations;
@@ -53,6 +40,8 @@ struct Sema_Analyzer {
     void resolve_declaration(Ast_Declaration *declaration);
     Ast_Type_Info *resolve_type_definition(Ast_Type_Definition *defn);
 
+    void typecheck_arithmetic_expression(Ast_Binary_Expression *expression);
+
     void register_global_declarations();
 };
 
@@ -63,7 +52,7 @@ inline void poison(Ast *node) {
 }
 
 inline bool is_pointer_type(Ast_Type_Info *type) {
-    bool result = type->kind == TypeKind_Pointer || type->kind == TypeKind_Array;
+    bool result = type->type_kind == TypeKind_Pointer || type->type_kind == TypeKind_Array;
     return result;
 }
 
@@ -76,5 +65,17 @@ inline bool is_integral_type(Ast_Type_Info *type) {
     bool result = type->type_flags & TypeInfoFlag_Integer;
     return result;
 }
+
+inline bool is_numeric_type(Ast_Type_Info *type) {
+    bool result = type->type_flags & TypeInfoFlag_Integer || type->type_flags & TypeInfoFlag_Float;
+    return result;
+}
+
+inline Ast_Type_Info *deref_type(Ast_Type_Info *type) {
+    assert(type->type_kind == TypeKind_Pointer || type->type_kind == TypeKind_Array);
+    return type->base;
+}
+
+
 
 #endif // SEMANTIC_H
