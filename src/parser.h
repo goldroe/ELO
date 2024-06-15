@@ -36,6 +36,7 @@ enum Ast_Kind {
     AstKind_Expression,
     AstKind_BinaryExpression,
     AstKind_UnaryExpression,
+    AstKind_CastExpression,
     AstKind_IndexExpression,
     AstKind_FieldExpression,
     AstKind_CallExpression,
@@ -65,6 +66,7 @@ enum Type_Kind {
     TypeKind_Struct,
     TypeKind_Enum,
     TypeKind_Procedure,
+    TypeKind_String,
 
     TypeKind_Bool,
     TypeKind_Int,
@@ -90,10 +92,10 @@ DEFINE_ENUM_FLAG_OPERATORS(Literal_Flags);
 
 enum Type_Info_Flags {
     TypeInfoFlag_Nil     = 0,
-    TypeInfoFlag_Basic   = (1 << 0),
-    TypeInfoFlag_Integer = (1 << 1),
-    TypeInfoFlag_Float   = (1 << 2),
-    TypeInfoFlag_Signed  = (1 << 3),
+    TypeInfoFlag_Basic   = (1<<0),
+    TypeInfoFlag_Integer = (1<<1),
+    TypeInfoFlag_Float   = (1<<2),
+    TypeInfoFlag_Signed  = (1<<3),
 };
 DEFINE_ENUM_FLAG_OPERATORS(Type_Info_Flags);
 
@@ -248,6 +250,11 @@ struct Ast_While : Ast_Statement {
     Ast_Block *block;
 };
 
+struct Ast_Cast_Expression : Ast_Expression {
+    Ast_Cast_Expression() { kind = AstKind_CastExpression; }
+    Ast_Type_Definition *type_cast;
+};
+
 struct Ast_Range_Expression : Ast_Expression {
     Ast_Range_Expression() { kind = AstKind_RangeExpression; }
     Ast_Expression *first;
@@ -351,6 +358,7 @@ struct Parser {
 
     Ast_Ident *parse_ident();
     Ast_Expression *parse_expression();
+    Ast_Cast_Expression *parse_cast_expression();
     Ast_Expression *parse_primary_expression();
     Ast_Expression *parse_unary_expression();
     Ast_Expression *parse_operand();
@@ -384,5 +392,6 @@ char *type_definition_to_string(Ast_Type_Definition *type_definition);
 char *type_to_string(Ast_Type_Info *type);
 
 Ast_Type_Info *make_type_info(Type_Kind kind, Type_Info_Flags flags, int bits, Ast_Type_Info *base = nullptr);
+
 
 #endif // PARSER_H

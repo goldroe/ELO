@@ -16,6 +16,9 @@ char *type_to_string(Ast_Type_Info *type) {
         default:
             assert(0);
             break;
+        case TypeKind_String:
+            strcat(buffer, "string");
+            break;
         case TypeKind_Struct:
             snprintf(buffer, sizeof(buffer), "%s", type->aggregate.name->name);
             break;
@@ -247,6 +250,12 @@ static inline Ast_Binary_Expression *make_binary_expression(Token_Type op, Ast_E
     return binary_expression;
 }
 
+static inline Ast_Cast_Expression *make_cast_expression(Ast_Type_Definition *type) {
+    Ast_Cast_Expression *cast_expression = AST_NEW(Ast_Cast_Expression);
+    cast_expression->type_cast = type;
+    return cast_expression;
+}
+
 static inline Ast_Range_Expression *make_range_expression(Ast_Expression *first, Ast_Expression *last) {
     Ast_Range_Expression *range_expression = AST_NEW(Ast_Range_Expression);
     range_expression->first = first;
@@ -350,6 +359,15 @@ Ast_Expression *Parser::parse_operand() {
     return expression;
 }
 
+// Ast_Cast_Expression *Parser::parse_cast_expression() {
+//     expect(Token_Cast);
+//     expect(Token_OpenParen);
+//     Ast_Type_Definition *type = parse_type_definition();
+//     expect(Token_CloseParen);
+//     Ast_Cast_Expression *expr = make_cast_expression(type);
+//     return expr;
+// }
+
 Ast_Expression *Parser::parse_primary_expression() {
     Source_Loc start = get_start_loc();
     Ast_Expression *operand = parse_operand();
@@ -394,6 +412,11 @@ Ast_Expression *Parser::parse_primary_expression() {
             primary = call_expression;
             break;
         }
+        case Token_Cast:
+        {
+            // primary = parse_cast_expression();
+            break;
+        }
         }
     }
 
@@ -414,6 +437,9 @@ Ast_Expression *Parser::parse_unary_expression() {
         unary->expression = parse_unary_expression();
         unary->op = op;
         expression = unary;
+    } else if (lexer->token.type == Token_Cast) {
+        // Ast_Cast_Expression *cast = parse_cast_expression();
+        // expression = cast;
     } else {
         Ast_Expression *primary = parse_primary_expression();
         expression = primary;
@@ -772,6 +798,7 @@ Ast_Variable *Parser::parse_variable_declaration(Ast_Ident *ident) {
         Ast_Expression *expression = parse_expression();
         variable->initializer = expression;
     }
+    variable->start = ident->start;
     return variable;
 }
 

@@ -53,6 +53,7 @@ bool atoms_match(Atom *first, Atom *last);
     TOK(Token_Const, "const"), \
     TOK(Token_True, "true"), \
     TOK(Token_False, "false"), \
+    TOK(Token_Cast, "CAST"), \
     TOK(Token_KeywordLast, "end of keywords"), \
     \
     TOK(Token_Hash, "#"), \
@@ -139,12 +140,27 @@ inline bool is_unary_operator(Token_Type op) {
     switch (op) {
     default:
         return false;
-    case Token_Minus:
     case Token_Plus:
+    case Token_Minus:
     case Token_Star:
     case Token_Amper:
     case Token_Bang:
     case Token_Tilde:
+    case Token_Xor:
+        return true;
+    }
+}
+
+inline bool is_arithmetic_op(Token_Type op) {
+    switch (op) {
+    default:
+        return false;
+    case Token_Plus:
+    case Token_Minus:
+    case Token_Star:
+    case Token_Slash:
+    case Token_Amper:
+    case Token_Bang:
     case Token_Xor:
         return true;
     }
