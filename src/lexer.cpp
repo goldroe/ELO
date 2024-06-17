@@ -140,6 +140,8 @@ void Lexer::error(const char *fmt, ...) {
     vprintf(fmt, args);
     va_end(args);
     printf("\n");
+
+    error_count += 1;
 }
 
 int64 Lexer::scan_integer() {

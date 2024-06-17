@@ -51,6 +51,7 @@ struct Ast_Declaration;
 struct Ast_Ident;
 struct Ast_Block;
 struct Ast_Type_Info;
+struct Ast_Enum_Field;
 
 struct Ast {
     Ast_Kind kind = AstKind_Nil;
@@ -100,7 +101,7 @@ enum Type_Info_Flags {
 DEFINE_ENUM_FLAG_OPERATORS(Type_Info_Flags);
 
 enum Expr_Flags {
-    ExprFlag_Lvalue = (1 << 0),
+    ExprFlag_Lvalue = (1<<0),
 };
 DEFINE_ENUM_FLAG_OPERATORS(Expr_Flags);
 
@@ -145,6 +146,10 @@ struct Ast_Type_Info : Ast {
             Array<Param_Type> params;
             Ast_Type_Info *return_type;
         } procedure;
+        struct {
+            Atom *name;
+            Array<Ast_Enum_Field*> fields;
+        } enumerated;
     };
 };
 
@@ -208,7 +213,7 @@ struct Ast_Struct_Field : Ast {
 
 struct Ast_Struct_Declaration : Ast_Declaration {
     Ast_Struct_Declaration() { kind = AstKind_Struct; }
-    Array<Ast_Struct_Field *> fields;
+    Array<Ast_Struct_Field*> fields;
 };
 
 struct Ast_Enum_Field : Ast {
@@ -219,7 +224,7 @@ struct Ast_Enum_Field : Ast {
 
 struct Ast_Enum_Declaration : Ast_Declaration {
     Ast_Enum_Declaration() { kind = AstKind_Enum; }
-    Array<Ast_Enum_Field *> fields;
+    Array<Ast_Enum_Field*> fields;
 };
 
 struct Ast_Declaration_Statement : Ast_Statement {
@@ -326,6 +331,8 @@ struct Ast_Ident : Ast_Expression {
 struct Parser {
     Ast_Root *root = nullptr;
     Lexer *lexer = nullptr;
+
+    int error_count = 0;
 
     Parser(char *source_name) {
         lexer = new Lexer(source_name);

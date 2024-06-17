@@ -47,5 +47,13 @@ int main(int argc, char **argv) {
         ast_dump.dump_ast(parser.root);
     }
 
+    int error_count = parser.lexer->error_count + parser.error_count + sema_analyzer.error_count;
+
+    if (!error_count) {
+        //gen(&parser);
+    }
+
+    printf("Elo done compiling.\n");
+    printf("%d error(s)\n", error_count);
     return 0;
 }
