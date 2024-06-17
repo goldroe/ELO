@@ -1,43 +1,67 @@
-main :: () -> int {
-    y := "foo";
-    x: int;
-    y: int = x;
+factorial :: (n: int32) -> int32 {
+    if n == 0 {
+        return 0;
+    }
+    return n * factorial(n - 1);
+}
 
-    a: *int;
-    b: **int; 
-    c: *int;
-    a = b = c;
+arithmetic_fails :: () {
+    a: Foo;
+    b: Buzz;
+    a + b;
+    a - b;
+
+    e := 10 + 0.2;
+
+    p: *int;
+    q: int = p + 1;
+}
+
+main :: () -> int {
+    {
+    a: bool;
+    b: bool;
+    if a && b {
+        x := 0;
+        x = factorial(x - 2);
+    }
+    }
+
+    e: *Entity;
+    e.type = Entity_Type.Guy;
+    pos: vector2;
+    pos.x = 0.0f;
+    pos.y = 1.0f;
+
+    p: *Entity = e;
 
     entities: [12]Entity;
+    // entities[0] = *e;
 
+    i := 0;
     while i < 12 {
-        entities[i].type = Entity_Type.Crate;
+        // entities[i].type = Entity_Type.Crate;
         i += 1;
     }
 
-    integer_array: [10]int;
-
+    integer_array: [10]int32;
     it := 0;
     while it < 0 {
         integer_array[it] = i;
         it += 1;
     }
-
     for i: 0..10 {
         integer_array[i] = i + i - 1;
     }
+
     for a: integer_array {
-        if a == 7 {
-            break;
-        }
     }
 
     f := 0;
     v: vector2;
-
     if f < -1 {
-        v.x = 0;
-        v.y = -1;
+        v.x = 0.0;
+        v.y = -1.0;
     }
     else if f > 0 {
         v.x = .1;
@@ -47,8 +71,9 @@ main :: () -> int {
         v.x = -.3;
         v.y = -.1;
     }
-    
-    return a;
+
+    r := 100 + 10;
+    // return e;
 }
 
 make_vector :: (x: float32, y: float32) -> vector2 {
@@ -61,7 +86,7 @@ make_entity :: (position: vector2) -> Entity {
     e: Entity;
     e.id = 0;
     e.position = position;
-    e.velocity = make_vector2(0.0, 0.0);
+    e.velocity = make_vector(.0, .0);
 }
 
 vector2 :: struct {
@@ -78,9 +103,18 @@ Entity_Type :: enum {
 }
 
 Entity :: struct {
-    id: uint64;
+    id: int32;
     type: Entity_Type;
     position: vector2;
     velocity: vector2;
 }
 
+Foo :: struct {
+p: float32;
+q: float32;
+}
+
+Buzz :: struct {
+r: int32;
+s: int32;
+}
