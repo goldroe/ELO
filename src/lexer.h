@@ -131,12 +131,37 @@ inline const char *token_type_to_string(Token_Type type) {
 void init_keywords();
 void init_atom_map();
 
+inline bool is_boolean_op(Token_Type op) {
+    switch (op) {
+    default:
+        return false;
+    case Token_And:
+    case Token_Or:
+        return true;
+    }
+}
 
-inline bool is_assign_operator(Token_Type op) {
+inline bool is_comparison_op(Token_Type op) {
+    switch (op) {
+    default:
+        return false;
+    case Token_Equal:
+    case Token_Neq:
+    case Token_Lt:
+    case Token_Lteq:
+    case Token_Gt:
+    case Token_Gteq:
+    case Token_Lshift:
+    case Token_Rshift:
+        return true;
+    }
+}
+
+inline bool is_assignment_op(Token_Type op) {
     return (op > Token_AssignFirst && op < Token_AssignLast);
 }
 
-inline bool is_unary_operator(Token_Type op) {
+inline bool is_unary_op(Token_Type op) {
     switch (op) {
     default:
         return false;
@@ -184,10 +209,13 @@ struct Lexer {
 
     char *stream = nullptr;
 
+    int error_count = 0;
+
     int l0 = 1;
     int c0 = 0;
     int l1 = 1;
     int c1 = 0;
+
 
     Token token;
 

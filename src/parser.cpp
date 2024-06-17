@@ -8,8 +8,11 @@
 Arena ast_arena = make_arena();
 
 char *type_to_string(Ast_Type_Info *type) {
-    static char buffer[1024];
-    memset(buffer, 0, 1024);
+    static char buffer[128];
+    memset(buffer, 0, 128);
+
+    static char named_buffer[128];
+    memset(buffer, 0, 128);
     
     for (Ast_Type_Info *it = type; it; it = it->base) {
         switch (it->type_kind) {
@@ -20,7 +23,12 @@ char *type_to_string(Ast_Type_Info *type) {
             strcat(buffer, "string");
             break;
         case TypeKind_Struct:
-            snprintf(buffer, sizeof(buffer), "%s", type->aggregate.name->name);
+            snprintf(named_buffer, sizeof(buffer), "%s", it->aggregate.name->name);
+            strcat(buffer, named_buffer);
+            break;
+        case TypeKind_Enum:
+            snprintf(named_buffer, sizeof(buffer), "%s", it->enumerated.name->name);
+            strcat(buffer, named_buffer);
             break;
         case TypeKind_Pointer:
             strcat(buffer, "*");
@@ -64,6 +72,9 @@ char *type_to_string(Ast_Type_Info *type) {
         case TypeKind_Uint64:
             strcat(buffer, "uint64");
             break;
+        case TypeKind_Bool:
+            strcat(buffer, "bool");
+            break;
         }
     }
 
@@ -98,6 +109,7 @@ void Parser::error(const char *fmt, ...) {
     vprintf(fmt, args);
     va_end(args);
     printf("\n");
+    error_count += 1;
     //@todo error handling
     // while (!lexer->is_token(Token_Semicolon) && !lexer->is_token(Token_CloseBrace)) lexer->next_token();
 }
@@ -430,7 +442,7 @@ Ast_Expression *Parser::parse_primary_expression() {
 Ast_Expression *Parser::parse_unary_expression() {
     Ast_Expression *expression = nullptr;
     Source_Loc start = get_start_loc();
-    if (is_unary_operator(lexer->token.type)) {
+    if (is_unary_op(lexer->token.type)) {
         Token_Type op = lexer->token.type;
         lexer->next_token();
         Ast_Unary_Expression *unary = make_unary_expression(op);
@@ -480,16 +492,19 @@ int precedence_table(Token_Type op) {
     default:
         return -1;
     case Token_Star: case Token_Slash: case Token_Percent:
-        return 500;
-    case Token_Plus:
-    case Token_Minus:
-        return 400;
+        return 1000;
+    case Token_Plus: case Token_Minus:
+        return 900;
     case Token_Lt: case Token_Lteq: case Token_Gt: case Token_Gteq:
-        return 300;
+        return 800;
     case Token_Assign: case Token_AddAssign: case Token_SubAssign: case Token_MulAssign: case Token_DivAssign: case Token_ModAssign: case Token_AndAssign: case Token_XorAssign: case Token_OrAssign:
-        return 100;
+        return 700;
     case Token_Equal: case Token_Neq:
-        return 20;
+        return 400;
+    case Token_And:
+        return 300;
+    case Token_Or:
+        return 200;
     }
 }
 
