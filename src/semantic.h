@@ -5,14 +5,18 @@
 
 struct Scope {
     Scope *parent = nullptr;
-    Array<Ast_Declaration *> declarations;
+    Array<Ast_Declaration*> declarations;
 };
 
 struct Sema_Analyzer {
     Parser *parser;
 
+    int error_count = 0;
+
     Scope *global_scope;
     Scope *current_scope;
+    
+    Array<Scope*> procedure_scope_stack;
     
     void error(Source_Loc loc, const char *fmt, ...);
 
@@ -29,18 +33,37 @@ struct Sema_Analyzer {
         current_scope = scope; 
     }
 
+    void enter_procedure() {
+        procedure_scope_stack.push(current_scope);
+        current_scope = global_scope;
+        enter_scope();
+    }
+
+    void exit_procedure() {
+        assert(current_scope != global_scope);
+        exit_scope();
+        if (!procedure_scope_stack.is_empty()) {
+            current_scope = procedure_scope_stack.back();
+            procedure_scope_stack.pop();
+        }
+    }
+
     void init(Parser *_parser) {
         current_scope = global_scope = new Scope();
+        procedure_scope_stack.push(global_scope);
         parser = _parser;
     }
 
     void resolve();
+    void resolve_block(Ast_Block *block);
     void resolve_expression(Ast_Expression *expression);
     void resolve_statement(Ast_Statement *statement);
     void resolve_declaration(Ast_Declaration *declaration);
     Ast_Type_Info *resolve_type_definition(Ast_Type_Definition *defn);
 
     void typecheck_arithmetic_expression(Ast_Binary_Expression *expression);
+    void typecheck_boolean_expression(Ast_Binary_Expression *expression);
+    void typecheck_comparison_expression(Ast_Binary_Expression *expression);
 
     void register_global_declarations();
 };
@@ -71,11 +94,24 @@ inline bool is_numeric_type(Ast_Type_Info *type) {
     return result;
 }
 
+inline bool is_type(Ast_Type_Info *type, Type_Kind kind) {
+    if (type) {
+        return type->type_kind == kind;
+    }
+    return false;
+}
+
 inline Ast_Type_Info *deref_type(Ast_Type_Info *type) {
     assert(type->type_kind == TypeKind_Pointer || type->type_kind == TypeKind_Array);
     return type->base;
 }
 
-
+inline Ast_Type_Info *deref_field_pointer(Ast_Type_Info *type) {
+    Ast_Type_Info *result = type;
+    if (type->type_kind == TypeKind_Pointer) {
+        result = deref_type(type);
+    }
+    return result;
+}
 
 #endif // SEMANTIC_H
