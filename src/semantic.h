@@ -5,6 +5,7 @@
 
 struct Scope {
     Scope *parent = nullptr;
+    Ast_Procedure_Declaration *procedure;
     Array<Ast_Declaration*> declarations;
 };
 
@@ -19,9 +20,11 @@ struct Sema_Analyzer {
     Array<Scope*> procedure_scope_stack;
     
     void error(Source_Loc loc, const char *fmt, ...);
+    void error_invalid_operands(Ast_Binary_Expression *expr);
 
     void enter_scope() {
         Scope *scope = new Scope();
+        scope->procedure = current_scope->procedure;
         scope->parent = current_scope;
         current_scope = scope;
     }
@@ -33,9 +36,10 @@ struct Sema_Analyzer {
         current_scope = scope; 
     }
 
-    void enter_procedure() {
+    void enter_procedure(Ast_Procedure_Declaration *procedure) {
         procedure_scope_stack.push(current_scope);
         current_scope = global_scope;
+        current_scope->procedure = procedure;
         enter_scope();
     }
 

@@ -23,7 +23,6 @@ bool compare_types(Ast_Type_Info *dst, Ast_Type_Info *src) {
     while (dst || src) {
         if (dst && src) {
             if (is_pointer_type(dst) && is_pointer_type(src)) {
-
             } else if ((is_basic_type(dst) && is_basic_type(src)) ||
                 (!is_basic_type(dst) && !is_basic_type(src))) {
                 if (dst != src) result = false;
@@ -34,7 +33,7 @@ bool compare_types(Ast_Type_Info *dst, Ast_Type_Info *src) {
             dst = dst->base;
             src = src->base;
         } else {
-            // @note different levels of indirection
+            //@Note different levels of indirection
             result = false;
             break;
         }
@@ -51,6 +50,18 @@ void Sema_Analyzer::error(Source_Loc loc, const char *fmt, ...) {
     printf("\n");
 
     error_count += 1;
+}
+
+void Sema_Analyzer::error_invalid_operands(Ast_Binary_Expression *expr) {
+    Ast_Type_Info *type1 = expr->lhs->inferred_type;
+    Ast_Type_Info *type2 = expr->rhs->inferred_type;
+    Token_Type op = expr->op;
+    
+    char *str1 = type_to_string(type1);
+    char *str2 = type_to_string(type2);
+    error(expr->start, "invalid operands for '%s', ('%s' and '%s')", token_type_to_string(op), str1, str2);
+    free(str1);
+    free(str2); 
 }
 
 Ast_Declaration *make_builtin_type(Scope *scope, Atom *name, Ast_Type_Info *bt) {
@@ -208,38 +219,35 @@ void Sema_Analyzer::typecheck_arithmetic_expression(Ast_Binary_Expression *expre
     Ast_Expression *rhs = expression->rhs;
     Ast_Type_Info *result = nullptr;
 
-    Ast_Type_Info *left_type = lhs->inferred_type;
-    Ast_Type_Info *right_type = rhs->inferred_type;
+    Ast_Type_Info *type1 = lhs->inferred_type;
+    Ast_Type_Info *type2 = rhs->inferred_type;
 
-    bool valid_operands = is_valid_arithmetic_operation(op, left_type, right_type);
+    bool valid_operands = is_valid_arithmetic_operation(op, type1, type2);
 
     if (valid_operands) {
-        if (is_integral_type(left_type) && is_integral_type(right_type)) {
-            result = get_bigger_type(left_type, right_type);
-        } else if (left_type->type_flags & TypeInfoFlag_Float && right_type->type_flags & TypeInfoFlag_Float) {
-            result = get_bigger_type(left_type, right_type);
-        } else if (is_numeric_type(left_type) && is_numeric_type(right_type)) {
+        if (is_integral_type(type1) && is_integral_type(type2)) {
+            result = get_bigger_type(type1, type2);
+        } else if (type1->type_flags & TypeInfoFlag_Float && type2->type_flags & TypeInfoFlag_Float) {
+            result = get_bigger_type(type1, type2);
+        } else if (is_numeric_type(type1) && is_numeric_type(type2)) {
             //@Note differing types (type promotion)
-            Ast_Type_Info *promotion = (left_type->type_flags & TypeInfoFlag_Float) ? left_type : right_type;
+            Ast_Type_Info *promotion = (type1->type_flags & TypeInfoFlag_Float) ? type1 : type2;
             result = promotion;
         } else {
-            result = left_type;
+            result = type1;
         }
         expression->inferred_type = result;
 
     } else {
-        char *lhs_str = type_to_string(left_type);
-        char *rhs_str = type_to_string(right_type);
-        error(expression->start, "invalid operands for '%s', ('%s' and '%s')", token_type_to_string(op), lhs_str, rhs_str);
-        free(lhs_str);
-        free(rhs_str); 
+        error_invalid_operands(expression);
+        poison(expression);
     }
 
 }
 
 bool is_valid_boolean_operation(Token_Type op, Ast_Type_Info *type1, Ast_Type_Info *type2) {
     bool result = true;
-    if (is_type(type1, TypeKind_Procedure) || is_type(type2, TypeKind_Procedure)) {
+    if (is_type(type1, TypeKind_Struct) || is_type(type2, TypeKind_Struct)) {
         result = false;
     }
     return result;
@@ -251,17 +259,32 @@ void Sema_Analyzer::typecheck_boolean_expression(Ast_Binary_Expression *expressi
     bool valid_operands = is_valid_boolean_operation(expression->op, type1, type2);
 
     if (valid_operands) {
-        expresion->inferred_type = t_bool;
+        expression->inferred_type = t_bool;
     } else {
-        char *lhs_str = type_to_string(type1);
-        char *rhs_str = type_to_string(type2);
-        error(expression->start, "invalid operands for '%s', ('%s' and '%s')", token_type_to_string(expression->op), lhs_str, rhs_str);
-        free(lhs_str);
-        free(rhs_str); 
+        error_invalid_operands(expression);
+        poison(expression);
     }
 }
 
+bool is_valid_comparison_operation(Token_Type op, Ast_Type_Info *type1, Ast_Type_Info *type2) {
+    bool result = true;
+    if (is_type(type1, TypeKind_Struct) || is_type(type2, TypeKind_Struct)) {
+        result = false;
+    }
+    return result;
+}
+
 void Sema_Analyzer::typecheck_comparison_expression(Ast_Binary_Expression *expression) {
+    Ast_Type_Info *type1 = expression->lhs->inferred_type;
+    Ast_Type_Info *type2 = expression->rhs->inferred_type;
+    bool valid_operands = is_valid_comparison_operation(expression->op, type1, type2);
+
+    if (valid_operands) {
+        expression->inferred_type = t_bool;
+    } else {
+        error_invalid_operands(expression);
+        poison(expression);
+    }
 }
 
 
@@ -275,6 +298,9 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
         if (lookup) {
             resolve_declaration(lookup);
             ident->inferred_type = lookup->inferred_type;
+            if (lookup->ident->expr_flags & ExprFlag_Lvalue) {
+                ident->expr_flags |= ExprFlag_Lvalue;
+            }
         } else {
             error(ident->start, "undeclared identifier '%s'", ident->name->name);
             poison(ident);
@@ -344,7 +370,7 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
             if (binary->lhs->expr_flags & ExprFlag_Lvalue) {
                 binary->expr_flags |= ExprFlag_Lvalue;
             } else {
-                error(binary->lhs->start, "left operand must be l-value");
+                error(binary->lhs->start, "'%s': left operand must be l-value", token_type_to_string(binary->op));
                 poison(binary);
             }
         } else if (is_arithmetic_op(binary->op)) {
@@ -353,6 +379,8 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
             typecheck_boolean_expression(binary);
         } else if (is_comparison_op(binary->op)) {
             typecheck_comparison_expression(binary);
+        } else {
+            assert(0 && "unsupported operator");
         }
 
         free(lhs_str);
@@ -443,6 +471,10 @@ void Sema_Analyzer::resolve_expression(Ast_Expression *expression) {
             break;  
         }
 
+        if (field_expr->operand->expr_flags & ExprFlag_Lvalue) {
+            field_expr->expr_flags |= ExprFlag_Lvalue;
+        }
+
         Ast_Type_Info *expr_type = field_expr->operand->inferred_type;
         Ast_Ident *field_ident = static_cast<Ast_Ident*>(field_expr->field);
         //@Note Operand types with fields
@@ -507,6 +539,9 @@ void Sema_Analyzer::resolve_statement(Ast_Statement *statement) {
         resolve_expression(if_stmt->condition);
         resolve_block(if_stmt->block);
         resolve_statement(if_stmt->next);
+        if (if_stmt->condition && if_stmt->condition->inferred_type->type_kind == TypeKind_Struct) {
+            error(if_stmt->start, "used struct type where scalar is required");
+        }
         break;
     }
     case AstKind_While:
@@ -514,6 +549,9 @@ void Sema_Analyzer::resolve_statement(Ast_Statement *statement) {
         Ast_While *while_stmt = static_cast<Ast_While*>(statement);
         resolve_expression(while_stmt->condition);
         resolve_block(while_stmt->block);
+        if (while_stmt->condition->inferred_type->type_kind == TypeKind_Struct) {
+            error(while_stmt->start, "used struct type where scalar is required");
+        }
         break;
     }
     case AstKind_For:
@@ -524,6 +562,13 @@ void Sema_Analyzer::resolve_statement(Ast_Statement *statement) {
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(statement);
         resolve_expression(return_stmt->expression);
+        if (!compare_types(return_stmt->expression->inferred_type, current_scope->procedure->inferred_type->procedure.return_type)) {
+            char *actual_str = type_to_string(current_scope->procedure->inferred_type->procedure.return_type);
+            char *return_str = type_to_string(return_stmt->expression->inferred_type);
+            error(return_stmt->expression->start, "cannot convert from '%s' to '%s' in return statement", return_str, actual_str);
+            free(actual_str);
+            free(return_str);
+        }
         break;
     }
     case AstKind_Break:
@@ -565,7 +610,7 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
     }
     declaration->resolving = true;
 
-    // @note Name resolution of local declarations.
+    //@Note Name resolution of local declarations.
     // Does not check global declarations because they already get checked in register_global_declarations.
     if (!(declaration->declaration_flags & DeclFlag_Global)) {
         Atom *name = declaration->ident->name;
@@ -621,7 +666,7 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
         procedure->resolving = false;
         procedure->resolved = true;
 
-        enter_procedure();
+        enter_procedure(procedure);
         for (int i = 0; i < procedure->parameters.count; i++) {
             Ast_Variable *param = procedure->parameters[i];
             resolve_declaration(param);
@@ -644,6 +689,7 @@ void Sema_Analyzer::resolve_declaration(Ast_Declaration *declaration) {
     {
         Ast_Variable *variable = static_cast<Ast_Variable *>(declaration);
         assert(variable->type_definition || variable->initializer);
+        variable->ident->expr_flags |= ExprFlag_Lvalue;
 
         scope_add_declaration(current_scope, variable);
         
