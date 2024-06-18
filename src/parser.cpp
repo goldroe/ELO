@@ -142,7 +142,6 @@ static inline Ast_Root *make_root() {
 
 Ast_Ident *make_ident(Atom *name) {
     Ast_Ident *ident = AST_NEW(Ast_Ident);
-    ident->expr_flags |= ExprFlag_Lvalue;
     ident->name = name;
     return ident;
 }
@@ -285,7 +284,6 @@ static inline Ast_Index_Expression *make_index_expression(Ast_Expression *array,
 
 static inline Ast_Field_Expression *make_field_expression(Ast_Expression *operand, Ast_Expression *field) {
     Ast_Field_Expression *field_expression = AST_NEW(Ast_Field_Expression);
-    field_expression->expr_flags |= ExprFlag_Lvalue;
     field_expression->operand = operand;
     field_expression->field = field;
     return field_expression;
@@ -918,16 +916,60 @@ Ast_Declaration *Parser::parse_declaration() {
     return declaration;
 }
 
+void Parser::parse_include_directive() {
+    assert(expect(Token_Include));
+    char *file_name = lexer->token.strlit;
+    if (expect(Token_Strlit)) {
+        char *include_path = path_join(lexer->current_dir, file_name);
+        char *include_source = read_entire_file(include_path);
+        size_t include_len = strlen(include_source);
+
+        size_t original_len = strlen(lexer->source_text);
+        size_t new_len = original_len + include_len;
+        char *new_source = (char *)malloc(new_len + 1);
+
+        size_t stream_pos = lexer->stream - lexer->source_text;
+
+        memcpy(new_source, lexer->source_text, stream_pos);
+        memcpy(new_source + stream_pos, include_source, include_len);
+        memcpy(new_source + stream_pos + include_len, lexer->stream, original_len - stream_pos);
+        new_source[new_len] = 0;
+
+        free(include_source);
+        free(include_path);
+        free(lexer->source_text);
+
+        lexer->stream = new_source + stream_pos;
+        lexer->source_text = new_source;
+    }
+    expect(Token_Semicolon);
+}
+
+void Parser::parse_directive() {
+    switch (lexer->token.type) {
+    default:
+        assert(0 && "unsupported directive");
+    case Token_Include:
+        parse_include_directive(); 
+        break;
+    }
+}
+
 Ast_Root *Parser::parse_root() {
     Ast_Root *root = make_root();
     for (;;) {
         if (lexer->is_token(Token_EOF))
             break;
 
-        Ast_Declaration *declaration = parse_declaration();
-        if (declaration) {
-            root->declarations.push(declaration);
+        if (is_directive(lexer->token.type)) {
+            parse_directive();
+        } else {
+            Ast_Declaration *declaration = parse_declaration();
+            if (declaration) {
+                root->declarations.push(declaration);
+            }
         }
     }
     return root;
 }
+

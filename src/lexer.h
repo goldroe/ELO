@@ -21,6 +21,7 @@ bool atoms_match(Atom *first, Atom *last);
     TOK(Token_None, ""), \
     \
     TOK(Token_BuiltinFirst, "beginning of builtin types"), \
+    TOK(Token_Void, "void"), \
     TOK(Token_Bool, "bool"), \
     TOK(Token_Int, "int"), \
     TOK(Token_Int8, "int8"), \
@@ -54,9 +55,11 @@ bool atoms_match(Atom *first, Atom *last);
     TOK(Token_True, "true"), \
     TOK(Token_False, "false"), \
     TOK(Token_Cast, "CAST"), \
+    TOK(Token_Null, "null"), \
+    TOK(Token_Include, "#include"), \
+    TOK(Token_Import, "#import"), \
     TOK(Token_KeywordLast, "end of keywords"), \
     \
-    TOK(Token_Hash, "#"), \
     TOK(Token_Colon, ":"), \
     TOK(Token_Colon2, "::"), \
     TOK(Token_Semicolon, ";"), \
@@ -191,6 +194,10 @@ inline bool is_arithmetic_op(Token_Type op) {
     }
 }
 
+inline bool is_directive(Token_Type type) {
+    return type >= Token_Include && type <= Token_Import;
+}       
+
 struct Token {
     Token_Type type = Token_None;
     Source_Loc start;
@@ -205,6 +212,7 @@ struct Token {
 
 struct Lexer {
     char *source_name = nullptr;
+    char *current_dir = nullptr;
     char *source_text = nullptr;
 
     char *stream = nullptr;
@@ -216,11 +224,11 @@ struct Lexer {
     int l1 = 1;
     int c1 = 0;
 
-
     Token token;
 
     Lexer(char *source_file_name) {
         source_name = source_file_name;
+        current_dir = path_strip_dir_name(source_file_name);
         source_text = read_entire_file(source_file_name);
         stream = source_text;
         next_token();

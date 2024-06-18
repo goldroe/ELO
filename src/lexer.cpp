@@ -216,7 +216,6 @@ begin:
     
     switch (*stream) {
         TOK1(';', Token_Semicolon);
-        TOK1('#', Token_Hash);
         TOK1(',', Token_Comma);
 
         TOK1('(', Token_OpenParen);
@@ -239,6 +238,24 @@ begin:
         TOK2('=', Token_Assign, '=', Token_Equal);
 
         TOK3(':', Token_Colon, ':', Token_Colon2, '=', Token_ColonAssign);
+
+    case '#':
+    {
+        //@Note Parse directives
+        advance();
+        while (isalnum(*stream) || *stream == '_') {
+            advance();
+        }
+        int len = (int)(stream - start);
+        Atom *atom = make_atom(start, len);
+        Keyword_Entry *key = keyword_lookup(atom->name);
+        if (key) {
+            tok.type = key->token;
+        } else {
+            error("invalid directive '%s'", atom->name);
+        }
+        break;
+    }
 
     case '.':
         advance();

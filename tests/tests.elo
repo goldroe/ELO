@@ -1,0 +1,105 @@
+#include "common.elo";
+
+assignment_tests :: () {
+    a: *int32;
+    b: *float32;
+    a = b;
+
+    Entity_Type.Crate = Entity_Type.Guy;
+}
+
+arithmetic_tests :: () {
+    a: Foo;
+    b: Buzz;
+    a + b;
+
+    p: *int;
+    p + 1;
+}
+
+loops_test :: () {
+    i := 0;
+    while i < 12 {
+        // entities[i].type = Entity_Type.Crate;
+        i += 1;
+    }
+
+    integer_array: [10]int32;
+    it := 0;
+    while it < 0 {
+        integer_array[it] = i;
+        it += 1;
+    }
+    for i: 0..10 {
+        integer_array[i] = i + i - 1;
+    }
+
+    for a: integer_array {
+    }
+}
+
+branches_test :: () {
+    f := 0;
+    v: vector2;
+    if f < -1 {
+        v.x = 0.0;
+        v.y = -1.0;
+    }
+    else if f > 0 {
+        v.x = .1;
+        v.y = .4;
+    }
+    else {
+        v.x = -.3;
+        v.y = -.1;
+    }
+}
+
+main :: () -> int {
+    {
+        a: bool;
+        b: bool;
+        if a && b {
+            x := 0;
+            x = factorial(x - 2);
+        }
+    }
+
+    assignment_tests();
+    arithmetic_tests();
+    loops_test();
+    branches_test();
+
+    e: *Entity;
+    e.type = Entity_Type.Guy;
+
+    pos: vector2;
+    pos.x = 0.0f;
+    pos.y = 1.0f;
+
+    entities: [12]Entity;
+    entities[0] = make_entity(pos);
+
+    r := 100 + 10;
+    return e;
+}
+
+make_vector :: (x: float32, y: float32) -> vector2 {
+    v: vector2;
+    v.x = x;
+    v.y = y;
+}
+
+make_entity :: (position: vector2) -> Entity {
+    e: Entity;
+    e.id = 0;
+    e.position = position;
+    e.velocity = make_vector(.0, .0);
+}
+
+factorial :: (n: int32) -> int32 {
+    if n == 0 {
+        return 0;
+    }
+    return n * factorial(n - 1);
+}

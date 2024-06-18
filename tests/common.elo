@@ -1,0 +1,30 @@
+
+Entity_Type :: enum {
+    Nil,
+    Tile,
+    Crate,
+    Mob,
+    Guy
+}
+
+Entity :: struct {
+    id: int32;
+    type: Entity_Type;
+    position: vector2;
+    velocity: vector2;
+}
+
+Foo :: struct {
+    p: float32;
+    q: float32;
+}
+
+Buzz :: struct {
+    r: int32;
+    s: int32;
+}
+
+vector2 :: struct {
+    x: float32;
+    y: float32;
+}

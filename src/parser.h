@@ -381,6 +381,9 @@ struct Parser {
     Ast_Break *parse_break_statement();
     Ast_Return *parse_return_statement();
 
+    void parse_include_directive();
+    void parse_directive();
+
     Ast_Declaration *parse_declaration();
     Ast_Variable *parse_variable_declaration(Ast_Ident *identfier);
     Ast_Procedure_Declaration *parse_procedure_declaration(Ast_Ident *ident);
