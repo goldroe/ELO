@@ -22,7 +22,6 @@ global Arena *g_error_arena;
 #include "types.h"
 #include "parser.h"
 #include "resolve.h"
-#include "byte_code_generator.h"
 
 #include "atom.cpp"
 #include "lexer.cpp"
@@ -30,7 +29,6 @@ global Arena *g_error_arena;
 #include "types.cpp"
 #include "parser.cpp"
 #include "resolve.cpp"
-#include "byte_code_generator.cpp"
 
 internal void compiler_error(char *fmt, ...) {
     va_list args;
@@ -80,7 +78,6 @@ int main(int argc, char **argv) {
 
     g_error_arena = arena_alloc(get_virtual_allocator(), KB(64));
     g_ast_arena = arena_alloc(get_virtual_allocator(), MB(8));
-    g_byte_code_arena = arena_alloc(get_virtual_allocator(), MB(8));
 
     atom_init();
 
@@ -118,19 +115,6 @@ int main(int argc, char **argv) {
     int error_count = lexer->error_count + parser->error_count + resolver->error_count;
     if (error_count > 0) {
         printf("%d error(s).\n", error_count);
-    }
-
-    Arena *temp_arena = make_arena(get_malloc_allocator());
-
-    Byte_Code_Generator *byte_code_generator = new Byte_Code_Generator();
-    if (error_count == 0){
-        String8 dir = path_strip_dir_name(temp_arena, lexer->file_path);
-        String8 file_name = path_strip_file_name(temp_arena, lexer->file_path);
-        String8 gen_path = path_join(temp_arena, dir, file_name);
-        gen_path = str8_concat(temp_arena, gen_path, str8_lit(".out"));
-
-        // byte_code_generator->gen(parser->root);
-        // byte_code_generator->output_to_file(gen_path);
     }
 
     printf("compilation terminated.\n");
