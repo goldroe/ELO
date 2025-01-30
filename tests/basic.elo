@@ -1,0 +1,53 @@
+
+Fruit :: struct {
+ calories: s32;
+ nutrients: s32;
+}
+
+Buzz :: struct {
+ bar: s32;
+}
+
+Foo :: struct {
+ buzz: Buzz;
+}
+
+
+
+main :: () {
+ foo: Foo;
+ // error
+ foo.buzz.bar[0] = 0;
+ // error
+ foo.buzz.bar.foo.x = 0;
+
+ arr2: ^^s32;
+
+ // error
+ arr2[0][0][0] = 0;
+
+ x := 0;
+ y := 10;
+
+ // error
+ y = x = x * 2 + 1 = x;
+
+ apple: Fruit;
+ apple.calories = 0;
+ apple.nutrients = 40;
+
+ // error
+ apple.bad_field = 0;
+
+ pear : Fruit = .{ 100, 40 };
+
+ // TODO
+ // f.fruits[0].calories = 0;
+ //            f.fruits[0].calories
+ //             /             \
+ //            f           fruits[0].calories
+ //                            /        \
+ //                         fruits[0]  calories
+ //                        /     \
+ //                      fruits   0
+}

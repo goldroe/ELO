@@ -1,0 +1,64 @@
+
+Token_Kind :: enum {
+ Nil,
+ Ident,
+ Int,
+ Float,
+ String,
+}
+
+Vector2 :: struct {
+ x: f32;
+ y: f32;
+}
+
+Rect :: struct {
+ x0: f32;
+ y0: f32;
+ x1: f32;
+ y1: f32;
+}
+
+fact :: (n: s32) -> s32 {
+ if n == 0 {
+  return 1;
+ }
+ return n * fact(n - 1);
+}
+
+main :: () {
+ v: Vector2 = .{0.1, 1.0};
+ // buzzz := v + 1;
+
+ tok := Token_Kind.Ident;
+
+ f := fact(10);
+ asdf := fact(10.0);
+
+ if asdf {
+ 
+ }
+
+ x := 0;
+ y : s32 = 0;
+ p := ^x;
+ buzz := true + 1;
+ // h := cast(f32)1 + cast(f32)3;
+
+ cast_v := cast(f32)v;
+
+ // arr : [5]u8 = .{ 0, 1, 2, 3, 4 };
+ // arr1 : [10]u8 = .{[0] = 1, [1] = 2, [4] = 3, [3] = 0, [2] = 10};
+
+ a := 1024;
+ b: s32 = a;
+
+ rect: Rect;
+ // rect = cast(Rect)a;
+ // 0 = 10;
+
+ while b {
+  x := 0;
+  y := x + 1;
+ }
+}

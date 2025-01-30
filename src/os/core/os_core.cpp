@@ -1,0 +1,96 @@
+#include "os_core.h"
+
+#ifdef OS_WINDOWS
+#include "win32/os_core_win32.cpp"
+#endif
+
+#ifdef OS_LINUX
+#include "linux/os_core_linux.cpp"
+#endif
+
+global String8 os_key_names[] = {
+    str8_lit("Nil"),
+    str8_lit("A"),
+    str8_lit("B"),
+    str8_lit("C"),
+    str8_lit("D"),
+    str8_lit("E"),
+    str8_lit("F"),
+    str8_lit("G"),
+    str8_lit("H"),
+    str8_lit("I"),
+    str8_lit("J"),
+    str8_lit("K"),
+    str8_lit("L"),
+    str8_lit("M"),
+    str8_lit("N"),
+    str8_lit("O"),
+    str8_lit("P"),
+    str8_lit("Q"),
+    str8_lit("R"),
+    str8_lit("S"),
+    str8_lit("T"),
+    str8_lit("U"),
+    str8_lit("V"),
+    str8_lit("W"),
+    str8_lit("X"),
+    str8_lit("Y"),
+    str8_lit("Z"),
+
+    str8_lit("0"),
+    str8_lit("1"),
+    str8_lit("2"),
+    str8_lit("3"),
+    str8_lit("4"),
+    str8_lit("5"),
+    str8_lit("6"),
+    str8_lit("7"),
+    str8_lit("8"),
+    str8_lit("9"),
+
+    str8_lit("Space"),
+    str8_lit("Comma"),
+    str8_lit("Period"),
+    str8_lit("Quote"),
+
+    str8_lit("OpenBracket"),
+    str8_lit("CloseBracket"),
+    str8_lit("SemiColon"),
+    str8_lit("Slash"),
+    str8_lit("BackSlash"),
+    str8_lit("Minus"),
+    str8_lit("Plus"),
+    str8_lit("Tab"),
+    str8_lit("Tick"),
+    str8_lit("Escape"),
+    str8_lit("Enter"),
+    str8_lit("Backspace"),
+    str8_lit("Delete"),
+    str8_lit("Left"),
+    str8_lit("Right"),
+    str8_lit("Up"),
+    str8_lit("Down"),
+    str8_lit("Home"),
+    str8_lit("End"),
+    str8_lit("PageUp"),
+    str8_lit("PageDown"),
+    
+    str8_lit("F1"),
+    str8_lit("F2"),
+    str8_lit("F3"),
+    str8_lit("F4"),
+    str8_lit("F5"),
+    str8_lit("F6"),
+    str8_lit("F7"),
+    str8_lit("F8"),
+    str8_lit("F9"),
+    str8_lit("F10"),
+    str8_lit("F11"),
+    str8_lit("F12"),
+
+    str8_lit("Super"),
+
+    str8_lit("LeftMouse"),
+    str8_lit("MiddleMouse"),
+    str8_lit("RightMouse"),
+};

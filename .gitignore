@@ -1,0 +1,15 @@
+bin
+
+*.exe
+*.ilk
+*.obj
+*.rdi
+*.pdb
+
+*.sln
+*.rdbg
+*.raddbg
+
+GPATH
+GRTAGS
+GTAGS
