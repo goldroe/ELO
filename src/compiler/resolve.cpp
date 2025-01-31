@@ -404,12 +404,12 @@ void Resolver::resolve_binary_expr(Ast_Binary *binary) {
 }
 
 void Resolver::resolve_cast_expr(Ast_Cast *cast) {
-    resolve_expr(cast->expr);
+    resolve_expr(cast->elem);
     cast->type_info = resolve_type(cast->type_defn);
 
-    if (cast->expr->valid()) {
-        if (!typecheck_castable(cast->type_info, cast->expr->type_info)) {
-            error(cast->expr, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->expr), string_from_type(cast->type_info), string_from_type(cast->expr->type_info));
+    if (cast->elem->valid()) {
+        if (!typecheck_castable(cast->type_info, cast->elem->type_info)) {
+            error(cast->elem, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->elem), string_from_type(cast->type_info), string_from_type(cast->elem->type_info));
         }
     } else {
         cast->poison();
@@ -466,18 +466,18 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
 }
 
 void Resolver::resolve_unary_expr(Ast_Unary *unary) {
-    resolve_expr(unary->expr);
+    resolve_expr(unary->elem);
 
-    if (unary->expr->invalid()) {
+    if (unary->elem->invalid()) {
         unary->poison();
     }
 
-    if (unary->expr->valid() && !(unary->expr->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
-        error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->expr), string_from_type(unary->expr->type_info), string_from_token(unary->op.kind));
+    if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
+        error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
         unary->poison();
     }
 
-    unary->type_info = unary->expr->type_info;
+    unary->type_info = unary->elem->type_info;
 }
 
 void Resolver::resolve_literal(Ast_Literal *literal) {
@@ -535,18 +535,18 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
                 call->poison();
             }
         } else {
-            error(call, "'%s' is not a procedure.\n", string_from_expr(call->lhs));
+            error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->lhs));
             call->poison();
         }
     }
 }
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
-    resolve_expr(deref->expr);
-    if (is_indirection_type(deref->expr->type_info)) {
-        deref->type_info = deref_type(deref->expr->type_info);
+    resolve_expr(deref->elem);
+    if (is_indirection_type(deref->elem->type_info)) {
+        deref->type_info = deref_type(deref->elem->type_info);
     } else {
-        error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->expr));
+        error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
         deref->poison();
     }
 }
@@ -604,25 +604,6 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
     }
 
     field_expr->type_info = field_expr_type;
-
-    // resolving_field = false;
-    // field->visited = true;
-    // field->rhs = NULL;
-
-    // //@Note Replace lhs of postfix expressions with the field itself. Eliminates all cascading field names.
-    // if (after_last_field) {
-    //     if (after_last_field->kind == AST_INDEX) {
-    //         Ast_Index *index = static_cast<Ast_Index*>(after_last_field);
-    //         index->lhs = field;
-    //     } else if (after_last_field->kind == AST_CALL) {
-    //         Ast_Call *call = static_cast<Ast_Call*>(after_last_field);
-    //         call->lhs = field;
-    //     } else {
-    //         Assert(0);
-    //     }
-    // }
-
-    // resolve_expr(after_last_field);
 }
 
 void Resolver::resolve_range_expr(Ast_Range *range) {
@@ -645,13 +626,13 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
 }
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
-    resolve_expr(address->expr);
+    resolve_expr(address->elem);
 
-    if (address->expr->valid()) {
-        address->type_info = ast_pointer_type_info(address->expr->type_info);
+    if (address->elem->valid()) {
+        address->type_info = ast_pointer_type_info(address->elem->type_info);
 
-        if (!(address->expr->expr_flags & EXPR_FLAG_LVALUE)) {
-            error(address->expr, "cannot take address of '%s'.\n", string_from_expr(address->expr));
+        if (!(address->elem->expr_flags & EXPR_FLAG_LVALUE)) {
+            error(address->elem, "cannot take address of '%s'.\n", string_from_expr(address->elem));
             address->poison();
         }
     } else {
@@ -672,10 +653,10 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
     case AST_PAREN:
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
-        resolve_expr(paren->expr);
-        paren->type_info = paren->expr->type_info;
+        resolve_expr(paren->elem);
+        paren->type_info = paren->elem->type_info;
 
-        if (paren->expr->invalid()) {
+        if (paren->elem->invalid()) {
             paren->poison();
         }
         break;

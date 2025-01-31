@@ -125,10 +125,10 @@ internal Ast_Enum_Type_Info *ast_enum_type_info(Auto_Array<Enum_Field_Info> fiel
     return result;
 }
 
-internal Ast_Paren *ast_paren(Ast_Expr *expr) {
+internal Ast_Paren *ast_paren(Ast_Expr *elem) {
     Ast_Paren *result = AST_NEW(Ast_Paren);
-    result->expr = expr;
-    result->expr_flags = expr->expr_flags;
+    result->elem = elem;
+    result->expr_flags = elem->expr_flags;
     return result;
 }
 
@@ -168,12 +168,12 @@ internal Ast_Compound_Literal *ast_compound_literal(Auto_Array<Ast_Expr*> elemen
     return result;
 }
 
-internal Ast_Unary *ast_unary_expr(Token op, Ast_Expr *expr) {
+internal Ast_Unary *ast_unary_expr(Token op, Ast_Expr *elem) {
     Ast_Unary *result = AST_NEW(Ast_Unary);
     result->mark_start(op.start);
-    result->mark_end(expr->end);
+    result->mark_end(elem->end);
     result->op = op;
-    result->expr = expr;
+    result->elem = elem;
     return result;
 }
 
@@ -181,8 +181,15 @@ internal Ast_Address *ast_address_expr(Token op, Ast_Expr *elem) {
     Ast_Address *result = AST_NEW(Ast_Address);
     result->mark_start(op.start);
     result->mark_start(elem->end);
-    result->expr = elem;
+    result->elem = elem;
     result->expr_flags |= EXPR_FLAG_LVALUE;
+    return result;
+}
+
+internal Ast_Range *ast_range_expr(Ast_Expr *lhs, Ast_Expr *rhs) {
+    Ast_Range *result = AST_NEW(Ast_Range);
+    result->lhs = lhs;
+    result->rhs = rhs;
     return result;
 }
 
@@ -190,22 +197,21 @@ internal Ast_Deref *ast_deref_expr(Token op, Ast_Expr *elem) {
     Ast_Deref *result = AST_NEW(Ast_Deref);
     result->mark_start(op.start);
     result->mark_start(elem->end);
-    result->expr = elem;
+    result->elem = elem;
     result->expr_flags |= EXPR_FLAG_LVALUE;
     return result;
 }
 
-internal Ast_Cast *ast_cast_expr(Ast_Type_Defn *type, Ast_Expr *expr) {
+internal Ast_Cast *ast_cast_expr(Ast_Type_Defn *type, Ast_Expr *elem) {
     Ast_Cast *result = AST_NEW(Ast_Cast);
     result->type_defn = type;
-    result->expr = expr;
-    result->expr_flags = expr->expr_flags;
+    result->elem = elem;
+    result->expr_flags = elem->expr_flags;
     return result;
 }
 
 internal Ast_Call *ast_call_expr(Token op, Ast_Expr *lhs, Auto_Array<Ast_Expr*> arguments) {
     Ast_Call *result = AST_NEW(Ast_Call);
-    // result->loc = op.l0;
     result->lhs = lhs;
     result->arguments = arguments;
     return result;
@@ -304,6 +310,13 @@ internal Ast_While *ast_while_stmt(Ast_Expr *cond, Ast_Block *block) {
     return result;
 }
 
+internal Ast_For *ast_for_stmt(Ast_Iterator *iterator, Ast_Block *block) {
+    Ast_For *result = AST_NEW(Ast_For);
+    result->iterator = iterator;
+    result->block = block;
+    return result;
+} 
+
 internal Ast_Return *ast_return(Ast_Expr *expr) {
     Ast_Return *result = AST_NEW(Ast_Return);
     result->expr = expr;
@@ -358,7 +371,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
         cstring str = make_cstring("cast(");
         str = cstring_append(str, string_from_type(cast->type_info));
         str = cstring_append(str, ")");
-        str = cstring_append(str, string_from_expr(cast->expr));
+        str = cstring_append(str, string_from_expr(cast->elem));
         result = str;
         break;
     }
@@ -366,7 +379,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Paren *paren = (Ast_Paren *)expr;
         cstring str = make_cstring("(");
-        str = cstring_append(str, string_from_expr(paren->expr));
+        str = cstring_append(str, string_from_expr(paren->elem));
         str = cstring_append(str, ")");
         result = str;
         break;
@@ -411,7 +424,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Unary *unary = (Ast_Unary *)expr;
         cstring str = string_from_token(unary->op.kind);
-        str = cstring_append(str, string_from_expr(unary->expr));
+        str = cstring_append(str, string_from_expr(unary->elem));
         result = str;
         break;
     }
@@ -419,7 +432,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Address *address = (Ast_Address *)expr;
         cstring str = make_cstring("^");
-        str = cstring_append(str, string_from_expr(address->expr));
+        str = cstring_append(str, string_from_expr(address->elem));
         result = str;
         break;
     }
@@ -427,7 +440,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Deref *deref = (Ast_Deref *)expr;
         cstring str = make_cstring("*");
-        str = cstring_append(str, string_from_expr(deref->expr));
+        str = cstring_append(str, string_from_expr(deref->elem));
         result = str;
         break;
     }

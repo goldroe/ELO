@@ -34,6 +34,7 @@ enum Ast_Kind {
     AST_CALL,
     AST_INDEX,
     AST_CAST,
+    AST_ITERATOR,
 
     AST_UNARY,
     AST_ADDRESS,
@@ -166,7 +167,7 @@ struct Ast_Expr : Ast {
 
 struct Ast_Paren : Ast_Expr {
     Ast_Paren() { kind = AST_PAREN; }
-    Ast_Expr *expr;
+    Ast_Expr *elem;
 };
 
 struct Ast_Index : Ast_Expr {
@@ -228,23 +229,23 @@ struct Ast_Ident : Ast_Expr {
 struct Ast_Unary : Ast_Expr {
     Ast_Unary() { kind = AST_UNARY; }
     Token op;
-    Ast_Expr *expr;
+    Ast_Expr *elem;
 };
 
 struct Ast_Address : Ast_Expr {
     Ast_Address() { kind = AST_ADDRESS; }
-    Ast_Expr *expr;
+    Ast_Expr *elem;
 };
 
 struct Ast_Deref : Ast_Expr {
     Ast_Deref() { kind = AST_DEREF; }
-    Ast_Expr *expr;
+    Ast_Expr *elem;
 };
 
 struct Ast_Cast : Ast_Expr {
     Ast_Cast() { kind = AST_CAST; }
     Ast_Type_Defn *type_defn;
-    Ast_Expr *expr;
+    Ast_Expr *elem;
 };
 
 struct Ast_Binary : Ast_Expr {
@@ -336,6 +337,18 @@ struct Ast_If : Ast_Stmt {
 struct Ast_While : Ast_Stmt {
     Ast_While() { kind = AST_WHILE; }
     Ast_Expr *cond;
+    Ast_Block *block;
+};
+
+struct Ast_Iterator : Ast_Expr {
+    Ast_Iterator() { kind = AST_ITERATOR; }
+    Ast_Ident *ident;
+    Ast_Expr *range;
+};
+
+struct Ast_For : Ast_Stmt {
+    Ast_For() { kind = AST_FOR; }
+    Ast_Iterator *iterator;
     Ast_Block *block;
 };
 

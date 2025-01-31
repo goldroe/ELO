@@ -12,10 +12,9 @@ Foo :: struct {
  buzz: Buzz;
 }
 
-
-
 main :: () {
  foo: Foo;
+
  // error
  foo.buzz.bar[0] = 0;
  // error
@@ -40,6 +39,16 @@ main :: () {
  apple.bad_field = 0;
 
  pear : Fruit = .{ 100, 40 };
+
+ for i: arr {
+ }
+
+ n := 10;
+ for i: 0..n  {
+ }
+
+ for i: 0..10 {
+ }
 
  // TODO
  // f.fruits[0].calories = 0;

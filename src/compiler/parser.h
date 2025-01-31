@@ -14,6 +14,7 @@ struct Parser {
 
     Ast_Compound_Literal *parse_compound_literal();
     Ast_Expr *parse_expr();
+    Ast_Expr *parse_range_expr();
     Ast_Expr *parse_assignment_expr();
     Ast_Expr *parse_unary_expr();
     Ast_Expr *parse_binary_expr(Ast_Expr *lhs, int prec);
@@ -22,6 +23,7 @@ struct Parser {
 
     Ast_If *parse_if_stmt();
     Ast_While *parse_while_stmt();
+    Ast_For *parse_for_stmt();
     Ast_Decl_Stmt *parse_init_stmt(Ast_Expr *lhs);
     Ast_Stmt *parse_simple_stmt();
     Ast_Stmt *parse_stmt();

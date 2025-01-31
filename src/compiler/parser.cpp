@@ -262,8 +262,8 @@ internal int get_operator_precedence(Token_Kind op) {
     default:
         return -1;
 
-    case TOKEN_ELLIPSIS:
-        return 11000;
+    // case TOKEN_ELLIPSIS:
+        // return 11000;
 
     case TOKEN_STAR:
     case TOKEN_SLASH:
@@ -470,6 +470,47 @@ Ast_While *Parser::parse_while_stmt() {
     return stmt;
 }
 
+Ast_Expr *Parser::parse_range_expr() {
+    Ast_Expr *lhs = parse_expr();
+    Ast_Expr *rhs = NULL;
+    if (lexer->eat(TOKEN_ELLIPSIS)) {
+        rhs = parse_expr();
+        Ast_Range *range = ast_range_expr(lhs, rhs);
+        return range;
+    }
+    return lhs;
+}
+
+Ast_For *Parser::parse_for_stmt() {
+    expect(TOKEN_FOR);
+
+    Ast_Iterator *iterator = NULL;
+
+    if (lexer->lookahead(1).kind == TOKEN_COLON) {
+        Ast_Expr *expr = parse_expr();
+        if (expr->kind != AST_IDENT) {
+            syntax_error("missing identifier before ':'.\n");
+        }
+        lexer->eat(TOKEN_COLON);
+        Ast_Expr *range = parse_range_expr();
+
+        iterator = AST_NEW(Ast_Iterator);
+        iterator->ident = static_cast<Ast_Ident*>(expr);
+        iterator->range = range;
+    } else {
+        Ast_Expr *range = parse_range_expr();
+        iterator = AST_NEW(Ast_Iterator);
+        iterator->ident = NULL;
+        iterator->range = range;
+    } 
+
+    Ast_Block *block = parse_block();
+
+    Ast_For *for_stmt = ast_for_stmt(iterator, block);
+
+    return for_stmt;
+}
+
 Ast_Stmt *Parser::parse_stmt() {
     Ast_Stmt *stmt = NULL;
 
@@ -538,6 +579,8 @@ Ast_Stmt *Parser::parse_stmt() {
     }
     case TOKEN_FOR:
     {
+        Ast_For *for_stmt = parse_for_stmt();
+        stmt = for_stmt;
         break;
     }
 
