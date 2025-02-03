@@ -1,3 +1,23 @@
+Vector2 :: struct {
+ x: f32;
+ y: f32;
+}
+
+Vector3 :: struct {
+ x: f32;
+ y: f32;
+ z: f32;
+}
+
+operator + :: (a: Vector2, b: Vector2) -> Vector2 {
+ result : Vector2 = .{a.x + b.x, a.y + b.y};
+ return result;
+}
+
+operator + :: (a: Vector3, b: Vector3) -> Vector3 {
+ result : Vector3 = .{a.x + b.x, a.y + b.y, a.z + b.z};
+ return result;
+}
 
 Fruit :: struct {
  calories: s32;
@@ -40,23 +60,13 @@ main :: () {
 
  pear : Fruit = .{ 100, 40 };
 
- for i: arr {
+ arr: []s32;
+
+ for a in arr {
  }
 
  n := 10;
- for i: 0..n  {
+ for i in 0..n  {
+  arr[i] = 10.0;
  }
-
- for i: 0..10 {
- }
-
- // TODO
- // f.fruits[0].calories = 0;
- //            f.fruits[0].calories
- //             /             \
- //            f           fruits[0].calories
- //                            /        \
- //                         fruits[0]  calories
- //                        /     \
- //                      fruits   0
 }
