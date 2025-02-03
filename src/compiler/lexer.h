@@ -13,7 +13,7 @@ enum Token_Kind {
     TOKEN_ERR = -1,
     TOKEN_EOF,
 
-    //@NOTE LITERALS
+    //@Note Literals
     TOKEN_IDENT,
     TOKEN_INTLIT,
     TOKEN_STRLIT,
@@ -24,11 +24,12 @@ enum Token_Kind {
     TOKEN_COLON2,
     TOKEN_COMMA,
     TOKEN_ARROW,
+
+    //@Note Operators
+    TOKEN_OPERATOR_BEGIN,
+
     TOKEN_DOT,
     TOKEN_ELLIPSIS,
-
-    //@NOTE OPERATORS
-    TOKEN_OPERATOR_BEGIN,
 
     TOKEN_PLUS,
     TOKEN_MINUS,
@@ -36,6 +37,9 @@ enum Token_Kind {
     TOKEN_SLASH,
     TOKEN_MOD,
 
+    TOKEN_COLON_EQ,
+
+    //@Note Assignment operators
     TOKEN_ASSIGN_BEGIN,
     TOKEN_EQ,
     TOKEN_PLUS_EQ,
@@ -50,7 +54,6 @@ enum Token_Kind {
     TOKEN_RSHIFT_EQ,
     TOKEN_ASSIGN_END,
 
-    TOKEN_COLON_EQ,
     TOKEN_EQ2,
     TOKEN_NEQ,
     TOKEN_LT,
@@ -68,13 +71,13 @@ enum Token_Kind {
     TOKEN_LSHIFT,
     TOKEN_RSHIFT,
 
-    TOKEN_OPERATOR_END,
-
-    //@Note Groupings
-    TOKEN_LPAREN,
-    TOKEN_RPAREN,
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
+
+    TOKEN_OPERATOR_END,
+
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
 
@@ -94,6 +97,7 @@ enum Token_Kind {
     TOKEN_RETURN,
     TOKEN_CAST,
     TOKEN_OPERATOR,
+    TOKEN_IN,
     TOKEN_KEYWORD_END,
 
     //@Note Directives

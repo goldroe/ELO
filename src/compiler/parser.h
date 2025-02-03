@@ -39,6 +39,7 @@ struct Parser {
     Ast_Struct *parse_struct(Token name);
 
     Ast_Var *parse_var(Atom *name);
+    Ast_Operator_Proc *parse_operator_proc();
     Ast_Proc *parse_proc(Token name);
     Ast_Decl *parse_decl();
 

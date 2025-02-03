@@ -26,6 +26,51 @@ internal bool is_unary_op(Token_Kind token) {
     }
 }
 
+internal bool is_operator(Token_Kind op) {
+    return TOKEN_OPERATOR_BEGIN < op && op < TOKEN_OPERATOR_END;
+}
+
+internal bool operator_is_overloadable(Token_Kind op) {
+    switch (op) {
+    default:
+        return false;
+        
+    case TOKEN_PLUS:
+    case TOKEN_MINUS:
+    case TOKEN_STAR:
+    case TOKEN_SLASH:
+    case TOKEN_MOD:
+    case TOKEN_PLUS_EQ:
+    case TOKEN_MINUS_EQ:
+    case TOKEN_STAR_EQ:
+    case TOKEN_SLASH_EQ:
+    case TOKEN_MOD_EQ:
+    case TOKEN_XOR_EQ:
+    case TOKEN_BAR_EQ:
+    case TOKEN_AMPER_EQ:
+    case TOKEN_LSHIFT_EQ:
+    case TOKEN_RSHIFT_EQ:
+    case TOKEN_EQ2:
+    case TOKEN_NEQ:
+    case TOKEN_LT:
+    case TOKEN_LTEQ:
+    case TOKEN_GT:
+    case TOKEN_GTEQ:
+    case TOKEN_BANG:
+    case TOKEN_BAR:
+    case TOKEN_AMPER:
+    case TOKEN_AND:
+    case TOKEN_OR:
+    case TOKEN_XOR:
+    case TOKEN_LSHIFT:
+    case TOKEN_RSHIFT:
+    case TOKEN_LBRACKET:
+    case TOKEN_RBRACKET:
+        return true;
+    }
+}
+    
+
 Lexer::Lexer(String8 file_name) {
     file_path = file_name;
     OS_Handle file_handle = os_open_file(file_name, OS_AccessFlag_Read);

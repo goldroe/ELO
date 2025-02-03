@@ -25,6 +25,7 @@ struct Resolver {
     Resolver(Parser *_parser);
 
     void error(Ast *elem, const char *fmt, ...);
+    void report_redeclaration(Ast_Decl *decl);
 
     Ast_Type_Info *resolve_type(Ast_Type_Defn *type_defn);
 
@@ -33,12 +34,14 @@ struct Resolver {
     Ast_Decl *lookup_local(Atom *name);
     Ast_Decl *lookup(Atom *name);
     Ast_Decl *lookup(Ast_Scope *scope, Atom *name);
+    void lookup_proc(Ast_Proc *proc);
     Ast_Scope *new_scope(Scope_Flags flags);
     void exit_scope();
 
     void resolve_block(Ast_Block *block);
 
     void resolve_control_path_flow(Ast_Proc *proc);
+    void resolve_for_stmt(Ast_For *for_stmt);
     void resolve_while_stmt(Ast_While *while_stmt);
     void resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt);
     void resolve_if_stmt(Ast_If *if_stmt);
@@ -66,6 +69,7 @@ struct Resolver {
     void resolve_var(Ast_Var *var);
     void resolve_param(Ast_Param *param);
     void resolve_decl(Ast_Decl *decl);
+    void resolve_overloaded_proc(Ast_Proc *proc);
 
     void register_global_declarations();
     void resolve();

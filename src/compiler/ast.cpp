@@ -12,6 +12,19 @@ Ast_Decl *Ast_Scope::lookup(Atom *name) {
     return NULL;
 }
 
+Auto_Array<Ast_Decl*> Ast_Scope::lookup_proc(Atom *name) {
+    Auto_Array<Ast_Decl*> found;
+    for (Ast_Scope *scope = this; scope; scope = scope->scope_parent) {
+        for (int i = 0; i < scope->declarations.count; i++) {
+            Ast_Decl *decl = scope->declarations[i];
+            if (atoms_match(decl->name, name)) {
+                found.push(decl);
+            }
+        }
+    }
+    return found;
+}
+
 internal Ast *ast_alloc(size_t bytes) {
     Ast *memory = (Ast *)push_array(g_ast_arena, u8, bytes);
     return memory;
@@ -41,6 +54,16 @@ internal Ast_Var *ast_var(Atom *name, Ast_Expr *init, Ast_Type_Defn *type_defn) 
 internal Ast_Proc *ast_proc(Atom *name, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
     Ast_Proc *result = AST_NEW(Ast_Proc);
     result->name = name;
+    result->parameters = parameters;
+    result->return_type_defn = return_type;
+    result->block = block;
+    return result;
+}
+
+internal Ast_Operator_Proc *ast_operator_proc(Token_Kind op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
+    Ast_Operator_Proc *result = AST_NEW(Ast_Operator_Proc);
+    result->name = atom_create(str8_pushf(g_ast_arena, "operator%s", string_from_token(op)));
+    result->op = op;
     result->parameters = parameters;
     result->return_type_defn = return_type;
     result->block = block;

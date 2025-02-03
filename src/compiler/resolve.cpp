@@ -25,9 +25,8 @@ void Resolver::error(Ast *elem, const char *fmt, ...) {
     printf("%s:%llu:%llu: error: %s", parser->lexer->file_path.data, elem->start.line, elem->start.col, string.data);
 
     String8 buffer = parser->lexer->file_contents;
-    u64 start_index = elem->start.index - elem->start.col;
     u64 line_begin = elem->start.index - elem->start.col;
-    u64 line_end = get_next_line_boundary(parser->lexer->file_contents, start_index);
+    u64 line_end = get_next_line_boundary(parser->lexer->file_contents, elem->start.index);
 
     {
         if (line_begin != elem->start.col) {
@@ -74,6 +73,10 @@ void Resolver::error(Ast *elem, const char *fmt, ...) {
 #endif
 }
 
+void Resolver::report_redeclaration(Ast_Decl *decl) {
+    error(decl, "redeclaration of '%s'.\n", decl->name->data);
+}
+
 bool Resolver::in_global_scope() {
     return current_scope == global_scope;
 }
@@ -115,6 +118,10 @@ Ast_Decl *Resolver::lookup(Ast_Scope *scope, Atom *name) {
         }
     }
     return NULL;
+}
+
+void Resolver::lookup_proc(Ast_Proc *proc) {
+    Ast_Root *root = parser->root;
 }
 
 Ast_Scope *Resolver::new_scope(Scope_Flags scope_flags) {
@@ -201,14 +208,14 @@ void Resolver::resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt) {
         if (current_scope->scope_parent && (current_scope->scope_parent->scope_flags & SCOPE_PROC)) {
             found = lookup(current_scope->scope_parent, decl->name);
             if (found) {
-                error(decl, "'%s' is already defined as a procedure parameter.\n", decl->name->data);
+                report_redeclaration(decl);
             }
         }
 
         resolve_decl(decl_stmt->decl);
         add_entry(decl_stmt->decl);
     } else {
-        error(decl, "'%s' already defined.\n", decl->name->data);
+        report_redeclaration(decl);
         decl->poison();
     }
 }
@@ -223,6 +230,20 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
     }
 
     resolve_block(while_stmt->block);
+}
+
+void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
+    Ast_Iterator *it = for_stmt->iterator;
+    resolve_expr(it->range);
+
+    Ast_Type_Info *type_info = it->range->type_info;
+    Ast_Var *var = ast_var(it->ident->name, it->range, NULL);
+    var->type_info = type_info;
+
+    Ast_Scope *scope = new_scope(SCOPE_BLOCK);
+    scope->declarations.push(var);
+
+    resolve_block(for_stmt->block);
 }
 
 void Resolver::resolve_stmt(Ast_Stmt *stmt) {
@@ -261,6 +282,8 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     }
     case AST_FOR:
     {
+        Ast_For *for_stmt = static_cast<Ast_For*>(stmt);
+        resolve_for_stmt(for_stmt);
         break;
     }
     case AST_BLOCK:
@@ -689,7 +712,7 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         resolve_call_expr(call);
         break;
     }
-        
+
     case AST_INDEX:
     {
         Ast_Index *index = static_cast<Ast_Index *>(expr);
@@ -781,7 +804,6 @@ void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
                 DLLPushBack(block->block_first, block->block_last, if_stmt->block, block_next, block_prev);
             }
         }
-
     }
 }
 
@@ -876,12 +898,21 @@ void Resolver::register_global_declarations() {
 
     for (int i = 0; i < root->declarations.count; i++) {
         Ast_Decl *decl = root->declarations[i];
-        Ast_Decl *found = lookup(decl->name);
-        if (found == NULL) {
+        Assert(decl->name);
+
+        Ast_Decl *found = NULL;
+
+        if (decl->kind == AST_PROC || decl->kind == AST_OPERATOR_PROC) {
+        } else {
+            found = lookup(decl->name);
+        }
+
+        if (!found) {
             add_entry(decl);
         } else {
-            error(decl, "declaration '%s' already named.\n", (char *)decl->name->data);
+            report_redeclaration(decl);
         }
+
     }
 }
 
@@ -911,6 +942,7 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
         resolve_param(param);
         break;
     }
+    case AST_OPERATOR_PROC:
     case AST_PROC:
     {
         Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
@@ -940,12 +972,69 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
     }
 }
 
+void Resolver::resolve_overloaded_proc(Ast_Proc *proc) {
+    Ast_Decl *found = NULL;
+    Ast_Scope *scope = global_scope;
+    for (int i = 0; i < scope->declarations.count; i++) {
+        Ast_Decl *decl = scope->declarations[i];
+
+        // @Note Do not go further down for declarations later defined that could be conflicts.
+        if (proc == decl) break; 
+        
+        if (!atoms_match(proc->name, decl->name)) {
+            continue;
+        }
+
+        if (decl->kind != AST_PROC && decl->kind != AST_OPERATOR_PROC) {
+            found = decl;
+            break;
+        }
+
+        Ast_Proc *other = static_cast<Ast_Proc*>(decl);
+
+        b32 overloaded = true;
+        if (proc->parameters.count == other->parameters.count) {
+            b32 mismatch = false;
+            for (int p = 0; p < proc->parameters.count; p++) {
+                Ast_Param *p0 = proc->parameters[p];
+                Ast_Param *p1 = other->parameters[p];
+
+                if (!typecheck(p0->type_info, p1->type_info)) {
+                    mismatch = true;
+                    break;
+                }
+            }
+
+            if (!mismatch) {
+                overloaded = false;
+            }
+        }
+
+        if (!overloaded) {
+            found = proc;
+            break;
+        }
+    }
+
+    if (found) {
+        report_redeclaration(proc);
+    }
+}
+
 void Resolver::resolve() {
     register_global_declarations();
-    
+
     Ast_Root *root = parser->root;
     for (int i = 0; i < root->declarations.count; i++) {
         Ast_Decl *decl = root->declarations[i];
         resolve_decl(decl);
+    }
+
+    for (int i = 0; i < root->declarations.count; i++) {
+        Ast_Decl *decl = root->declarations[i];
+        if (decl->kind == AST_PROC || decl->kind == AST_OPERATOR_PROC) {
+            Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
+            resolve_overloaded_proc(proc);
+        }
     }
 }

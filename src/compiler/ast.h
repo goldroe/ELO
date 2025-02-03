@@ -1,7 +1,7 @@
 #ifndef AST_H
 #define AST_H
 
-#define AST_NEW(T) (T *)(&(*ast_alloc(sizeof(T)) = T()))
+#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T)) = T()))
 
 struct Ast;
 struct Ast_Expr;
@@ -52,7 +52,9 @@ enum Ast_Kind {
     AST_ENUM,
     AST_STRUCT_FIELD,
     AST_ENUM_FIELD,
+
     AST_PROC,
+    AST_OPERATOR_PROC,
 
     AST_STMT,
     AST_EXPR_STMT,
@@ -70,8 +72,9 @@ enum Ast_Kind {
 };
 
 struct Ast {
-    Ast() {}
+    Ast *parent = NULL;
     Ast_Kind kind = AST_NIL;
+
     Source_Pos start = {};
     Source_Pos end = {};
     b32 is_poisoned = 0;
@@ -91,7 +94,6 @@ struct Ast_Root : Ast {
     Auto_Array<Ast_Decl*> declarations;
     Ast_Scope *scope = NULL;
 
-    Ast_Decl *lookup(Atom *name);
 };
 
 enum Scope_Flags {
@@ -116,6 +118,7 @@ struct Ast_Scope : Ast {
     Ast_Block *block;
 
     Ast_Decl *lookup(Atom *name);
+    Auto_Array<Ast_Decl*> lookup_proc(Atom *name);
 };
 
 enum Ast_Name_Scope_Kind {
@@ -315,6 +318,11 @@ struct Ast_Proc : Ast_Decl {
     Ast_Type_Defn *return_type_defn = NULL;
     Ast_Scope *scope = NULL;
     Ast_Block *block = NULL;
+};
+
+struct Ast_Operator_Proc : Ast_Proc {
+    Ast_Operator_Proc() { kind = AST_OPERATOR_PROC; }
+    Token_Kind op;
 };
 
 enum Stmt_Flags {

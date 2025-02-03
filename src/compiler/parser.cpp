@@ -1,5 +1,3 @@
-
- 
 Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
 }
@@ -70,6 +68,15 @@ Ast_Expr *Parser::parse_primary_expr() {
         Ast_Paren *paren = ast_paren(expr);
         paren->mark_range(token.start, end);
         expr = paren;
+        break;
+    }
+    case TOKEN_NULL:
+    {
+        lexer->next_token();
+        Ast_Literal *literal = ast_intlit(token);
+        literal->mark_range(token.start, token.end);
+        literal->int_val = 0;
+        expr = literal;
         break;
     }
     case TOKEN_TRUE:
@@ -431,12 +438,10 @@ Ast_Stmt *Parser::parse_simple_stmt() {
     } else if (expr) {
         Ast_Expr_Stmt *expr_stmt = ast_expr_stmt(expr);
         stmt = expr_stmt;
-    } else {
-        stmt = AST_NEW(Ast_Stmt);
-        stmt->poison();
     }
 
-    if (!expr || expr->invalid()) {
+    if (stmt &&
+        (!expr || expr->invalid())) {
         stmt->poison();
     }
 
@@ -486,12 +491,12 @@ Ast_For *Parser::parse_for_stmt() {
 
     Ast_Iterator *iterator = NULL;
 
-    if (lexer->lookahead(1).kind == TOKEN_COLON) {
+    if (lexer->lookahead(1).kind == TOKEN_IN) {
         Ast_Expr *expr = parse_expr();
         if (expr->kind != AST_IDENT) {
             syntax_error("missing identifier before ':'.\n");
         }
-        lexer->eat(TOKEN_COLON);
+        lexer->eat(TOKEN_IN);
         Ast_Expr *range = parse_range_expr();
 
         iterator = AST_NEW(Ast_Iterator);
@@ -526,6 +531,7 @@ Ast_Stmt *Parser::parse_stmt() {
                 stmt_error = true;
             }
         } else {
+            syntax_error("expected statement, got '%s'.\n", string_from_token(lexer->peek()));
             stmt_error = true;
         }
         break;
@@ -535,6 +541,13 @@ Ast_Stmt *Parser::parse_stmt() {
     {
         lexer->next_token(); 
         stmt = AST_NEW(Ast_Stmt);
+        break;
+    }
+
+    case TOKEN_LBRACE:
+    {
+        Ast_Block *block = parse_block();
+        stmt = block;
         break;
     }
 
@@ -568,6 +581,7 @@ Ast_Stmt *Parser::parse_stmt() {
     case TOKEN_ELSE:
     {
         syntax_error("illegal else without matching if.\n");
+        stmt_error = true;
         break;
     }
 
@@ -577,6 +591,7 @@ Ast_Stmt *Parser::parse_stmt() {
         stmt = while_stmt;
         break;
     }
+
     case TOKEN_FOR:
     {
         Ast_For *for_stmt = parse_for_stmt();
@@ -588,10 +603,12 @@ Ast_Stmt *Parser::parse_stmt() {
     {
         break;
     }
+
     case TOKEN_CONTINUE:
     {
         break;
     }
+
     case TOKEN_RETURN:
     {
         lexer->next_token();
@@ -688,6 +705,7 @@ Ast_Param *Parser::parse_param() {
 }
 
 Ast_Block *Parser::parse_block() {
+    Source_Pos start = lexer->current().start;
     Ast_Block *block = AST_NEW(Ast_Block);
     expect(TOKEN_LBRACE);
     while (!lexer->eof() && !lexer->match(TOKEN_RBRACE)) {
@@ -695,7 +713,9 @@ Ast_Block *Parser::parse_block() {
         if (stmt == NULL) break;
         block->statements.push(stmt);
     }
+    Source_Pos end = lexer->current().end;
     expect(TOKEN_RBRACE);
+    block->mark_range(start, end);
     return block;
 }
 
@@ -723,6 +743,70 @@ Ast_Proc *Parser::parse_proc(Token name) {
     Ast_Proc *proc = ast_proc(name.name, parameters, return_type, block);
     proc->mark_range(name.start, block->end);
     return proc;
+}
+
+Ast_Operator_Proc *Parser::parse_operator_proc() {
+    Source_Pos start = lexer->current().start;
+    
+    expect(TOKEN_OPERATOR);
+
+    Ast_Operator_Proc *proc = NULL;
+
+    Token op = lexer->current();
+
+    Auto_Array<Ast_Param*> parameters;
+
+    if (is_operator(op.kind)) {
+        lexer->next_token();
+
+        if (!lexer->eat(TOKEN_COLON2)) {
+            syntax_error("missing '::', got '%s'.\n", string_from_token(lexer->peek()));
+        }
+
+        if (operator_is_overloadable(op.kind)) {
+            if (!lexer->eat(TOKEN_LPAREN)) {
+                syntax_error("missing '('.\n");
+                goto ERROR_HANDLE;
+            }
+
+            while (!lexer->eof() && !lexer->match(TOKEN_RPAREN)) {
+                Ast_Param *param = parse_param();
+                if (param == NULL) break;
+                parameters.push(param);
+                if (!lexer->eat(TOKEN_COMMA)) {
+                    break;
+                }
+            }
+
+            Source_Pos end = lexer->current().end;
+
+            if (!lexer->eat(TOKEN_RPAREN)) {
+                syntax_error("missing ')'.\n");
+                goto ERROR_HANDLE;
+            }
+
+            Ast_Type_Defn *return_type = NULL;
+            if (lexer->eat(TOKEN_ARROW)) {
+                return_type = parse_type();
+            }
+
+            Ast_Block *block = parse_block();
+            proc = ast_operator_proc(op.kind, parameters, return_type, block);
+            proc->mark_range(start, end);
+        } else {
+            syntax_error("invalid operator, cannot overload '%s'.\n", string_from_token(op.kind));
+            goto ERROR_HANDLE;
+        }
+    } else {
+        syntax_error("expected operator, got '%s'.\n", string_from_token(op.kind));
+        goto ERROR_HANDLE;
+    } 
+
+
+    return proc;
+
+ERROR_HANDLE:
+    return NULL;
 }
 
 Ast_Struct_Field *Parser::parse_struct_field() {
@@ -826,8 +910,11 @@ Ast_Decl *Parser::parse_decl() {
             expect(TOKEN_SEMI);
             decl = var;
         }
+    } else if (lexer->match(TOKEN_OPERATOR)) {
+        Ast_Operator_Proc *proc = parse_operator_proc();
+        decl = proc;
     } else {
-        syntax_error("expected identifier, got '%s'.\n", string_from_token(token.kind));
+        syntax_error("expected declaration, got '%s'.\n", string_from_token(token.kind));
     }
     return decl;
 }
@@ -887,8 +974,19 @@ void Parser::parse() {
 
     while (!lexer->eof()) {
         Ast_Decl *decl = parse_decl();
-        if (decl == NULL) break;
+        if (decl) {
+            root->declarations.push(decl);
+        } else {
+            printf("recovering from decl, curr: %s.\n", string_from_token(lexer->peek()));
+            while (!lexer->eof()) {
+                Token token = lexer->current();
+                if (token.kind == TOKEN_RBRACE && token.start.col == 0) {
+                    lexer->next_token();
+                    break;
+                }
+                lexer->next_token();
+            }
 
-        root->declarations.push(decl);
+        }
     }
 }

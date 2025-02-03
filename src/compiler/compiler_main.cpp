@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
     atom_keyword(TOKEN_RETURN,   str8_lit("return"));
     atom_keyword(TOKEN_CAST,     str8_lit("cast"));
     atom_keyword(TOKEN_OPERATOR, str8_lit("operator"));
+    atom_keyword(TOKEN_IN,       str8_lit("in"));
 
     atom_directive(TOKEN_LOAD,   str8_lit("#load"));
     atom_directive(TOKEN_IMPORT, str8_lit("#import"));
