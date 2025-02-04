@@ -33,7 +33,6 @@ struct Resolver {
     Ast_Decl *lookup_local(Atom *name);
     Ast_Decl *lookup(Atom *name);
     Ast_Decl *lookup(Ast_Scope *scope, Atom *name);
-    void lookup_proc(Ast_Proc *proc);
     Ast_Scope *new_scope(Scope_Flags flags);
     void exit_scope();
 
@@ -47,6 +46,16 @@ struct Resolver {
     void resolve_return_stmt(Ast_Return *return_stmt);
     void resolve_stmt(Ast_Stmt *stmt);
 
+    Ast_Operator_Proc *lookup_user_defined_binary_operator(Token_Kind op, Ast_Type_Info *lhs, Ast_Type_Info *rhs);
+    Ast_Operator_Proc *lookup_user_defined_unary_operator(Token_Kind op, Ast_Type_Info *type);
+
+    void resolve_builtin_operator_expr(Ast_Binary *binary);
+    void resolve_user_defined_operator_expr(Ast_Binary *expr);
+    void resolve_binary_expr(Ast_Binary *binary);
+
+    void resolve_user_defined_operator_expr(Ast_Unary *expr);
+    void resolve_unary_expr(Ast_Unary *unary);
+
     void resolve_ident(Ast_Ident *ident);
     void resolve_range_expr(Ast_Range *range);
     void resolve_field_expr(Ast_Field *field);
@@ -54,11 +63,9 @@ struct Resolver {
     void resolve_deref_expr(Ast_Deref *deref);
     void resolve_call_expr(Ast_Call *call);
     void resolve_literal(Ast_Literal *literal);
-    void resolve_binary_expr(Ast_Binary *binary);
     void resolve_cast_expr(Ast_Cast *cast);
     void resolve_index_expr(Ast_Index *index);
     void resolve_compound_literal(Ast_Compound_Literal *literal);
-    void resolve_unary_expr(Ast_Unary *unary);
     void resolve_expr(Ast_Expr *expr);
 
     void resolve_proc_header(Ast_Proc *proc);

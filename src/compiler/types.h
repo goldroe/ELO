@@ -48,6 +48,15 @@ struct Ast_Type_Info : Ast {
     Ast_Decl *decl;
     Atom *name;
     int bytes;
+
+    inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }
+    inline bool is_builtin_type() { return type_flags & TYPE_FLAG_BUILTIN; }
+    inline bool is_conditional_type() { return (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_indirection_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ARRAY); }
+    inline bool is_arithmetic_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_integral_type() { return (type_flags & TYPE_FLAG_INTEGRAL); }
+    inline Ast_Type_Info *deref() { return base; }
 };
 
 struct Struct_Field_Info {

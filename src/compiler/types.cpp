@@ -34,43 +34,43 @@ internal Ast_Type_Info *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8
 
 internal void register_builtin_types() {
     type_poison = ast_type_info(NULL, TYPE_FLAG_POISON);
-    type_void = ast_builtin_type(BUILTIN_TYPE_VOID, str8_lit("void"), 0, TYPE_FLAG_NIL);
-    type_u8  = ast_builtin_type(BUILTIN_TYPE_U8,  str8_lit("u8"),  1, TYPE_FLAG_INTEGER);
-    type_u16 = ast_builtin_type(BUILTIN_TYPE_U16, str8_lit("u16"), 2, TYPE_FLAG_INTEGER);
-    type_u32 = ast_builtin_type(BUILTIN_TYPE_U32, str8_lit("u32"), 4, TYPE_FLAG_INTEGER);
-    type_u64 = ast_builtin_type(BUILTIN_TYPE_U64, str8_lit("u64"), 8, TYPE_FLAG_INTEGER);
-    type_s8  = ast_builtin_type(BUILTIN_TYPE_S8,  str8_lit("s8"),  1, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_s16 = ast_builtin_type(BUILTIN_TYPE_S16, str8_lit("s16"), 2, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_s32 = ast_builtin_type(BUILTIN_TYPE_S32, str8_lit("s32"), 4, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_s64 = ast_builtin_type(BUILTIN_TYPE_S64, str8_lit("s64"), 8, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_bool = ast_builtin_type(BUILTIN_TYPE_BOOL, str8_lit("bool"), 4, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
-    type_f32 = ast_builtin_type(BUILTIN_TYPE_F32, str8_lit("f32"), 4, TYPE_FLAG_FLOAT);
-    type_f64 = ast_builtin_type(BUILTIN_TYPE_F64, str8_lit("f64"), 8, TYPE_FLAG_FLOAT);
+    type_void   = ast_builtin_type(BUILTIN_TYPE_VOID, str8_lit("void"), 0, TYPE_FLAG_NIL);
+    type_u8     = ast_builtin_type(BUILTIN_TYPE_U8,   str8_lit("u8"),   1, TYPE_FLAG_INTEGER);
+    type_u16    = ast_builtin_type(BUILTIN_TYPE_U16,  str8_lit("u16"),  2, TYPE_FLAG_INTEGER);
+    type_u32    = ast_builtin_type(BUILTIN_TYPE_U32,  str8_lit("u32"),  4, TYPE_FLAG_INTEGER);
+    type_u64    = ast_builtin_type(BUILTIN_TYPE_U64,  str8_lit("u64"),  8, TYPE_FLAG_INTEGER);
+    type_s8     = ast_builtin_type(BUILTIN_TYPE_S8,   str8_lit("s8"),   1, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_s16    = ast_builtin_type(BUILTIN_TYPE_S16,  str8_lit("s16"),  2, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_s32    = ast_builtin_type(BUILTIN_TYPE_S32,  str8_lit("s32"),  4, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_s64    = ast_builtin_type(BUILTIN_TYPE_S64,  str8_lit("s64"),  8, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_bool   = ast_builtin_type(BUILTIN_TYPE_BOOL, str8_lit("bool"), 4, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
+    type_f32    = ast_builtin_type(BUILTIN_TYPE_F32,  str8_lit("f32"),  4, TYPE_FLAG_FLOAT);
+    type_f64    = ast_builtin_type(BUILTIN_TYPE_F64,  str8_lit("f64"),  8, TYPE_FLAG_FLOAT);
 }
 
-internal inline bool is_struct_type(Ast_Type_Info *type) {
-    return type->type_flags & TYPE_FLAG_STRUCT;
-}
+// internal inline bool is_struct_type(Ast_Type_Info *type) {
+//     return type->type_flags & TYPE_FLAG_STRUCT;
+// }
 
-internal inline bool is_conditional_type(Ast_Type_Info *type) {
-    return (type->type_flags & TYPE_FLAG_NUMERIC) || (type->type_flags & TYPE_FLAG_POINTER) || (type->type_flags & TYPE_FLAG_ENUM);
-}
+// internal inline bool is_conditional_type(Ast_Type_Info *type) {
+//     return (type->type_flags & TYPE_FLAG_NUMERIC) || (type->type_flags & TYPE_FLAG_POINTER) || (type->type_flags & TYPE_FLAG_ENUM);
+// }
 
-internal inline bool is_indirection_type(Ast_Type_Info *type) {
-    return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_ARRAY;
-}
+// internal inline bool is_indirection_type(Ast_Type_Info *type) {
+//     return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_ARRAY;
+// }
 
-internal inline bool is_arithmetic_type(Ast_Type_Info *type) {
-    return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_NUMERIC || type->type_flags & TYPE_FLAG_ENUM;
-}
+// internal inline bool is_arithmetic_type(Ast_Type_Info *type) {
+//     return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_NUMERIC || type->type_flags & TYPE_FLAG_ENUM;
+// }
 
-internal inline bool is_integral_type(Ast_Type_Info *type) {
-    return type->type_flags & TYPE_FLAG_INTEGRAL;
-}
+// internal inline bool is_integral_type(Ast_Type_Info *type) {
+//     return type->type_flags & TYPE_FLAG_INTEGRAL;
+// }
 
-internal inline Ast_Type_Info *deref_type(Ast_Type_Info *type) {
-    return type->base;
-}
+// internal inline Ast_Type_Info *deref_type(Ast_Type_Info *type) {
+//     return type->base;
+// }
 
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
@@ -82,9 +82,9 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     if (t0->is_poisoned || t1->is_poisoned) return true;
 
     //@Note Indirection testing
-    if (is_indirection_type(t0) != is_indirection_type(t1)) {
+    if (t0->is_indirection_type() != t1->is_indirection_type()) {
         return false;
-    } else if (is_indirection_type(t0) && is_indirection_type(t1)) {
+    } else if (t0->is_indirection_type() && t1->is_indirection_type()) {
         Ast_Type_Info *a = t0, *b = t1;
         for (;;) {
             //@Note Bad indirection
@@ -108,12 +108,12 @@ internal bool typecheck_castable(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     Assert(t0 != NULL);
     Assert(t1 != NULL);
 
-    if ((is_indirection_type(t0) != NULL) != (is_indirection_type(t1) != NULL)) {
+    if (t0->is_indirection_type() != t1->is_indirection_type()) {
         return false; 
     }
 
-    if (!is_indirection_type(t0) && !is_indirection_type(t1)) {
-        if (is_struct_type(t0) != is_struct_type(t1)) {
+    if (!t0->is_indirection_type() && !t1->is_indirection_type()) {
+        if (t0->is_struct_type() != t1->is_struct_type()) {
             return false;
         }
     }

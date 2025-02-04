@@ -63,8 +63,43 @@ Ast_Decl *Resolver::lookup(Ast_Scope *scope, Atom *name) {
     return NULL;
 }
 
-void Resolver::lookup_proc(Ast_Proc *proc) {
-    Ast_Root *root = parser->root;
+Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, Ast_Type_Info *lhs, Ast_Type_Info *rhs) {
+    Ast_Operator_Proc *result = NULL;
+    Ast_Scope *scope = global_scope;
+    for (int i = 0; i < scope->declarations.count; i++) {
+        Ast_Decl *decl = scope->declarations[i];
+        if (decl->kind == AST_OPERATOR_PROC) {
+            Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
+            resolve_proc_header(proc);
+            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            if (proc->op == op && proc_type->parameters.count == 2 &&
+                typecheck(proc_type->parameters[0], lhs) &&
+                typecheck(proc_type->parameters[1], rhs)) {
+                result = proc;
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(Token_Kind op, Ast_Type_Info *type) {
+    Ast_Operator_Proc *result = NULL;
+    Ast_Scope *scope = global_scope;
+    for (int i = 0; i < scope->declarations.count; i++) {
+        Ast_Decl *decl = scope->declarations[i];
+        if (decl->kind == AST_OPERATOR_PROC) {
+            Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
+            resolve_proc_header(proc);
+            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            if (proc->op == op && proc_type->parameters.count == 1 &&
+                typecheck(proc_type->parameters[0], type)) {
+                result = proc;
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 Ast_Scope *Resolver::new_scope(Scope_Flags scope_flags) {
@@ -113,7 +148,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
     if (cond &&
         cond->valid() &&
-        is_struct_type(cond->type_info)) {
+        cond->type_info->is_struct_type()) {
         report_ast_error(cond, "'%s' is not a valid conditional expression.\n", string_from_expr(cond));
     }
 
@@ -167,7 +202,7 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
     Ast_Expr *cond = while_stmt->cond;
     resolve_expr(cond);
 
-    if (cond->valid() && !is_conditional_type(cond->type_info)) {
+    if (cond->valid() && !cond->type_info->is_conditional_type()) {
         report_ast_error(cond, "'%s' is not a conditional expression.\n", string_from_expr(cond));
         while_stmt->poison();
     }
@@ -302,6 +337,71 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
     return type;
 }
 
+void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
+    Ast_Expr *lhs = binary->lhs;
+    Ast_Expr *rhs = binary->rhs;
+    if (binary->expr_flags & EXPR_FLAG_ASSIGNMENT) {
+        if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
+            report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
+        }
+
+        if (lhs->valid() && rhs->valid()) {
+            if (!typecheck(lhs->type_info, rhs->type_info)) {
+                report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+            }
+        }
+        binary->type_info = lhs->type_info;
+    }
+
+    if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
+        if (lhs->valid() && !binary->lhs->type_info->is_arithmetic_type()) {
+            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        }
+        if (rhs->valid() && !binary->rhs->type_info->is_arithmetic_type()) {
+            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        }
+        binary->type_info = lhs->type_info;
+    }
+
+    if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
+        if (lhs->valid() && !binary->lhs->type_info->is_integral_type()) {
+            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        }
+        if (rhs->valid() && !binary->rhs->type_info->is_integral_type()) {
+            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        }
+        binary->type_info = lhs->type_info;
+    }
+
+    if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
+        if (lhs->valid() && !binary->lhs->type_info->is_arithmetic_type()) {
+            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        }
+        if (rhs->valid() && !binary->rhs->type_info->is_arithmetic_type()) {
+            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        }
+        binary->type_info = lhs->type_info;
+    }
+}
+
+void Resolver::resolve_user_defined_operator_expr(Ast_Binary *expr) {
+    Token op = expr->op;
+    Ast_Operator_Proc *proc = lookup_user_defined_binary_operator(op.kind, expr->lhs->type_info, expr->rhs->type_info);
+    if (proc) {
+        resolve_proc_header(proc);
+        Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+        expr->type_info = proc_type->return_type;
+    } else {
+        report_ast_error(expr, "no binary operator'%s' (%s,%s) found.\n", string_from_token(op.kind), string_from_type(expr->lhs->type_info), string_from_type(expr->rhs->type_info));
+        expr->poison();
+    }
+}
+
+void Resolver::resolve_user_defined_operator_expr(Ast_Unary *expr) {
+    Token op = expr->op;
+    Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(op.kind, expr->elem->type_info);
+}
+
 void Resolver::resolve_binary_expr(Ast_Binary *binary) {
     Ast_Expr *lhs = binary->lhs;
     Ast_Expr *rhs = binary->rhs;
@@ -325,48 +425,13 @@ void Resolver::resolve_binary_expr(Ast_Binary *binary) {
         binary->poison();
     }
 
-    if (binary->expr_flags & EXPR_FLAG_ASSIGNMENT) {
-        if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
-            report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
+    if (lhs->valid() && rhs->valid()) {
+        if (!lhs->type_info->is_custom_type() && !rhs->type_info->is_custom_type()) {
+            resolve_builtin_operator_expr(binary);  
+        } else {
+            resolve_user_defined_operator_expr(binary);
         }
-
-        if (lhs->valid() && rhs->valid()) {
-            if (!typecheck(lhs->type_info, rhs->type_info)) {
-                report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
-            }
-        }
-        binary->type_info = lhs->type_info;
     }
-
-    if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
-        if (lhs->valid() && !is_arithmetic_type(binary->lhs->type_info)) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-        }
-        if (rhs->valid() && !is_arithmetic_type(binary->rhs->type_info)) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-        }
-        binary->type_info = lhs->type_info;
-    }
-
-    if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
-        if (lhs->valid() && !is_integral_type(binary->lhs->type_info)) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-        }
-        if (rhs->valid() && !is_integral_type(binary->rhs->type_info)) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-        }
-        binary->type_info = lhs->type_info;
-    }
-
-    if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
-        if (lhs->valid() && !is_arithmetic_type(binary->lhs->type_info)) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-        }
-        if (rhs->valid() && !is_arithmetic_type(binary->rhs->type_info)) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-        }
-        binary->type_info = lhs->type_info;
-    } 
 }
 
 void Resolver::resolve_cast_expr(Ast_Cast *cast) {
@@ -384,8 +449,8 @@ void Resolver::resolve_cast_expr(Ast_Cast *cast) {
 
 void Resolver::resolve_index_expr(Ast_Index *index) {
     resolve_expr(index->lhs);
-    if (index->lhs->valid() && is_indirection_type(index->lhs->type_info)) {
-        index->type_info = deref_type(index->lhs->type_info);
+    if (index->lhs->valid() && index->lhs->type_info->is_indirection_type()) {
+        index->type_info = index->lhs->type_info->deref();
     } else {
         report_ast_error(index->lhs, "'%s' is not a pointer or array type.\n", string_from_expr(index->lhs));
         index->poison();
@@ -400,7 +465,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         resolve_expr(elem);
     }
 
-    if (is_struct_type(specified_type)) {
+    if (specified_type->is_struct_type()) {
         literal->type_info = specified_type;
 
         Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(specified_type);
@@ -438,7 +503,9 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
         unary->poison();
     }
 
-    if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
+    if (unary->elem->type_info->is_custom_type()) {
+        resolve_user_defined_operator_expr(unary);
+    } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
         report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
         unary->poison();
     }
@@ -509,8 +576,8 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     resolve_expr(deref->elem);
-    if (is_indirection_type(deref->elem->type_info)) {
-        deref->type_info = deref_type(deref->elem->type_info);
+    if (deref->elem->type_info->is_indirection_type()) {
+        deref->type_info = deref->elem->type_info->deref();
     } else {
         report_ast_error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
         deref->poison();
@@ -534,7 +601,7 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
         Ast_Type_Info *struct_type = NULL;
         Ast_Type_Info *enum_type = NULL;
         if (field_expr_type->type_flags & TYPE_FLAG_POINTER) {
-            Ast_Type_Info *type = deref_type(field_expr_type);
+            Ast_Type_Info *type = field_expr_type->deref();
             if (type->type_flags & TYPE_FLAG_STRUCT) {
                 struct_type = type;
             }
@@ -577,14 +644,14 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
     resolve_expr(range->rhs);
 
     if (range->lhs->valid()) {
-        if (!is_integral_type(range->lhs->type_info)) {
+        if (!range->lhs->type_info->is_integral_type()) {
             report_ast_error(range->lhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->lhs));
             range->poison();
         }
     }
 
     if (range->rhs->valid()) {
-        if (!is_integral_type(range->rhs->type_info)) {
+        if (!range->rhs->type_info->is_integral_type()) {
             report_ast_error(range->rhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->rhs));
             range->poison();
         }
@@ -734,6 +801,27 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
     Ast_Proc_Type_Info *type = ast_proc_type_info(return_type, parameters);
     type->decl = proc;
     proc->type_info = type;
+
+    if (proc->kind == AST_OPERATOR_PROC) {
+        Ast_Operator_Proc *operator_proc = static_cast<Ast_Operator_Proc*>(proc);
+        Ast_Proc_Type_Info *type = static_cast<Ast_Proc_Type_Info*>(operator_proc->type_info);
+
+        if (type->parameters.count == 0) {
+            report_ast_error(proc, "operator %s missing parameters.\n", string_from_token(operator_proc->op));
+        }
+
+        bool has_custom_type = false;
+        for (int i = 0; i < type->parameters.count; i++) {
+            Ast_Type_Info *param = type->parameters[i];
+            if (!param->is_builtin_type()) {
+                has_custom_type = true;
+            }
+        }
+
+        if (!has_custom_type) {
+            report_ast_error(proc, "operator %s must have at least one user-defined type.\n", string_from_token(operator_proc->op));
+        }
+    }
 }
 
 void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
@@ -936,13 +1024,15 @@ void Resolver::resolve_overloaded_proc(Ast_Proc *proc) {
         Ast_Proc *other = static_cast<Ast_Proc*>(decl);
 
         b32 overloaded = true;
-        if (proc->parameters.count == other->parameters.count) {
+        Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+        Ast_Proc_Type_Info *other_type = static_cast<Ast_Proc_Type_Info*>(other->type_info);
+        if (proc_type->parameters.count == other_type->parameters.count) {
             b32 mismatch = false;
-            for (int p = 0; p < proc->parameters.count; p++) {
-                Ast_Param *p0 = proc->parameters[p];
-                Ast_Param *p1 = other->parameters[p];
+            for (int p = 0; p < proc_type->parameters.count; p++) {
+                Ast_Type_Info *p0 = proc_type->parameters[p];
+                Ast_Type_Info *p1 = other_type->parameters[p];
 
-                if (!typecheck(p0->type_info, p1->type_info)) {
+                if (!typecheck(p0, p1)) {
                     mismatch = true;
                     break;
                 }
