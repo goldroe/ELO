@@ -33,6 +33,10 @@ Foo :: struct {
 }
 
 main :: () {
+ v0: Vector2 = .{0.0, 1.0};
+ v1: Vector2 = .{1.0, 0.0};
+ v2 := v0 + v1;
+
  foo: Foo;
 
  // error
@@ -44,6 +48,7 @@ main :: () {
 
  // error
  arr2[0][0][0] = 0;
+ arr2[0] = 0;
 
  x := 0;
  y := 10;
