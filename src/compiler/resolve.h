@@ -24,7 +24,6 @@ struct Resolver {
 
     Resolver(Parser *_parser);
 
-    void error(Ast *elem, const char *fmt, ...);
     void report_redeclaration(Ast_Decl *decl);
 
     Ast_Type_Info *resolve_type(Ast_Type_Defn *type_defn);

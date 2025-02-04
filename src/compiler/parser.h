@@ -9,7 +9,6 @@ struct Parser {
     
     Parser(Lexer *_lexer);
 
-    void syntax_error(const char *fmt, ...);
     void expect(Token_Kind token);
 
     Ast_Compound_Literal *parse_compound_literal();

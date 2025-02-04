@@ -1,11 +1,13 @@
 
 internal void compiler_error(char *fmt, ...);
+internal void add_source_file(Source_File *file);
 
-internal Source_Pos source_pos(u64 line, u64 col, u64 index) {
+internal Source_Pos source_pos(u64 line, u64 col, u64 index, Source_File *file) {
     Source_Pos result;
     result.line = line;
     result.col = col;
     result.index = index;
+    result.file = file;
     return result;
 }
 
@@ -69,28 +71,22 @@ internal bool operator_is_overloadable(Token_Kind op) {
         return true;
     }
 }
-    
 
-Lexer::Lexer(String8 file_name) {
-    file_path = file_name;
-    OS_Handle file_handle = os_open_file(file_name, OS_AccessFlag_Read);
-    if (os_file_exists(file_name)) {
-        file_contents = os_read_file_string(file_handle);
-        stream = file_contents.data;
+
+Lexer::Lexer(String8 file_path) {
+    String8 file_text = {};
+    OS_Handle file_handle = os_open_file(file_path, OS_AccessFlag_Read);
+    if (os_valid_handle(file_handle)) {
+        file_text = os_read_file_string(file_handle);
         os_close_handle(file_handle);
-        next_token();
     } else {
-        compiler_error("no such file or directory %S.\n", file_name);
+        compiler_error("no such file or directory %S.\n", file_path);
     }
-}
 
-void Lexer::error(const char *fmt, ...) {
-    error_count++;
-    va_list args;
-    va_start(args, fmt);
-    String8 string = str8_pushfv(g_error_arena, fmt, args);
-    va_end(args);
-    printf("%s:%llu:%llu: error: %s", file_path.data, line_number, column_number, string.data);
+    source_file = new Source_File(file_path, file_text);
+    add_source_file(source_file);
+    stream = source_file->text.data;
+    next_token();
 }
 
 Token Lexer::current() {
@@ -168,7 +164,7 @@ void Lexer::eat_line() {
 
 void Lexer::rewind(Token token) {
     stream_index = token.end.index;
-    stream = file_contents.data + stream_index;
+    stream = source_file->text.data + stream_index;
     line_number = token.end.line;
     column_number = token.end.col;
     current_token = token;
@@ -197,7 +193,7 @@ int Lexer::get_next_hex_digit() {
         result = digit - '0';
     } else {
         result = -1;
-        error("invalid literal suffix '%c'.\n", digit);
+        report_parser_error(this, "invalid literal suffix '%c'.\n", digit);
     }
 
     return result;
@@ -216,7 +212,7 @@ u64 Lexer::scan_integer() {
             eat_char();
             base = 2;
         } else if (isalnum(suffix)) {
-            error("invalid suffix '%c'.\n", suffix);
+            report_parser_error(this, "invalid suffix '%c'.\n", suffix);
         }
     }
 
@@ -224,7 +220,7 @@ u64 Lexer::scan_integer() {
         u8 digit_char = peek_character();
         int digit = get_next_hex_digit();
         if (digit >= base) {
-            error("'%c' is outside of base range.\n", digit_char);
+            report_parser_error(this, "'%c' is outside of base range.\n", digit_char);
             break;
         }
 
@@ -248,12 +244,12 @@ lex_start:
     u8 *begin = (u8 *)stream;
 
     Token token = {};
-    token.start = source_pos(line_number, column_number, stream_index);
+    token.start = source_pos(line_number, column_number, stream_index, source_file);
     
     switch (*stream) {
     default:
         token.kind = TOKEN_ERR;
-        error("unknown character '%#x'.\n", *stream);
+        report_parser_error(this, "unknown character '%#x'.\n", *stream);
         eat_char();
         break;
         
@@ -321,7 +317,7 @@ lex_start:
 
         //@Note Rewind
         stream_index = token.start.index;
-        stream = file_contents.data + stream_index;
+        stream = source_file->text.data + stream_index;
         line_number = token.start.line;
         column_number = token.start.col;
 
@@ -579,7 +575,7 @@ lex_start:
     }
     }
 
-    token.end = source_pos(line_number, column_number, stream_index);
+    token.end = source_pos(line_number, column_number, stream_index, source_file);
 
     current_token = token;
 }

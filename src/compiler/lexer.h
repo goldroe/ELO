@@ -1,10 +1,24 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+struct Report;
+
+struct Source_File {
+    String8 path;
+    String8 text;
+    Auto_Array<Report*> reports;
+
+    Source_File(String8 _path, String8 _text) {
+        path = _path;
+        text = _text;
+    }
+};
+
 struct Source_Pos {
     u64 col;
     u64 line;
     u64 index;
+    Source_File *file;
 };
 
 struct Atom;
@@ -122,8 +136,9 @@ struct Token {
 };
 
 struct Lexer {
-    String8 file_path;
-    String8 file_contents;
+    Source_File *source_file;
+    // String8 file_path;
+    // String8 file_contents;
 
     u8 *stream = NULL;
     u64 line_number = 1;
@@ -135,8 +150,6 @@ struct Lexer {
     int error_count = 0;
 
     Lexer(String8 file_name);
-
-    void error(const char *fmt, ...);
 
     bool match(Token_Kind token);
     bool eof();

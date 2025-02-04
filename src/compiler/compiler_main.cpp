@@ -14,15 +14,15 @@
 
 #include "auto_array.h"
 
-global Arena *g_error_arena;
-
 #include "lexer.h"
+#include "report.h"
 #include "atom.h"
 #include "ast.h"
 #include "types.h"
 #include "parser.h"
 #include "resolve.h"
 
+#include "report.cpp"
 #include "atom.cpp"
 #include "lexer.cpp"
 #include "ast.cpp"
@@ -30,10 +30,17 @@ global Arena *g_error_arena;
 #include "parser.cpp"
 #include "resolve.cpp"
 
+global Auto_Array<Source_File*> g_source_files;
+global Arena *temp_arena;
+
+internal void add_source_file(Source_File *file) {
+    g_source_files.push(file);
+}
+
 internal void compiler_error(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 string = str8_pushfv(g_error_arena, fmt, args);
+    String8 string = str8_pushfv(g_report_arena, fmt, args);
     va_end(args);
     printf("ELO: error: %s", (char *)string.data);
 }
@@ -76,7 +83,7 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    g_error_arena = arena_alloc(get_virtual_allocator(), KB(64));
+    g_report_arena = arena_alloc(get_virtual_allocator(), KB(64));
     g_ast_arena = arena_alloc(get_virtual_allocator(), MB(8));
 
     atom_init();
@@ -102,9 +109,13 @@ int main(int argc, char **argv) {
 
     register_builtin_types();
 
-    String8 file_name = str8_cstring(argv[0]);
+    temp_arena = arena_alloc(get_malloc_allocator(), KB(64));
 
-    Lexer *lexer = new Lexer(file_name);
+    String8 file_name = str8_cstring(argv[0]);
+    String8 file_path = path_join(temp_arena, os_current_dir(temp_arena), file_name);
+    file_path = normalize_path(temp_arena, file_path);
+
+    Lexer *lexer = new Lexer(file_path);
 
     Parser *parser = new Parser(lexer);
     parser->parse();
@@ -112,11 +123,54 @@ int main(int argc, char **argv) {
     Resolver *resolver = new Resolver(parser);
     resolver->resolve();
 
-    // printf("\n");
-    int error_count = lexer->error_count + parser->error_count + resolver->error_count;
-    if (error_count > 0) {
-        printf("%d error(s).\n", error_count);
+    //@Note Print reports
+    for (int file_idx = 0; file_idx < g_source_files.count; file_idx++) {
+        Source_File *file = g_source_files[file_idx];
+
+        quick_sort(file->reports.data, Report*, file->reports.count, report_sort_compare);
+
+        for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
+            Report *report = file->reports[report_idx];
+            if (report->kind == REPORT_PARSER_ERROR) {
+                printf("%s:%llu:%llu: syntax error: %s", file->path.data, report->source_pos.line, report->source_pos.col, report->message.data);
+            } else if (report->kind == REPORT_AST_ERROR) {
+                printf("%s:%llu:%llu: error: %s", file->path.data, report->node->start.line, report->node->start.col, report->message.data);
+                String8 buffer = file->text;
+                u64 line_begin = report->node->start.index - report->node->start.col;
+                u64 line_end = get_next_line_boundary(buffer, report->node->start.index);
+
+                if (line_begin != report->node->start.col) {
+                    String8 pre = str8(buffer.data + line_begin, report->node->start.col);
+                    printf("\x1B[38;2;168;153;132m");
+                    printf("%.*s", (int)pre.count, pre.data);
+                    printf(ANSI_RESET);
+                }
+
+                u64 end_index = report->node->end.index;
+                if (end_index > line_end) end_index = line_end;
+
+                String8 elem_string = str8(buffer.data + report->node->start.index, end_index - report->node->start.index);
+                printf("\x1B[38;2;204;36;29m");
+                printf("%.*s", (int)elem_string.count, elem_string.data);
+                printf(ANSI_RESET);
+
+                if (line_end > end_index) {
+                    String8 trailing = str8(buffer.data + end_index, line_end - end_index);
+                    printf("\x1B[38;2;168;153;132m");
+                    printf("%.*s", (int)trailing.count, trailing.data);
+                    printf(ANSI_RESET);
+                }
+
+                if (report->node->end.index > line_end) {
+                    printf(ANSI_ITALIC "\x1B[38;2;168;153;132m");
+                    printf("...");
+                    printf(ANSI_RESET);
+                }
+                printf("\n");
+            }
+        }
     }
+
 
     printf("compilation terminated.\n");
 

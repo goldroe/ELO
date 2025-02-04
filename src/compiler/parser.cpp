@@ -2,20 +2,11 @@ Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
 }
 
-void Parser::syntax_error(const char *fmt, ...) {
-    error_count++;
-    va_list args;
-    va_start(args, fmt);
-    String8 string = str8_pushfv(g_error_arena, fmt, args);
-    va_end(args);
-    printf("%s:%llu:%llu: syntax error: %s", lexer->file_path.data, lexer->line_number, lexer->column_number, string.data);
-}
-
 void Parser::expect(Token_Kind token) {
     if (lexer->match(token)) {
         lexer->next_token();
     } else {
-        syntax_error("expected '%s', got '%s'.\n", string_from_token(token), string_from_token(lexer->peek()));
+        report_parser_error(lexer, "expected '%s', got '%s'.\n", string_from_token(token), string_from_token(lexer->peek()));
     }
 }
 
@@ -146,7 +137,7 @@ Ast_Expr *Parser::parse_postfix_expr() {
             while (lexer->eat(TOKEN_DOT)) {
                 Token name = lexer->current();
                 if (!lexer->eat(TOKEN_IDENT)) {
-                    syntax_error("missing name after '.'.\n");
+                    report_parser_error(lexer, "missing name after '.'.\n");
                     terminate = true;
                     break;
                 }
@@ -217,7 +208,7 @@ Ast_Expr *Parser::parse_unary_expr() {
         if (lexer->eat(TOKEN_LPAREN)) {
             type_defn = parse_type();
             if (type_defn == NULL) {
-                syntax_error("missing type in cast expression.\n");
+                report_parser_error(lexer, "missing type in cast expression.\n");
             }
             if (lexer->eat(TOKEN_RPAREN)) {
                 Ast_Expr *next_expr = parse_unary_expr();
@@ -226,13 +217,13 @@ Ast_Expr *Parser::parse_unary_expr() {
                     cast->mark_range(op.start, cast->end);
                     return cast;
                 } else {
-                    syntax_error("missing expression after cast.\n");
+                    report_parser_error(lexer, "missing expression after cast.\n");
                 }
             } else {
-                syntax_error("missing ')' after type of cast.\n");
+                report_parser_error(lexer, "missing ')' after type of cast.\n");
             }
         } else {
-            syntax_error("missing '(' after 'cast'.\n");
+            report_parser_error(lexer, "missing '(' after 'cast'.\n");
         }
         return NULL;
         break;
@@ -336,7 +327,7 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
 
         Ast_Expr *rhs = parse_unary_expr();
         if (rhs == NULL) {
-            syntax_error("expected expression after '%s'.\n", string_from_token(op.kind));
+            report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
             return lhs;
         }
 
@@ -397,7 +388,7 @@ Ast_Expr *Parser::parse_assignment_expr() {
             Ast_Expr *rhs = parse_assignment_expr();
             expr = ast_assignment_expr(op, expr, rhs);
             if (rhs == NULL) {
-                syntax_error("expected expression, got '%s'.\n", string_from_token(lexer->peek()));
+                report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
                 expr->poison();
             }
         }
@@ -421,7 +412,7 @@ Ast_Decl_Stmt *Parser::parse_init_stmt(Ast_Expr *lhs) {
         var->mark_start(ident->start);
         stmt = ast_decl_stmt(var);
     } else {
-        syntax_error("cannot assign to lhs.\n");
+        report_parser_error(lexer, "cannot assign to lhs.\n");
         stmt = ast_decl_stmt(NULL);
         stmt->poison();
     }
@@ -494,7 +485,7 @@ Ast_For *Parser::parse_for_stmt() {
     if (lexer->lookahead(1).kind == TOKEN_IN) {
         Ast_Expr *expr = parse_expr();
         if (expr->kind != AST_IDENT) {
-            syntax_error("missing identifier before ':'.\n");
+            report_parser_error(lexer, "missing identifier before ':'.\n");
         }
         lexer->eat(TOKEN_IN);
         Ast_Expr *range = parse_range_expr();
@@ -527,11 +518,11 @@ Ast_Stmt *Parser::parse_stmt() {
         stmt = parse_simple_stmt();
         if (stmt) {
             if (!lexer->eat(TOKEN_SEMI)) {
-                syntax_error("expected ';', got '%s'.\n", string_from_token(lexer->peek()));
+                report_parser_error(lexer, "expected ';', got '%s'.\n", string_from_token(lexer->peek()));
                 stmt_error = true;
             }
         } else {
-            syntax_error("expected statement, got '%s'.\n", string_from_token(lexer->peek()));
+            report_parser_error(lexer, "expected statement, got '%s'.\n", string_from_token(lexer->peek()));
             stmt_error = true;
         }
         break;
@@ -580,7 +571,7 @@ Ast_Stmt *Parser::parse_stmt() {
     }
     case TOKEN_ELSE:
     {
-        syntax_error("illegal else without matching if.\n");
+        report_parser_error(lexer, "illegal else without matching if.\n");
         stmt_error = true;
         break;
     }
@@ -697,7 +688,7 @@ Ast_Param *Parser::parse_param() {
 
         Ast_Type_Defn *type_defn = parse_type();
         if (!type_defn) {
-            syntax_error("missing type after ':'.\n");
+            report_parser_error(lexer, "missing type after ':'.\n");
         }
         param = ast_param(name.name, type_defn);
     }
@@ -760,12 +751,12 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
         lexer->next_token();
 
         if (!lexer->eat(TOKEN_COLON2)) {
-            syntax_error("missing '::', got '%s'.\n", string_from_token(lexer->peek()));
+            report_parser_error(lexer, "missing '::', got '%s'.\n", string_from_token(lexer->peek()));
         }
 
         if (operator_is_overloadable(op.kind)) {
             if (!lexer->eat(TOKEN_LPAREN)) {
-                syntax_error("missing '('.\n");
+                report_parser_error(lexer, "missing '('.\n");
                 goto ERROR_HANDLE;
             }
 
@@ -781,7 +772,7 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
             Source_Pos end = lexer->current().end;
 
             if (!lexer->eat(TOKEN_RPAREN)) {
-                syntax_error("missing ')'.\n");
+                report_parser_error(lexer, "missing ')'.\n");
                 goto ERROR_HANDLE;
             }
 
@@ -794,11 +785,11 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
             proc = ast_operator_proc(op.kind, parameters, return_type, block);
             proc->mark_range(start, end);
         } else {
-            syntax_error("invalid operator, cannot overload '%s'.\n", string_from_token(op.kind));
+            report_parser_error(lexer, "invalid operator, cannot overload '%s'.\n", string_from_token(op.kind));
             goto ERROR_HANDLE;
         }
     } else {
-        syntax_error("expected operator, got '%s'.\n", string_from_token(op.kind));
+        report_parser_error(lexer, "expected operator, got '%s'.\n", string_from_token(op.kind));
         goto ERROR_HANDLE;
     } 
 
@@ -914,7 +905,7 @@ Ast_Decl *Parser::parse_decl() {
         Ast_Operator_Proc *proc = parse_operator_proc();
         decl = proc;
     } else {
-        syntax_error("expected declaration, got '%s'.\n", string_from_token(token.kind));
+        report_parser_error(lexer, "expected declaration, got '%s'.\n", string_from_token(token.kind));
     }
     return decl;
 }
@@ -926,13 +917,13 @@ Ast_Var *Parser::parse_var(Atom *name) {
     if (lexer->eat(TOKEN_COLON)) {
         type_defn = parse_type();
         if (!type_defn) {
-            syntax_error("expected type after ':'.\n");
+            report_parser_error(lexer, "expected type after ':'.\n");
             goto ERROR_BLOCK;
         }
         if (lexer->eat(TOKEN_EQ)) {
             init = parse_expr();
             if (!init) {
-                syntax_error("expected expression after '='.\n");
+                report_parser_error(lexer, "expected expression after '='.\n");
                 goto ERROR_BLOCK;
             }
 
@@ -948,7 +939,7 @@ Ast_Var *Parser::parse_var(Atom *name) {
     } else if (lexer->eat(TOKEN_COLON_EQ)) {
         init = parse_expr();
         if (!init) {
-            syntax_error("expected expression after ':='.\n");
+            report_parser_error(lexer, "expected expression after ':='.\n");
             goto ERROR_BLOCK;
         }
     } else {
