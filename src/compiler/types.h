@@ -51,6 +51,7 @@ struct Ast_Type_Info : Ast {
 
     inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }
+    inline bool is_proc_type() { return type_flags & TYPE_FLAG_PROC; }
     inline bool is_builtin_type() { return type_flags & TYPE_FLAG_BUILTIN; }
     inline bool is_conditional_type() { return (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_indirection_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ARRAY); }

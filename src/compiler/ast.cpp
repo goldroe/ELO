@@ -233,9 +233,9 @@ internal Ast_Cast *ast_cast_expr(Ast_Type_Defn *type, Ast_Expr *elem) {
     return result;
 }
 
-internal Ast_Call *ast_call_expr(Token op, Ast_Expr *lhs, Auto_Array<Ast_Expr*> arguments) {
+internal Ast_Call *ast_call_expr(Token op, Ast_Expr *elem, Auto_Array<Ast_Expr*> arguments) {
     Ast_Call *result = AST_NEW(Ast_Call);
-    result->lhs = lhs;
+    result->elem = elem;
     result->arguments = arguments;
     return result;
 }
@@ -428,7 +428,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_CALL:
     {
         Ast_Call *call = (Ast_Call *)expr;
-        cstring str = string_from_expr(call->lhs);
+        cstring str = string_from_expr(call->elem);
         str = cstring_append(str, "()");
         result = str;
         break;

@@ -1,23 +1,7 @@
-#define ANSI_RESET     "\x1B[0m"
-#define ANSI_UNDERLINE "\x1B[4m"
-#define ANSI_ITALIC    "\x1B[3m"
 
 Resolver::Resolver(Parser *_parser) {
     arena = arena_alloc(get_virtual_allocator(), MB(4));
     parser = _parser;
-}
-
-internal u64 get_next_line_boundary(String8 string, u64 start) {
-    for (u64 i = start; i < string.count; i++) {
-        if (string.data[i] == '\n' || string.data[i] == '\r') {
-            return i;
-        }
-    }
-    return string.count - 1;
-} 
-
-void Resolver::report_redeclaration(Ast_Decl *decl) {
-    report_ast_error(decl, "redeclaration of '%s'.\n", decl->name->data);
 }
 
 bool Resolver::in_global_scope() {
@@ -96,6 +80,63 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(Token_Kind op, A
                 typecheck(proc_type->parameters[0], type)) {
                 result = proc;
                 break;
+            }
+        }
+    }
+    return result;
+}
+
+Ast_Decl *Resolver::lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> arguments, bool *overloaded) {
+    Ast_Proc *result = NULL;
+
+    //@Note Check local scopes first and return first
+    for (Ast_Scope *scope = current_scope; scope->scope_parent != NULL; scope = scope->scope_parent) {
+        for (int i = 0; i < scope->declarations.count; i++) {
+            Ast_Decl *decl = scope->declarations[i];
+            if (atoms_match(name, decl->name)) {
+                *overloaded = false;
+                return decl;
+            }
+        }
+    }
+
+    //@Note Check global scope for all possible overloaded procedures
+    Auto_Array<Ast_Decl*> candidates;
+    for (int i = 0; i < global_scope->declarations.count; i++) {
+        Ast_Decl *decl = global_scope->declarations[i];
+        if (atoms_match(decl->name, name)) {
+            candidates.push(decl);
+        }
+    }
+
+    if (candidates.count == 1) {
+        *overloaded = false;
+        return candidates[0];
+    }
+
+    for (int i = 0; i < candidates.count; i++) {
+        *overloaded = true;
+
+        Ast_Decl *decl = candidates[i];
+        if (decl->kind == AST_PROC) {
+            Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
+            resolve_proc_header(proc);
+            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            if (proc_type->parameters.count == arguments.count) {
+                bool match = true;
+                for (int j = 0; j < arguments.count; j++) {
+                    Ast_Type_Info *param = proc_type->parameters[j];
+                    Ast_Expr *arg = arguments[j];
+                    if (!typecheck(param, arg->type_info)) {
+                        match = false;
+                        break;
+                    }
+                }
+
+                if (match) {
+                    result = proc;
+                    break;
+                }
             }
         }
     }
@@ -226,7 +267,7 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
 
 void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     if (stmt == NULL) return;
-    
+
     switch (stmt->kind) {
     case AST_EXPR_STMT:
     {
@@ -477,6 +518,8 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         int elem_count = Min((int)struct_type->fields.count, (int)literal->elements.count);
         for (int i = 0; i < elem_count; i++) {
             Ast_Expr *elem = literal->elements[i];
+            if (elem->invalid()) continue;
+            
             Struct_Field_Info field = struct_type->fields[i];
             if (!typecheck(field.type, elem->type_info)) {
                 report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(field.type));
@@ -488,6 +531,8 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
 
         for (int i = 0; i < literal->elements.count; i++) {
             Ast_Expr *elem = literal->elements[i];
+            if (elem->invalid()) break;
+            
             if (!typecheck(specified_type, elem->type_info)) {
                 report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(specified_type));
                 literal->poison();
@@ -535,40 +580,69 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
         ident->type_info = found->type_info;
         if (found->invalid()) ident->poison();
     } else {
-        report_ast_error(ident, "undeclared identifier '%s'.\n", ident->name->data);
+        report_undeclared(ident);
         ident->poison();
     }
 }
 
 void Resolver::resolve_call_expr(Ast_Call *call) {
-    resolve_expr(call->lhs);
+    for (int i = 0; i < call->arguments.count; i++) {
+        Ast_Expr *arg = call->arguments[i];
+        resolve_expr(arg);
+        if (arg->invalid()) call->poison();
+    }
 
-    if (call->lhs->valid()) {
-        for (int i = 0; i < call->arguments.count; i++) {
-            Ast_Expr *arg = call->arguments[i];
-            resolve_expr(arg);
-            if (arg->invalid()) call->poison();
+    Ast_Type_Info *elem_type = NULL;
+
+    if (call->elem->kind == AST_IDENT) {
+        Ast_Ident *name = static_cast<Ast_Ident*>(call->elem);
+        bool overloaded = false;
+        Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
+        if (decl) {
+            elem_type = decl->type_info;
+        } else {
+            if (overloaded) {
+                report_ast_error(name, "no overloaded procedure matches all argument types.\n");
+            } else {
+                report_undeclared(name);
+            }
+            call->poison();
         }
+    } else {
+        resolve_expr(call->elem);
+        elem_type = call->elem->type_info;
+    }
 
-        if (call->lhs->type_info->type_flags & TYPE_FLAG_PROC) {
-            Ast_Proc *proc = static_cast<Ast_Proc*>(call->lhs->type_info->decl);
-            if (proc->parameters.count == call->arguments.count) {
-                call->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+    if (elem_type) {
+        if (elem_type->is_proc_type()) {
+            Ast_Proc *proc = static_cast<Ast_Proc*>(elem_type->decl);
+            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            if (proc_type->parameters.count == call->arguments.count) {
+                call->type_info = proc_type->return_type;
 
+                bool bad_arg = false;
                 for (int i = 0; i < call->arguments.count; i++) {
-                    Ast_Param *param = proc->parameters[i];
+                    Ast_Type_Info *param = proc_type->parameters[i];
                     Ast_Expr *arg = call->arguments[i];
-                    if (arg->valid() && !typecheck(param->type_info, arg->type_info)) {
-                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type_info), string_from_type(param->type_info));
+                    if (arg->valid() && !typecheck(param, arg->type_info)) {
+                        bad_arg = true;
+                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type_info), string_from_type(param));
                         call->poison();
                     }
                 }
+
+                if (bad_arg) {
+                    report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
+                }
+
+                call->type_info = proc_type->return_type;
             } else {
-                report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->lhs), call->arguments.count);
+                report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
+                report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
                 call->poison();
             }
         } else {
-            report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->lhs));
+            report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
             call->poison();
         }
     }

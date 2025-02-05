@@ -220,7 +220,7 @@ struct Ast_Compound_Literal : Ast_Expr {
 
 struct Ast_Call : Ast_Expr {
     Ast_Call() { kind = AST_CALL; }
-    Ast_Expr *lhs;
+    Ast_Expr *elem;
     Auto_Array<Ast_Expr*> arguments;
 };
 
