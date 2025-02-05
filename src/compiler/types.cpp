@@ -48,30 +48,6 @@ internal void register_builtin_types() {
     type_f64    = ast_builtin_type(BUILTIN_TYPE_F64,  str8_lit("f64"),  8, TYPE_FLAG_FLOAT);
 }
 
-// internal inline bool is_struct_type(Ast_Type_Info *type) {
-//     return type->type_flags & TYPE_FLAG_STRUCT;
-// }
-
-// internal inline bool is_conditional_type(Ast_Type_Info *type) {
-//     return (type->type_flags & TYPE_FLAG_NUMERIC) || (type->type_flags & TYPE_FLAG_POINTER) || (type->type_flags & TYPE_FLAG_ENUM);
-// }
-
-// internal inline bool is_indirection_type(Ast_Type_Info *type) {
-//     return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_ARRAY;
-// }
-
-// internal inline bool is_arithmetic_type(Ast_Type_Info *type) {
-//     return type->type_flags & TYPE_FLAG_POINTER || type->type_flags & TYPE_FLAG_NUMERIC || type->type_flags & TYPE_FLAG_ENUM;
-// }
-
-// internal inline bool is_integral_type(Ast_Type_Info *type) {
-//     return type->type_flags & TYPE_FLAG_INTEGRAL;
-// }
-
-// internal inline Ast_Type_Info *deref_type(Ast_Type_Info *type) {
-//     return type->base;
-// }
-
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
 internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
