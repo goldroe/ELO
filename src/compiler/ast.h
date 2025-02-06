@@ -264,11 +264,17 @@ enum Resolve_State {
     RESOLVE_DONE
 };
 
+enum Decl_Flags {
+    DECL_FLAG_NIL = 0,
+    DECL_FLAG_TYPE = (1<<0),
+};
+EnumDefineFlagOperators(Decl_Flags);
+
 struct Ast_Decl : Ast {
     Ast_Decl() { kind = AST_DECL; }
     Atom *name;
+    Decl_Flags decl_flags;
     Ast_Type_Info *type_info;
-
     Resolve_State resolve_state = RESOLVE_UNSTARTED;
 };
 

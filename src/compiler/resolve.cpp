@@ -441,6 +441,12 @@ void Resolver::resolve_user_defined_operator_expr(Ast_Binary *expr) {
 void Resolver::resolve_user_defined_operator_expr(Ast_Unary *expr) {
     Token op = expr->op;
     Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(op.kind, expr->elem->type_info);
+    if (proc) {
+        expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+    } else {
+        report_ast_error(expr, "no unary operator'%s' (%s) found.\n", string_from_token(op.kind), string_from_type(expr->elem->type_info));
+        expr->poison();
+    }
 }
 
 void Resolver::resolve_binary_expr(Ast_Binary *binary) {
@@ -544,18 +550,17 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
 void Resolver::resolve_unary_expr(Ast_Unary *unary) {
     resolve_expr(unary->elem);
 
-    if (unary->elem->invalid()) {
+    if (unary->elem->valid()) {
+        if (unary->elem->type_info->is_custom_type()) {
+            resolve_user_defined_operator_expr(unary);
+        } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
+            report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
+            unary->poison();
+        }
+        unary->type_info = unary->elem->type_info;
+    } else {
         unary->poison();
     }
-
-    if (unary->elem->type_info->is_custom_type()) {
-        resolve_user_defined_operator_expr(unary);
-    } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
-        report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
-        unary->poison();
-    }
-
-    unary->type_info = unary->elem->type_info;
 }
 
 void Resolver::resolve_literal(Ast_Literal *literal) {
@@ -578,6 +583,11 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
     if (found) {
         resolve_decl(found);
         ident->type_info = found->type_info;
+
+        if (!(found->decl_flags & DECL_FLAG_TYPE)) {
+            ident->expr_flags |= EXPR_FLAG_LVALUE;
+        }
+
         if (found->invalid()) ident->poison();
     } else {
         report_undeclared(ident);
@@ -664,6 +674,11 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
     if (field_expr->elem->invalid()) {
         field_expr->poison();
         return;
+    }
+
+    //@Note Prevents from assigning to type declarations, such as enums (e.g Token_Kind.Name = ...)
+    if (field_expr->elem->expr_flags & EXPR_FLAG_LVALUE) {
+        field_expr->expr_flags |= EXPR_FLAG_LVALUE;
     }
 
     Ast_Type_Info *field_expr_type = field_expr->elem->type_info;
@@ -949,6 +964,14 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
     Auto_Array<Enum_Field_Info> enum_fields;
     for (int i = 0; i < enum_decl->fields.count; i++) {
         Ast_Enum_Field *field = enum_decl->fields[i];
+
+        for (int j = 0; j < enum_fields.count; j++) {
+            Enum_Field_Info field_info = enum_fields[j];
+            if (atoms_match(field->name, field_info.name)) {
+                report_ast_error(field, "'%s' is already declared in enum.\n", field->name->data);
+                break;
+            }
+        }
 
         Enum_Field_Info field_info = {};
         field_info.name = field->name;

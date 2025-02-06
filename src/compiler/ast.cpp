@@ -38,6 +38,7 @@ internal Ast_Scope *ast_scope(Scope_Flags flags) {
 
 internal Ast_Type_Decl *ast_type_decl(Atom *name, Ast_Type_Info *type_info) {
     Ast_Type_Decl *result = AST_NEW(Ast_Type_Decl);
+    result->decl_flags |= DECL_FLAG_TYPE;
     result->name = name;
     result->type_info = type_info;
     return result;
@@ -72,6 +73,7 @@ internal Ast_Operator_Proc *ast_operator_proc(Token_Kind op, Auto_Array<Ast_Para
 
 internal Ast_Struct *ast_struct(Atom *name, Auto_Array<Ast_Struct_Field*> fields) {
     Ast_Struct *result = AST_NEW(Ast_Struct);
+    result->decl_flags |= DECL_FLAG_TYPE;
     result->name = name;
     result->fields = fields;
     return result;
@@ -86,6 +88,7 @@ internal Ast_Struct_Field *ast_struct_field(Atom *name, Ast_Type_Defn *type_defn
 
 internal Ast_Enum *ast_enum(Atom *name, Auto_Array<Ast_Enum_Field*> fields) {
     Ast_Enum *result = AST_NEW(Ast_Enum);
+    result->decl_flags |= DECL_FLAG_TYPE;
     result->name = name;
     result->fields = fields;
     return result;
@@ -159,7 +162,6 @@ internal Ast_Ident *ast_ident(Token name) {
     Ast_Ident *result = AST_NEW(Ast_Ident);
     result->mark_range(name.start, name.end);
     result->name = name.name;
-    result->expr_flags |= EXPR_FLAG_LVALUE;
     return result;
 }
 
@@ -244,7 +246,6 @@ internal Ast_Field *ast_field_expr(Ast_Expr *elem, Ast_Field *parent) {
     Ast_Field *result = AST_NEW(Ast_Field);
     if (parent) parent->field_next = result;
     result->elem = elem;
-    result->expr_flags |= EXPR_FLAG_LVALUE;
     return result;
 }
 

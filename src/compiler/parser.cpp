@@ -675,6 +675,10 @@ Ast_Type_Defn *Parser::parse_type() {
         }
     }
 
+    if (type->type_defn_kind != TYPE_DEFN_NAME) {
+        report_parser_error(lexer, "expected a type, got '%s'.\n", string_from_token(lexer->peek()));
+        type->poison();
+    }
     return type;
 }
 
@@ -688,7 +692,7 @@ Ast_Param *Parser::parse_param() {
 
         Ast_Type_Defn *type_defn = parse_type();
         if (!type_defn) {
-            report_parser_error(lexer, "missing type after ':'.\n");
+            report_parser_error(lexer, "expected type after ':', got '%s'.\n", string_from_token(lexer->peek()));
         }
         param = ast_param(name.name, type_defn);
     }
@@ -792,7 +796,6 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
         report_parser_error(lexer, "expected operator, got '%s'.\n", string_from_token(op.kind));
         goto ERROR_HANDLE;
     } 
-
 
     return proc;
 
