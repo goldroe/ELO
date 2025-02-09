@@ -66,6 +66,20 @@ internal String8 path_file_name(String8 path) {
     return result;
 }
 
+internal String8 path_remove_extension(String8 path) {
+    String8 result = path;
+    for (u64 i = path.count; i >= 0; i--) {
+        if (is_separator(path.data[i - 1])) {
+            return path;
+        }
+
+        if (path.data[i - 1] == '.') {
+            return str8(path.data, i - 1);
+        }
+    }
+    return result;
+}
+
 internal String8 path_strip_dir_name(Arena *arena, String8 path) {
     String8 result = str8_zero();
     if (path.data) {
