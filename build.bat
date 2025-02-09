@@ -22,7 +22,7 @@ if %MODE%==release (
   exit /B 2
 )
 
-set LIBS=user32.lib shell32.lib kernel32.lib shlwapi.lib
+set LIBS=user32.lib shell32.lib kernel32.lib shlwapi.lib bin\llvm\LLVM-C.lib
 set COMMON_LINKER_FLAGS=/INCREMENTAL:NO /OPT:REF
 set LINKER_FLAGS=%COMMON_LINKER_FLAGS% %LIBS%
 
