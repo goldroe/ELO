@@ -1,11 +1,6 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-enum Type_Match_Result {
-    TYPE_MATCH_EQUAL,
-    TYPE_MATCH_ERROR_INDIRECTION,
-};
-
 enum Builtin_Type_Kind {
     BUILTIN_TYPE_POISON,
     BUILTIN_TYPE_VOID,
@@ -48,6 +43,7 @@ struct Ast_Type_Info : Ast {
     Ast_Decl *decl;
     Atom *name;
     int bytes;
+    Builtin_Type_Kind builtin_kind;
 
     inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }

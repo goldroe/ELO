@@ -29,6 +29,7 @@ internal Ast_Type_Info *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8
     Ast_Type_Info *result = ast_type_info(atom, flags | TYPE_FLAG_BUILTIN);
     result->bytes = bytes;
     g_builtin_types[builtin_kind] = result;
+    result->builtin_kind = builtin_kind;
     return result;
 }
 

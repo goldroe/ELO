@@ -1,6 +1,23 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+enum Operator_Kind {
+    OPERATOR_NIL,
+    OPERATOR_ADD,
+    OPERATOR_SUB,
+    OPERATOR_MUL,
+    OPERATOR_DIV,
+    OPERATOR_MOD,
+    OPERATOR_EQUAL,
+    OPERATOR_NOT_EQUAL,
+    OPERATOR_LSHIFT,
+    OPERATOR_RSHIFT,
+    OPERATOR_OR,
+    OPERATOR_AND,
+    OPERATOR_INDEX,
+    OPERATOR_XOR,
+};
+
 struct Report;
 
 struct Source_File {
@@ -132,6 +149,7 @@ struct Token {
         String8 strlit;
         u64 intlit;
         f64 floatlit;
+        Operator_Kind op;
     };
 };
 

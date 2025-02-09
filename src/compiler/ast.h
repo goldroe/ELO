@@ -12,6 +12,7 @@ struct Ast_Type_Defn;
 struct Ast_Type_Info;
 struct Ast_Scope;
 struct Ast_Ident;
+struct Ast_Operator_Proc;
 
 enum Ast_Kind {
     AST_NIL,
@@ -93,7 +94,6 @@ struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
     Auto_Array<Ast_Decl*> declarations;
     Ast_Scope *scope = NULL;
-
 };
 
 enum Scope_Flags {
@@ -155,6 +155,7 @@ struct Ast_Type_Defn : Ast {
 enum Expr_Flags {
     EXPR_FLAG_NIL         = 0,
     EXPR_FLAG_LVALUE      = (1<<0),
+    EXPR_FLAG_OP_CALL     = (1<<1),
     EXPR_FLAG_ARITHMETIC  = (1<<10),
     EXPR_FLAG_BOOLEAN     = (1<<11),
     EXPR_FLAG_ASSIGNMENT  = (1<<12),
@@ -166,6 +167,7 @@ struct Ast_Expr : Ast {
     Ast_Expr() { kind = AST_EXPR; }
     Expr_Flags expr_flags;
     Ast_Type_Info *type_info;
+    void operator+(Ast_Expr *lhs);
 };
 
 struct Ast_Paren : Ast_Expr {
@@ -227,11 +229,13 @@ struct Ast_Call : Ast_Expr {
 struct Ast_Ident : Ast_Expr {
     Ast_Ident() { kind = AST_IDENT; }
     Atom *name;
+    Ast_Decl *reference;
 };
 
 struct Ast_Unary : Ast_Expr {
     Ast_Unary() { kind = AST_UNARY; }
     Token op;
+    Ast_Operator_Proc *proc;
     Ast_Expr *elem;
 };
 
@@ -254,6 +258,7 @@ struct Ast_Cast : Ast_Expr {
 struct Ast_Binary : Ast_Expr {
     Ast_Binary() { kind = AST_BINARY; }
     Token op;
+    Ast_Operator_Proc *proc;
     Ast_Expr *lhs;
     Ast_Expr *rhs;
 };
@@ -324,6 +329,7 @@ struct Ast_Proc : Ast_Decl {
     Ast_Type_Defn *return_type_defn = NULL;
     Ast_Scope *scope = NULL;
     Ast_Block *block = NULL;
+    b32 returns = false;
 };
 
 struct Ast_Operator_Proc : Ast_Proc {

@@ -21,6 +21,7 @@
 #include "types.h"
 #include "parser.h"
 #include "resolve.h"
+#include "llvm_backend.h"
 
 #include "report.cpp"
 #include "atom.cpp"
@@ -29,6 +30,8 @@
 #include "types.cpp"
 #include "parser.cpp"
 #include "resolve.cpp"
+
+#include "llvm_backend.cpp"
 
 global Auto_Array<Source_File*> g_source_files;
 global Arena *temp_arena;
@@ -123,6 +126,8 @@ int main(int argc, char **argv) {
     Resolver *resolver = new Resolver(parser);
     resolver->resolve();
 
+    int error_count = 0;
+
     //@Note Print reports
     for (int file_idx = 0; file_idx < g_source_files.count; file_idx++) {
         Source_File *file = g_source_files[file_idx];
@@ -132,6 +137,9 @@ int main(int argc, char **argv) {
         for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
             Report *report = file->reports[report_idx];
             print_report(report, file);
+
+            if (report->kind == REPORT_PARSER_ERROR || report->kind == REPORT_AST_ERROR) error_count++;
+
             for (int i = 0; i < report->children.count; i++) {
                 Report *child = report->children[i];
                 print_report(child, file);
@@ -140,9 +148,18 @@ int main(int argc, char **argv) {
 
     }
 
-    printf("compilation terminated.\n");
+    if (error_count == 0) {
+        g_llvm_backend_arena = arena_alloc(get_virtual_allocator(), MB(2));
+        llvm_backend(g_source_files[0], parser->root);
+    }
+
+    if (error_count > 0) {
+        printf("%d error(s).\n", error_count);
+    }
 
     compiler_exit();
+
+    printf("done.\n");
 
     return 0;
 }

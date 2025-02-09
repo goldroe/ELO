@@ -754,6 +754,10 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
     if (is_operator(op.kind)) {
         lexer->next_token();
 
+        if (op.kind == TOKEN_LBRACKET) {
+            expect(TOKEN_RBRACKET);
+        }
+
         if (!lexer->eat(TOKEN_COLON2)) {
             report_parser_error(lexer, "missing '::', got '%s'.\n", string_from_token(lexer->peek()));
         }

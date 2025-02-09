@@ -198,6 +198,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
 void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(current_proc->type_info);
+    current_proc->returns = true;
 
     if (return_stmt->expr) {
         resolve_expr(return_stmt->expr);
@@ -263,6 +264,8 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     scope->declarations.push(var);
 
     resolve_block(for_stmt->block);
+
+    exit_scope();
 }
 
 void Resolver::resolve_stmt(Ast_Stmt *stmt) {
@@ -432,6 +435,7 @@ void Resolver::resolve_user_defined_operator_expr(Ast_Binary *expr) {
         resolve_proc_header(proc);
         Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
         expr->type_info = proc_type->return_type;
+        expr->proc = proc;
     } else {
         report_ast_error(expr, "no binary operator'%s' (%s,%s) found.\n", string_from_token(op.kind), string_from_type(expr->lhs->type_info), string_from_type(expr->rhs->type_info));
         expr->poison();
@@ -443,6 +447,7 @@ void Resolver::resolve_user_defined_operator_expr(Ast_Unary *expr) {
     Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(op.kind, expr->elem->type_info);
     if (proc) {
         expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+        expr->proc = proc;
     } else {
         report_ast_error(expr, "no unary operator'%s' (%s) found.\n", string_from_token(op.kind), string_from_type(expr->elem->type_info));
         expr->poison();
@@ -475,6 +480,7 @@ void Resolver::resolve_binary_expr(Ast_Binary *binary) {
     if (lhs->valid() && rhs->valid()) {
         if (!lhs->type_info->is_custom_type() && !rhs->type_info->is_custom_type()) {
             resolve_builtin_operator_expr(binary);  
+            binary->expr_flags |= EXPR_FLAG_OP_CALL;
         } else {
             resolve_user_defined_operator_expr(binary);
         }
@@ -553,6 +559,7 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
     if (unary->elem->valid()) {
         if (unary->elem->type_info->is_custom_type()) {
             resolve_user_defined_operator_expr(unary);
+            unary->expr_flags |= EXPR_FLAG_OP_CALL;
         } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
             report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
             unary->poison();
@@ -588,6 +595,8 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
             ident->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
+        ident->reference = found;
+
         if (found->invalid()) ident->poison();
     } else {
         report_undeclared(ident);
@@ -609,6 +618,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         bool overloaded = false;
         Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
         if (decl) {
+            name->reference = decl;
             elem_type = decl->type_info;
         } else {
             if (overloaded) {
@@ -1049,8 +1059,8 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
         return;
     } else if (decl->resolve_state == RESOLVE_STARTED &&
         decl != current_proc) {
-        report_ast_error(decl, "cyclical resolution.\n");
-        Assert(0);
+        report_ast_error(decl, "Illegal recursive declaration.\n");
+        decl->poison();
         return;
     }
 
