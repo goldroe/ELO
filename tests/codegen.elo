@@ -1,0 +1,12 @@
+
+fun :: (n: s32) -> s32 {
+ x := 4;
+ y := 10;
+ z := x + y;
+ return 0;
+}
+
+main :: () {
+ fun(10);
+ return;
+}
