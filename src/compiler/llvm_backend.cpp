@@ -1,18 +1,40 @@
 
-global Arena *g_llvm_backend_arena;
-global Ast_Scope *g_llvm_scope;
-global LLVMModuleRef g_module;
-global LB_Procedure *g_current_procedure;
+global Arena *lb_arena;
+global Ast_Scope *lb_g_scope;
+global LLVMModuleRef lb_g_module;
+global LB_Procedure *lb_g_procedure;
+global Auto_Array<LB_Procedure*> lb_g_global_procedures;
 
-#define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T))
+#define lb_alloc(T) (T*)lb_backend_alloc(sizeof(T))
 
-internal void *llvm_backend_alloc(size_t bytes) {
-    void *result = (void *)push_array(g_llvm_backend_arena, u8, bytes);
+internal LB_Procedure *lb_get_procedure(Atom *name) {
+    for (int i = 0; i < lb_g_global_procedures.count; i++) {
+        LB_Procedure *procedure = lb_g_global_procedures[i];
+        if (atoms_match(procedure->name, name)) {
+            return procedure;
+        }
+    }
+    return NULL;
+}
+
+internal void *lb_backend_alloc(size_t bytes) {
+    void *result = (void *)push_array(lb_arena, u8, bytes);
     MemoryZero(result, bytes);
     return result;
 }
 
-internal LLVMTypeRef lb_type(Ast_Type_Info *type_info) {
+internal LB_Var *lb_get_named_value(Atom *name) {
+    LB_Procedure *proc = lb_g_procedure;
+    for (int i = 0; i < proc->named_values.count; i++) {
+        LB_Var *var = proc->named_values[i];
+        if (atoms_match(var->name, name)) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
+internal LLVMTypeRef lb_gen_type(Ast_Type_Info *type_info) {
     LLVMTypeRef result = 0;
 
     if (type_info->type_flags & TYPE_FLAG_BUILTIN) {
@@ -59,13 +81,16 @@ internal LLVMTypeRef lb_type(Ast_Type_Info *type_info) {
     return result;
 }
 
-internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
-    LLVMValueRef result = 0;
+internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
+    LLVMValueRef result = NULL;
+
+    LLVMBuilderRef builder = lb_g_procedure->builder;
+
     switch (expr->kind) {
     case AST_PAREN:
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
-        LLVMValueRef value = lb_expr(builder, paren->elem);
+        LLVMValueRef value = lb_gen_expr(paren->elem);
         result = value;
         break;
     }
@@ -73,7 +98,7 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
     case AST_LITERAL:
     {
         Ast_Literal *literal = static_cast<Ast_Literal*>(expr);
-        LLVMTypeRef type_ref = lb_type(literal->type_info);
+        LLVMTypeRef type_ref = lb_gen_type(literal->type_info);
 
         LLVMValueRef value = NULL;
         if (literal->literal_flags & LITERAL_INT) {
@@ -99,14 +124,38 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
     {
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
         Assert(ident->reference);
-        // LLVMValueRef value = 
+        LB_Var *var = lb_get_named_value(ident->name);
+        Assert(var);
+        result = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
         break;
     }
 
     case AST_CALL:
     {
+        Ast_Call *call = static_cast<Ast_Call*>(expr);
+        if (call->elem->kind == AST_IDENT) {
+            Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
+            LB_Procedure *procedure = lb_get_procedure(ident->name);
+
+            Auto_Array<LLVMValueRef> args;
+            if (call->arguments.count) {
+                args.reserve(call->arguments.count);
+                for (int i = 0; i < call->arguments.count; i++) {
+                    Ast_Expr *arg = call->arguments[i];
+                    LLVMValueRef arg_value = lb_gen_expr(arg);
+                    args.push(arg_value);
+                }
+            }
+
+            LLVMValueRef value = LLVMBuildCall2(builder, procedure->type, procedure->value, args.data, (unsigned int)args.count, "calltmp");
+
+            result = value;
+        } else {
+            
+        }
         break;
     }
+    
     case AST_INDEX:
     {
         break;
@@ -115,6 +164,7 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
     {
         break;
     }
+    
     case AST_ITERATOR:
     {
         break;
@@ -123,7 +173,7 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
     case AST_UNARY:
     {
         Ast_Unary *unary = static_cast<Ast_Unary*>(expr);
-        LLVMValueRef elem_value = lb_expr(builder, unary->elem);
+        LLVMValueRef elem_value = lb_gen_expr(unary->elem);
         LLVMValueRef value = NULL;
 
         if (unary->expr_flags & EXPR_FLAG_OP_CALL) {
@@ -131,10 +181,10 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
         } else {
             switch (unary->op.kind) {
             case TOKEN_MINUS:
-                value = LLVMBuildNeg(builder, elem_value, "neg_u");
+                value = LLVMBuildNeg(builder, elem_value, "negtmp");
                 break;
             case TOKEN_BANG:
-                value = LLVMBuildNot(builder, elem_value, "not_u");
+                value = LLVMBuildNot(builder, elem_value, "nottmp");
                 break;
             }
         }
@@ -158,8 +208,8 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
         Ast_Binary *binary = static_cast<Ast_Binary*>(expr);
         LLVMValueRef value = NULL;
 
-        LLVMValueRef lhs = lb_expr(builder, binary->lhs);
-        LLVMValueRef rhs = lb_expr(builder, binary->rhs);
+        LLVMValueRef lhs = lb_gen_expr(binary->lhs);
+        LLVMValueRef rhs = lb_gen_expr(binary->rhs);
 
         if (binary->expr_flags & EXPR_FLAG_OP_CALL) {
             
@@ -169,31 +219,31 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
                 Assert(0);
                 break;
             case TOKEN_PLUS:
-                value = LLVMBuildAdd(builder, lhs, rhs, "add_b");
+                value = LLVMBuildAdd(builder, lhs, rhs, "addtmp");
                 break;
             case TOKEN_MINUS:
-                value = LLVMBuildSub(builder, lhs, rhs, "sub_b");
+                value = LLVMBuildSub(builder, lhs, rhs, "subtmp");
                 break;
             case TOKEN_STAR:
-                value = LLVMBuildMul(builder, lhs, rhs, "mul_b");
+                value = LLVMBuildMul(builder, lhs, rhs, "multmp");
                 break;
             case TOKEN_SLASH:
-                value = LLVMBuildSDiv(builder, lhs, rhs, "sdiv_b");
+                value = LLVMBuildSDiv(builder, lhs, rhs, "sdivtmp");
                 break;
             case TOKEN_MOD:
-                value = LLVMBuildSRem(builder, lhs, rhs, "srem_b");
+                value = LLVMBuildSRem(builder, lhs, rhs, "sremtmp");
                 break;
             case TOKEN_LSHIFT:
-                value = LLVMBuildShl(builder, lhs, rhs, "shl_b");
+                value = LLVMBuildShl(builder, lhs, rhs, "shltmp");
                 break;
             case TOKEN_RSHIFT:
-                value = LLVMBuildLShr(builder, lhs, rhs, "shr_b");
+                value = LLVMBuildLShr(builder, lhs, rhs, "shrtmp");
                 break;
             case TOKEN_BAR:
-                value = LLVMBuildOr(builder, lhs, rhs, "or_b");
+                value = LLVMBuildOr(builder, lhs, rhs, "ortmp");
                 break;
             case TOKEN_AMPER:
-                value = LLVMBuildAnd(builder, lhs, rhs, "and_b");
+                value = LLVMBuildAnd(builder, lhs, rhs, "andtmp");
                 break;
             case TOKEN_AND:
                 Assert(0); // unsupported
@@ -235,26 +285,48 @@ internal LLVMValueRef lb_expr(LLVMBuilderRef builder, Ast_Expr *expr) {
     return result;
 }
 
-internal void lb_block(LLVMBuilderRef builder, LLVMBasicBlockRef basic_block, Ast_Block *block) {
+internal void lb_block(LLVMBasicBlockRef basic_block, Ast_Block *block) {
     for (int i = 0; i < block->statements.count; i++) {
         Ast_Stmt *stmt = block->statements[i];
-        lb_stmt(builder, basic_block, stmt);
+        lb_stmt(basic_block, stmt);
     }
 }
 
-internal void lb_stmt(LLVMBuilderRef builder, LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
+internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
+    LLVMBuilderRef builder = lb_g_procedure->builder;
+
     switch (stmt->kind) {
     case AST_EXPR_STMT:
     {
         Ast_Expr_Stmt *expr_stmt = static_cast<Ast_Expr_Stmt*>(stmt);
         Ast_Expr *expr = expr_stmt->expr;
-        LLVMValueRef value = lb_expr(builder, expr);
+        LLVMValueRef value = lb_gen_expr(expr);
         break;
     }
+
     case AST_DECL_STMT:
     {
+        Ast_Decl_Stmt *decl_stmt = static_cast<Ast_Decl_Stmt*>(stmt);
+        Ast_Decl *decl = decl_stmt->decl;
+        if (decl->kind == AST_VAR) {
+            Ast_Var *var_node = static_cast<Ast_Var*>(decl);
+            LB_Var *var = lb_alloc(LB_Var);
+            var->name = var_node->name;
+            var->decl = decl;
+            var->type = lb_gen_type(var_node->type_info);
+            var->alloca = LLVMBuildAlloca(builder, var->type, (char *)var->name->data);
+            lb_g_procedure->named_values.push(var);
+
+            if (var_node->init) {
+                LLVMValueRef init_value = lb_gen_expr(var_node->init);
+                LLVMBuildStore(builder, init_value, var->alloca);
+            } else {
+                
+            }
+        }
         break;
     }
+
     case AST_IF:
     {
         break;
@@ -280,7 +352,7 @@ internal void lb_stmt(LLVMBuilderRef builder, LLVMBasicBlockRef basic_block, Ast
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         if (return_stmt->expr) {
-            LLVMValueRef ret_value = lb_expr(builder, return_stmt->expr);
+            LLVMValueRef ret_value = lb_gen_expr(return_stmt->expr);
             LLVMBuildRet(builder, ret_value);
         } else {
             LLVMBuildRetVoid(builder);
@@ -299,57 +371,82 @@ internal void lb_stmt(LLVMBuilderRef builder, LLVMBasicBlockRef basic_block, Ast
     }
 }
 
-internal LB_Procedure *lb_procedure(Ast_Proc *proc) {
+internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
     Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
 
-    LB_Procedure *lb_proc = llvm_alloc(LB_Procedure);
-    lb_proc->name = (const char *)proc->name->data;
+    LB_Procedure *lb_proc = lb_alloc(LB_Procedure);
+    lb_proc->name = proc->name;
     lb_proc->proc = proc;
 
-    if (proc->parameters.count) lb_proc->parameters.reserve(proc_type->parameters.count);
+    if (proc->parameters.count) lb_proc->parameter_types.reserve(proc_type->parameters.count);
 
     for (int i = 0; i < proc_type->parameters.count; i++) {
         Ast_Type_Info *type_info = proc_type->parameters[i];
-        LLVMTypeRef type = lb_type(type_info);
-        lb_proc->parameters.push(type);
+        LLVMTypeRef type = lb_gen_type(type_info);
+        lb_proc->parameter_types.push(type);
     }
-    lb_proc->return_type = lb_type(proc_type->return_type);
+    lb_proc->return_type = lb_gen_type(proc_type->return_type);
 
-    lb_proc->proc_type = LLVMFunctionType(lb_proc->return_type, lb_proc->parameters.data, (int)lb_proc->parameters.count, false);
+    lb_proc->type = LLVMFunctionType(lb_proc->return_type, lb_proc->parameter_types.data, (int)lb_proc->parameter_types.count, false);
 
-    lb_proc->value = LLVMAddFunction(g_module, lb_proc->name, lb_proc->proc_type);
+    lb_proc->value = LLVMAddFunction(lb_g_module, (char *)lb_proc->name->data, lb_proc->type);
 
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(lb_proc->value, "entry");
+    lb_proc->entry = LLVMAppendBasicBlock(lb_proc->value, "entry");
 
-    LLVMBuilderRef builder = LLVMCreateBuilder();
-    LLVMPositionBuilderAtEnd(builder, entry);
+    lb_proc->builder = LLVMCreateBuilder();
+    LLVMPositionBuilderAtEnd(lb_proc->builder, lb_proc->entry);
 
-    lb_block(builder, entry, proc->block);
+    for (int i = 0; i < proc->parameters.count; i++) {
+        Ast_Param *param = proc->parameters[i];
+        LLVMValueRef param_value = LLVMGetParam(lb_proc->value, i);
+        LLVMTypeRef param_type = lb_proc->parameter_types[i];
 
-    if (proc->type_info == type_void) {
-        LLVMBuildRetVoid(builder);
+        LB_Var *var = lb_alloc(LB_Var);
+        var->name = param->name;
+        var->decl = param;
+        var->type = lb_gen_type(param->type_info);
+        var->alloca = LLVMBuildAlloca(lb_proc->builder, param_type, (char *)var->name->data);
+        lb_proc->named_values.push(var);
+
+        LLVMBuildStore(lb_proc->builder, param_value, var->alloca);
     }
 
+    lb_g_global_procedures.push(lb_proc);
     return lb_proc;
 }
 
-internal void llvm_backend(Source_File *file, Ast_Root *root) {
-    g_module = LLVMModuleCreateWithName("my_module");
+internal void lb_gen_procedure_body(LB_Procedure *procedure) {
+    lb_g_procedure = procedure;
+
+    lb_block(procedure->entry, procedure->proc->block);
+
+    if (procedure->proc->type_info == type_void) {
+        LLVMBuildRetVoid(procedure->builder);
+    }
+}
+
+internal void lb_backend(Source_File *file, Ast_Root *root) {
+    lb_g_module = LLVMModuleCreateWithName("my_module");
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
         if (decl->kind == AST_PROC) {
             Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
-            LB_Procedure *lb_proc = lb_procedure(proc);
+            LB_Procedure *lb_proc = lb_gen_procedure(proc);
         }
     }
 
+    for (int proc_idx = 0; proc_idx < lb_g_global_procedures.count; proc_idx++) {
+        LB_Procedure *procedure = lb_g_global_procedures[proc_idx];
+        lb_gen_procedure_body(procedure);
+    }
+
     char *error = NULL;
-    LLVMVerifyModule(g_module, LLVMPrintMessageAction, &error);
+    LLVMVerifyModule(lb_g_module, LLVMPrintMessageAction, &error);
     LLVMDisposeMessage(error);
 
     char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
-    if (LLVMWriteBitcodeToFile(g_module, gen_file_path) != 0) {
+    if (LLVMWriteBitcodeToFile(lb_g_module, gen_file_path) != 0) {
         fprintf(stderr, "error writing bitcode to file %s, skipping\n", gen_file_path);
     }
 }

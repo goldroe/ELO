@@ -145,12 +145,11 @@ int main(int argc, char **argv) {
                 print_report(child, file);
             }
         }
-
     }
 
     if (error_count == 0) {
-        g_llvm_backend_arena = arena_alloc(get_virtual_allocator(), MB(2));
-        llvm_backend(g_source_files[0], parser->root);
+        lb_arena = arena_alloc(get_virtual_allocator(), MB(2));
+        lb_backend(g_source_files[0], parser->root);
     }
 
     if (error_count > 0) {

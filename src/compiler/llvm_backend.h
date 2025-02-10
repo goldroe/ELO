@@ -19,15 +19,28 @@
 // #include <llvm-c/Transforms/Utils.h>
 // #include <llvm-c/Transforms/Vectorize.h>
 
-struct LB_Procedure {
-    const char *name;
-    LLVMValueRef value;
-    Auto_Array<LLVMTypeRef> parameters;
-    LLVMTypeRef return_type;
-    LLVMTypeRef proc_type;
-    Ast_Proc *proc;
+struct LB_Var {
+    Atom *name;
+    Ast_Decl *decl;
+    LLVMTypeRef type;
+    LLVMValueRef alloca;
 };
 
-internal void lb_stmt(LLVMBuilderRef builder, LLVMBasicBlockRef basic_block, Ast_Stmt *stmt);
+struct LB_Procedure {
+    Atom *name;
+    Ast_Proc *proc;
+
+    LLVMValueRef value;
+    LLVMTypeRef type;
+    Auto_Array<LLVMTypeRef> parameter_types;
+    LLVMTypeRef return_type;
+
+    LLVMBuilderRef builder;
+    LLVMBasicBlockRef entry;
+
+    Auto_Array<LB_Var*> named_values;
+};
+
+internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt);
 
 #endif // LLVM_BACKEND_H
