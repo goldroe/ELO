@@ -2,11 +2,11 @@
 fun :: (n: s32) -> s32 {
  x := 4;
  y := 10;
- z := x + y;
- return 0;
+ z := x + y + n;
+ return z;
 }
 
 main :: () {
- fun(10);
+ f := -fun(10);
  return;
 }
