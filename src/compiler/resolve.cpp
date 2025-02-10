@@ -480,8 +480,8 @@ void Resolver::resolve_binary_expr(Ast_Binary *binary) {
     if (lhs->valid() && rhs->valid()) {
         if (!lhs->type_info->is_custom_type() && !rhs->type_info->is_custom_type()) {
             resolve_builtin_operator_expr(binary);  
-            binary->expr_flags |= EXPR_FLAG_OP_CALL;
         } else {
+            binary->expr_flags |= EXPR_FLAG_OP_CALL;
             resolve_user_defined_operator_expr(binary);
         }
     }
@@ -558,8 +558,8 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
 
     if (unary->elem->valid()) {
         if (unary->elem->type_info->is_custom_type()) {
-            resolve_user_defined_operator_expr(unary);
             unary->expr_flags |= EXPR_FLAG_OP_CALL;
+            resolve_user_defined_operator_expr(unary);
         } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
             report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
             unary->poison();
@@ -755,6 +755,14 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
             range->poison();
         }
     }
+
+    if (range->lhs->valid() && range->rhs->valid()) {
+        if (typecheck(range->lhs->type_info, range->rhs->type_info)) {
+            
+        } else {
+            report_ast_error(range, "mismatched types in range expression ('%s' and '%s').\n", string_from_type(range->lhs->type_info), string_from_type(range->rhs->type_info));
+        }
+    }
 }
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
@@ -893,6 +901,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
     for (int i = 0; i < proc->parameters.count; i++) {
         Ast_Param *param = proc->parameters[i];
         Ast_Type_Info *type = resolve_type(param->type_defn);
+        param->type_info = type;
         parameters.push(type);
     }
     if (return_type == NULL) return_type = type_void;
