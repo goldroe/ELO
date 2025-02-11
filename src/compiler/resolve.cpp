@@ -208,7 +208,8 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
             return_stmt->poison();
         }
 
-        if (!typecheck(proc_type->return_type, return_stmt->expr->type_info)) {
+        if (return_stmt->expr->valid() &&
+            !typecheck(proc_type->return_type, return_stmt->expr->type_info)) {
             report_ast_error(return_stmt->expr, "invalid return type '%s', procedure returns '%s'.\n", string_from_type(return_stmt->expr->type_info), string_from_type(proc_type->return_type)); 
             return_stmt->poison();
         }
