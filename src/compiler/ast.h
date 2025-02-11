@@ -41,6 +41,7 @@ enum Ast_Kind {
     AST_ADDRESS,
     AST_DEREF,
     AST_BINARY,
+    AST_ASSIGNMENT,
     AST_FIELD,
     AST_RANGE,
     AST_TERNARY,
@@ -253,6 +254,14 @@ struct Ast_Cast : Ast_Expr {
     Ast_Cast() { kind = AST_CAST; }
     Ast_Type_Defn *type_defn;
     Ast_Expr *elem;
+};
+
+struct Ast_Assignment : Ast_Expr {
+    Ast_Assignment() { kind = AST_ASSIGNMENT; }
+    Token op;
+    Ast_Operator_Proc *proc;
+    Ast_Expr *lhs;
+    Ast_Expr *rhs;
 };
 
 struct Ast_Binary : Ast_Expr {

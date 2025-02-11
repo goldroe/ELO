@@ -455,6 +455,27 @@ void Resolver::resolve_user_defined_operator_expr(Ast_Unary *expr) {
     }
 }
 
+void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
+    Ast_Expr *lhs = assignment->lhs;
+    Ast_Expr *rhs = assignment->rhs;
+
+    resolve_expr(lhs);
+    resolve_expr(rhs);
+
+    if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
+        report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
+        assignment->poison();
+    }
+
+    if (lhs->valid() && rhs->valid()) {
+        if (!typecheck(lhs->type_info, rhs->type_info)) {
+            report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+            assignment->poison();
+        }
+    }
+    assignment->type_info = lhs->type_info;
+}
+
 void Resolver::resolve_binary_expr(Ast_Binary *binary) {
     Ast_Expr *lhs = binary->lhs;
     Ast_Expr *rhs = binary->rhs;
@@ -503,11 +524,20 @@ void Resolver::resolve_cast_expr(Ast_Cast *cast) {
 
 void Resolver::resolve_index_expr(Ast_Index *index) {
     resolve_expr(index->lhs);
+    resolve_expr(index->rhs);
+
     if (index->lhs->valid() && index->lhs->type_info->is_indirection_type()) {
         index->type_info = index->lhs->type_info->deref();
     } else {
         report_ast_error(index->lhs, "'%s' is not a pointer or array type.\n", string_from_expr(index->lhs));
         index->poison();
+    }
+
+    if (index->rhs->valid()) {
+        if (!index->rhs->type_info->is_integral_type()) {
+            report_ast_error(index->rhs, "array subscript is not of integral type.\n");
+            index->poison();
+        }
     }
 }
 
@@ -870,6 +900,13 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
     {
         Ast_Binary *binary = static_cast<Ast_Binary*>(expr);
         resolve_binary_expr(binary);
+        break;
+    }
+
+    case AST_ASSIGNMENT:
+    {
+        Ast_Assignment *assignment = static_cast<Ast_Assignment*>(expr);
+        resolve_assignment_expr(assignment);
         break;
     }
 

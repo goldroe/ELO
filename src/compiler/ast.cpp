@@ -277,10 +277,13 @@ internal Ast_Binary *ast_boolean_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
     return result;
 }
 
-internal Ast_Binary *ast_assignment_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Binary *result = ast_binary_expr(op, lhs, rhs);
+internal Ast_Assignment *ast_assignment_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
+    Ast_Assignment *result = AST_NEW(Ast_Assignment);
     result->expr_flags |= EXPR_FLAG_ASSIGNMENT;
     result->expr_flags |= EXPR_FLAG_LVALUE;
+    result->op = op;
+    result->lhs = lhs;
+    result->rhs = rhs;
     return result;
 }
 

@@ -53,10 +53,10 @@ Ast_Expr *Parser::parse_primary_expr() {
     case TOKEN_LPAREN:
     {
         lexer->next_token();
-        Ast_Expr *expr = parse_expr();
+        Ast_Expr *elem = parse_expr();
         Source_Pos end = lexer->current().end;
         expect(TOKEN_RPAREN);
-        Ast_Paren *paren = ast_paren(expr);
+        Ast_Paren *paren = ast_paren(elem);
         paren->mark_range(token.start, end);
         expr = paren;
         break;
@@ -156,7 +156,11 @@ Ast_Expr *Parser::parse_postfix_expr() {
         case TOKEN_LBRACKET:
         {
             lexer->next_token();
-            Ast_Expr *index = parse_postfix_expr();
+            Ast_Expr *index = parse_expr();
+            if (index == NULL) {
+                report_parser_error(lexer, "missing subscript expression.\n");
+            }
+
             Source_Pos end = lexer->current().end;
             expect(TOKEN_RBRACKET);
             Ast_Index *index_expr = ast_index_expr(op, expr, index);
@@ -385,7 +389,7 @@ Ast_Expr *Parser::parse_assignment_expr() {
         Token op = lexer->current();
         if (is_assignment_op(op.kind)) {
             lexer->next_token();
-            Ast_Expr *rhs = parse_assignment_expr();
+            Ast_Expr *rhs = parse_expr();
             expr = ast_assignment_expr(op, expr, rhs);
             if (rhs == NULL) {
                 report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));

@@ -52,6 +52,8 @@ struct Resolver {
     void resolve_user_defined_operator_expr(Ast_Binary *expr);
     void resolve_binary_expr(Ast_Binary *binary);
 
+    void resolve_assignment_expr(Ast_Assignment *assignment);
+
     void resolve_user_defined_operator_expr(Ast_Unary *expr);
     void resolve_unary_expr(Ast_Unary *unary);
 
