@@ -13,12 +13,14 @@ make_foo :: (x: s32, y: s32) -> Foo {
 fun :: (n: s32) -> s32 {
  x := 4;
  y := 10;
- z := x + y + n;
- return z;
+ z := x;
+ return x + y + z;
 }
 
 main :: () {
- f := -fun(10);
- foo := make_foo(380, 1100);
+ a := 0;
+ b := -fun(10);
+ c := make_foo(380, 1100);
+ a = 1 + 1;
  return;
 }
