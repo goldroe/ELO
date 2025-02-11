@@ -57,7 +57,7 @@ internal unsigned lb_get_struct_field_index(Ast_Struct *struct_decl, Atom *name)
     return result;
 } 
 
-internal LLVMTypeRef lb_gen_type(Ast_Type_Info *type_info) {
+internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
     LLVMTypeRef result = 0;
 
     if (type_info->type_flags & TYPE_FLAG_BUILTIN) {
@@ -107,8 +107,8 @@ internal LLVMTypeRef lb_gen_type(Ast_Type_Info *type_info) {
     return result;
 }
 
-internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
-    LLVMValueRef result = NULL;
+internal LB_Value lb_build_expr(Ast_Expr *expr) {
+    LB_Value result = {};
 
     LLVMBuilderRef builder = lb_g_procedure->builder;
 
@@ -116,33 +116,32 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
     case AST_PAREN:
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
-        LLVMValueRef value = lb_gen_expr(paren->elem);
-        result = value;
+        result = lb_build_expr(paren->elem);
         break;
     }
 
     case AST_LITERAL:
     {
         Ast_Literal *literal = static_cast<Ast_Literal*>(expr);
-        LLVMTypeRef type_ref = lb_gen_type(literal->type_info);
+        LLVMTypeRef type = lb_build_type(literal->type_info);
 
-        LLVMValueRef value = NULL;
         if (literal->literal_flags & LITERAL_INT) {
-            value = LLVMConstInt(type_ref, literal->int_val, (literal->type_info->type_flags & TYPE_FLAG_SIGNED));
+            result.value = LLVMConstInt(type, literal->int_val, (literal->type_info->type_flags & TYPE_FLAG_SIGNED));
         } else if (literal->literal_flags & LITERAL_FLOAT) {
-            value = LLVMConstReal(type_ref, literal->float_val);
+            result.value = LLVMConstReal(type, literal->float_val);
         } else if (literal->literal_flags & LITERAL_STRING) {
         } else if (literal->literal_flags & LITERAL_BOOLEAN) {
-            value = LLVMConstInt(type_ref, literal->int_val, false);
+            result.value = LLVMConstInt(type, literal->int_val, false);
         }
-        Assert(value);
+        Assert(result.value);
 
-        result = value;
+        result.type = type; 
         break;
     }
 
     case AST_COMPOUND_LITERAL:
     {
+        Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(expr);
         break;
     }
 
@@ -152,13 +151,16 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
         Assert(ident->reference);
         LB_Var *var = lb_get_named_value(ident->name);
         Assert(var);
-        result = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
+
+        result.value = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
+        result.type = lb_build_type(ident->type_info);
         break;
     }
 
     case AST_CALL:
     {
         Ast_Call *call = static_cast<Ast_Call*>(expr);
+        //@Todo Get address of this, instead of this
         if (call->elem->kind == AST_IDENT) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
             LB_Procedure *procedure = lb_get_procedure(ident->name);
@@ -168,14 +170,13 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
                 args.reserve(call->arguments.count);
                 for (int i = 0; i < call->arguments.count; i++) {
                     Ast_Expr *arg = call->arguments[i];
-                    LLVMValueRef arg_value = lb_gen_expr(arg);
-                    args.push(arg_value);
+                    LB_Value arg_value = lb_build_expr(arg);
+                    args.push(arg_value.value);
                 }
             }
 
-            LLVMValueRef value = LLVMBuildCall2(builder, procedure->type, procedure->value, args.data, (unsigned int)args.count, "calltmp");
-
-            result = value;
+            result.value = LLVMBuildCall2(builder, procedure->type, procedure->value, args.data, (unsigned int)args.count, "calltmp");
+            result.type = lb_build_type(call->type_info);
         } else {
             
         }
@@ -186,6 +187,7 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
     {
         break;
     }
+
     case AST_CAST:
     {
         break;
@@ -199,23 +201,22 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
     case AST_UNARY:
     {
         Ast_Unary *unary = static_cast<Ast_Unary*>(expr);
-        LLVMValueRef elem_value = lb_gen_expr(unary->elem);
-        LLVMValueRef value = NULL;
+        LB_Value elem_value = lb_build_expr(unary->elem);
 
         if (unary->expr_flags & EXPR_FLAG_OP_CALL) {
             
         } else {
             switch (unary->op.kind) {
             case TOKEN_MINUS:
-                value = LLVMBuildNeg(builder, elem_value, "negtmp");
+                result.value = LLVMBuildNeg(builder, elem_value.value, "negtmp");
                 break;
             case TOKEN_BANG:
-                value = LLVMBuildNot(builder, elem_value, "nottmp");
+                result.value = LLVMBuildNot(builder, elem_value.value, "nottmp");
                 break;
             }
         }
 
-        result = value;
+        result.type = lb_build_type(unary->type_info);
         break;
     }
 
@@ -232,10 +233,9 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
     case AST_BINARY:
     {
         Ast_Binary *binary = static_cast<Ast_Binary*>(expr);
-        LLVMValueRef value = NULL;
 
-        LLVMValueRef lhs = lb_gen_expr(binary->lhs);
-        LLVMValueRef rhs = lb_gen_expr(binary->rhs);
+        LB_Value lhs = lb_build_expr(binary->lhs);
+        LB_Value rhs = lb_build_expr(binary->rhs);
 
         if (binary->expr_flags & EXPR_FLAG_OP_CALL) {
             
@@ -245,35 +245,32 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
                 Assert(0);
                 break;
 
-            case TOKEN_EQ:
-                value = LLVMBuildStore(builder, rhs, lhs);
-                break;
             case TOKEN_PLUS:
-                value = LLVMBuildAdd(builder, lhs, rhs, "addtmp");
+                result.value = LLVMBuildAdd(builder, lhs.value, rhs.value, "addtmp");
                 break;
             case TOKEN_MINUS:
-                value = LLVMBuildSub(builder, lhs, rhs, "subtmp");
+                result.value = LLVMBuildSub(builder, lhs.value, rhs.value, "subtmp");
                 break;
             case TOKEN_STAR:
-                value = LLVMBuildMul(builder, lhs, rhs, "multmp");
+                result.value = LLVMBuildMul(builder, lhs.value, rhs.value, "multmp");
                 break;
             case TOKEN_SLASH:
-                value = LLVMBuildSDiv(builder, lhs, rhs, "sdivtmp");
+                result.value = LLVMBuildSDiv(builder, lhs.value, rhs.value, "sdivtmp");
                 break;
             case TOKEN_MOD:
-                value = LLVMBuildSRem(builder, lhs, rhs, "sremtmp");
+                result.value = LLVMBuildSRem(builder, lhs.value, rhs.value, "sremtmp");
                 break;
             case TOKEN_LSHIFT:
-                value = LLVMBuildShl(builder, lhs, rhs, "shltmp");
+                result.value = LLVMBuildShl(builder, lhs.value, rhs.value, "shltmp");
                 break;
             case TOKEN_RSHIFT:
-                value = LLVMBuildLShr(builder, lhs, rhs, "shrtmp");
+                result.value = LLVMBuildLShr(builder, lhs.value, rhs.value, "shrtmp");
                 break;
             case TOKEN_BAR:
-                value = LLVMBuildOr(builder, lhs, rhs, "ortmp");
+                result.value = LLVMBuildOr(builder, lhs.value, rhs.value, "ortmp");
                 break;
             case TOKEN_AMPER:
-                value = LLVMBuildAnd(builder, lhs, rhs, "andtmp");
+                result.value = LLVMBuildAnd(builder, lhs.value, rhs.value, "andtmp");
                 break;
             case TOKEN_AND:
                 Assert(0); // unsupported
@@ -298,16 +295,48 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
                 break;
             }
         }
+        result.type = lb_build_type(binary->type_info);
+        
+        break;
+    }
 
-        result = value;
+    case AST_ASSIGNMENT:
+    {
+        Ast_Assignment *assignment = static_cast<Ast_Assignment*>(expr);
+        //@Todo Multiple assignments not supported!
+        Assert(assignment->rhs->kind != AST_ASSIGNMENT);
+
+
+        //@Todo Get address of variable, instead of this
+        if (assignment->rhs->kind == AST_COMPOUND_LITERAL) {
+            Assert(assignment->lhs->kind == AST_IDENT);
+            Ast_Ident *ident = static_cast<Ast_Ident*>(assignment->lhs);
+            LB_Var *var = lb_get_named_value(ident->name);
+
+            Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(assignment->rhs);
+            for (int i = 0; i < compound->elements.count; i++) {
+                Ast_Expr *elem = compound->elements[i];
+                LB_Value elem_value = lb_build_expr(elem);
+                LLVMBuildStructGEP2(builder, lb_build_type(elem->type_info), var->alloca, i, "fieldtmp");
+            }
+        } else {
+            LB_Value rhs = lb_build_expr(assignment->rhs);
+            if (assignment->lhs->kind == AST_IDENT) {
+                LB_Var *var = lb_get_named_value(static_cast<Ast_Ident*>(assignment->lhs)->name);
+                LLVMBuildStore(builder, rhs.value, var->alloca);
+            } else {
+                LB_Value lhs = lb_build_expr(assignment->lhs);
+                LLVMBuildStore(builder, rhs.value, lhs.value);
+            }
+        }
         break;
     }
 
     case AST_FIELD:
     {
         Ast_Field *field = static_cast<Ast_Field*>(expr);
-        LLVMValueRef value = NULL;
 
+        //@Todo Get address of field, instead of this
         if (field->elem->kind == AST_IDENT) {
             Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
             Ast_Var *var_node = static_cast<Ast_Var*>(name->reference);
@@ -317,17 +346,15 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
                 Ast_Struct *struct_decl = static_cast<Ast_Struct*>(var_node->type_info->decl);
                 Atom *next = static_cast<Ast_Ident*>(field->field_next->elem)->name;
                 unsigned index = lb_get_struct_field_index(struct_decl, next);
-                value = LLVMBuildStructGEP2(builder, var->type, var->alloca, index, "fieldtmp");
+                result.value = LLVMBuildStructGEP2(builder, var->type, var->alloca, index, "fieldtmp");
             }
-
-            // LLVMValue value = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
         } else {
         }
 
-        Assert(value);
-        result = value;
+        result.type = lb_build_type(field->type_info);
         break;
     }
+
     case AST_RANGE:
     {
         break;
@@ -351,7 +378,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     {
         Ast_Expr_Stmt *expr_stmt = static_cast<Ast_Expr_Stmt*>(stmt);
         Ast_Expr *expr = expr_stmt->expr;
-        LLVMValueRef value = lb_gen_expr(expr);
+        LB_Value value = lb_build_expr(expr);
         break;
     }
 
@@ -364,13 +391,13 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
             LB_Var *var = lb_alloc(LB_Var);
             var->name = var_node->name;
             var->decl = decl;
-            var->type = lb_gen_type(var_node->type_info);
+            var->type = lb_build_type(var_node->type_info);
             var->alloca = LLVMBuildAlloca(builder, var->type, (char *)var->name->data);
             lb_g_procedure->named_values.push(var);
 
             if (var_node->init) {
-                LLVMValueRef init_value = lb_gen_expr(var_node->init);
-                LLVMBuildStore(builder, init_value, var->alloca);
+                LB_Value init_value = lb_build_expr(var_node->init);
+                LLVMBuildStore(builder, init_value.value, var->alloca);
             } else {
             }
         }
@@ -402,8 +429,8 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         if (return_stmt->expr) {
-            LLVMValueRef ret_value = lb_gen_expr(return_stmt->expr);
-            LLVMBuildRet(builder, ret_value);
+            LB_Value ret = lb_build_expr(return_stmt->expr);
+            LLVMBuildRet(builder, ret.value);
         } else {
             LLVMBuildRetVoid(builder);
         }
@@ -421,7 +448,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     }
 }
 
-internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
+internal LB_Procedure *lb_build_procedure(Ast_Proc *proc) {
     Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
 
     LB_Procedure *lb_proc = lb_alloc(LB_Procedure);
@@ -432,10 +459,10 @@ internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
 
     for (int i = 0; i < proc_type->parameters.count; i++) {
         Ast_Type_Info *type_info = proc_type->parameters[i];
-        LLVMTypeRef type = lb_gen_type(type_info);
+        LLVMTypeRef type = lb_build_type(type_info);
         lb_proc->parameter_types.push(type);
     }
-    lb_proc->return_type = lb_gen_type(proc_type->return_type);
+    lb_proc->return_type = lb_build_type(proc_type->return_type);
 
     lb_proc->type = LLVMFunctionType(lb_proc->return_type, lb_proc->parameter_types.data, (int)lb_proc->parameter_types.count, false);
 
@@ -454,7 +481,7 @@ internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
         LB_Var *var = lb_alloc(LB_Var);
         var->name = param->name;
         var->decl = param;
-        var->type = lb_gen_type(param->type_info);
+        var->type = lb_build_type(param->type_info);
         var->alloca = LLVMBuildAlloca(lb_proc->builder, param_type, (char *)var->name->data);
         lb_proc->named_values.push(var);
 
@@ -463,7 +490,7 @@ internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
     return lb_proc;
 }
 
-internal void lb_gen_procedure_body(LB_Procedure *procedure) {
+internal void lb_build_procedure_body(LB_Procedure *procedure) {
     lb_g_procedure = procedure;
 
     lb_block(procedure->entry, procedure->proc->block);
@@ -473,7 +500,7 @@ internal void lb_gen_procedure_body(LB_Procedure *procedure) {
     }
 }
 
-internal LB_Struct *lb_gen_struct(Ast_Struct *struct_decl) {
+internal LB_Struct *lb_build_struct(Ast_Struct *struct_decl) {
     LB_Struct *lb_struct = lb_alloc(LB_Struct);
     lb_struct->name = struct_decl->name;
 
@@ -483,7 +510,7 @@ internal LB_Struct *lb_gen_struct(Ast_Struct *struct_decl) {
 
     for (int i = 0; i < struct_decl->fields.count; i++) {
         Ast_Struct_Field *field = struct_decl->fields[i];
-        LLVMTypeRef field_type = lb_gen_type(field->type_info);
+        LLVMTypeRef field_type = lb_build_type(field->type_info);
         lb_struct->element_types.push(field_type);
     }
 
@@ -492,19 +519,19 @@ internal LB_Struct *lb_gen_struct(Ast_Struct *struct_decl) {
     return lb_struct;
 } 
 
-internal void lb_gen_decl(Ast_Decl *decl) {
+internal void lb_build_decl(Ast_Decl *decl) {
     switch (decl->kind) {
     case AST_PROC:
     {
         Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
-        LB_Procedure *lb_proc = lb_gen_procedure(proc);
+        LB_Procedure *lb_proc = lb_build_procedure(proc);
         lb_g_global_procedures.push(lb_proc);
         break;
     }
     case AST_STRUCT:
     {
         Ast_Struct *struct_decl = static_cast<Ast_Struct*>(decl);
-        LB_Struct *lb_struct = lb_gen_struct(struct_decl);
+        LB_Struct *lb_struct = lb_build_struct(struct_decl);
         lb_g_structs.push(lb_struct);
         break;
     }
@@ -516,12 +543,12 @@ internal void lb_backend(Source_File *file, Ast_Root *root) {
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
-        lb_gen_decl(decl);
+        lb_build_decl(decl);
     }
 
     for (int proc_idx = 0; proc_idx < lb_g_global_procedures.count; proc_idx++) {
         LB_Procedure *procedure = lb_g_global_procedures[proc_idx];
-        lb_gen_procedure_body(procedure);
+        lb_build_procedure_body(procedure);
     }
 
     char *error = NULL;

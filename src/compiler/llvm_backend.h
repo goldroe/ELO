@@ -11,6 +11,11 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
+struct LB_Value {
+    LLVMValueRef value;
+    LLVMTypeRef type;
+};
+
 struct LB_Struct {
     Atom *name;
     Ast_Struct *decl;
