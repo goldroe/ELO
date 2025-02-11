@@ -8,11 +8,12 @@ void report_redeclaration(Ast_Decl *decl) {
     report_ast_error(decl, "redeclaration of '%s'.\n", decl->name->data);
 }
 
-internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos) {
+internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
     Report *result = push_array(g_report_arena, Report, 1);
     result->kind = kind;
     result->message = message;
     result->source_pos = pos; 
+    result->node = node;
 
     if (kind == REPORT_NOTE) {
         Assert(file->reports.count > 0);
@@ -21,6 +22,12 @@ internal Report *submit_report(Source_File *file, Report_Kind kind, String8 mess
     } else {
         file->reports.push(result);
     }
+
+
+#ifdef _DEBUG
+    print_report(result, file);
+#endif
+
     return result;
 } 
 
@@ -54,8 +61,7 @@ internal void report_ast_error(Ast *node, const char *fmt, ...) {
 
     Source_File *file = node->start.file;
 
-    Report *report = submit_report(file, REPORT_AST_ERROR, message, node->start);
-    report->node = node;
+    Report *report = submit_report(file, REPORT_AST_ERROR, message, node->start, node);
 }
 
 internal int report_sort_compare(const void *a, const void *b) {
