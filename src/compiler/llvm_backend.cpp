@@ -4,6 +4,7 @@ global Ast_Scope *lb_g_scope;
 global LLVMModuleRef lb_g_module;
 global LB_Procedure *lb_g_procedure;
 global Auto_Array<LB_Procedure*> lb_g_global_procedures;
+global Auto_Array<LB_Struct*> lb_g_structs;
 
 #define lb_alloc(T) (T*)lb_backend_alloc(sizeof(T))
 
@@ -33,6 +34,28 @@ internal LB_Var *lb_get_named_value(Atom *name) {
     }
     return NULL;
 }
+
+internal LB_Struct *lb_get_struct(Atom *name) {
+    for (int i = 0; i < lb_g_structs.count; i++) {
+        LB_Struct *s = lb_g_structs[i];
+        if (atoms_match(s->name, name)) {
+            return s;
+        }
+    }
+    return NULL;
+}
+    
+internal unsigned lb_get_struct_field_index(Ast_Struct *struct_decl, Atom *name) {
+    unsigned result = 0;
+    for (int i = 0; i < struct_decl->fields.count; i++) {
+        Ast_Struct_Field *field = struct_decl->fields[i];
+        if (atoms_match(field->name, name)) {
+            result = i;
+            break;
+        }
+    }
+    return result;
+} 
 
 internal LLVMTypeRef lb_gen_type(Ast_Type_Info *type_info) {
     LLVMTypeRef result = 0;
@@ -76,6 +99,9 @@ internal LLVMTypeRef lb_gen_type(Ast_Type_Info *type_info) {
             result = LLVMDoubleType();
             break;
         }
+    } else if (type_info->type_flags & TYPE_FLAG_STRUCT) {
+        LB_Struct *lb_struct = lb_get_struct(type_info->decl->name);
+        result = lb_struct->type;
     }
 
     return result;
@@ -218,6 +244,10 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
             default:
                 Assert(0);
                 break;
+
+            case TOKEN_EQ:
+                value = LLVMBuildStore(builder, rhs, lhs);
+                break;
             case TOKEN_PLUS:
                 value = LLVMBuildAdd(builder, lhs, rhs, "addtmp");
                 break;
@@ -275,6 +305,27 @@ internal LLVMValueRef lb_gen_expr(Ast_Expr *expr) {
 
     case AST_FIELD:
     {
+        Ast_Field *field = static_cast<Ast_Field*>(expr);
+        LLVMValueRef value = NULL;
+
+        if (field->elem->kind == AST_IDENT) {
+            Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+            Ast_Var *var_node = static_cast<Ast_Var*>(name->reference);
+            LB_Var *var = lb_get_named_value(name->name);
+
+            if (var_node->type_info->type_flags & TYPE_FLAG_STRUCT) {
+                Ast_Struct *struct_decl = static_cast<Ast_Struct*>(var_node->type_info->decl);
+                Atom *next = static_cast<Ast_Ident*>(field->field_next->elem)->name;
+                unsigned index = lb_get_struct_field_index(struct_decl, next);
+                value = LLVMBuildStructGEP2(builder, var->type, var->alloca, index, "fieldtmp");
+            }
+
+            // LLVMValue value = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
+        } else {
+        }
+
+        Assert(value);
+        result = value;
         break;
     }
     case AST_RANGE:
@@ -321,7 +372,6 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
                 LLVMValueRef init_value = lb_gen_expr(var_node->init);
                 LLVMBuildStore(builder, init_value, var->alloca);
             } else {
-                
             }
         }
         break;
@@ -410,8 +460,6 @@ internal LB_Procedure *lb_gen_procedure(Ast_Proc *proc) {
 
         LLVMBuildStore(lb_proc->builder, param_value, var->alloca);
     }
-
-    lb_g_global_procedures.push(lb_proc);
     return lb_proc;
 }
 
@@ -425,15 +473,50 @@ internal void lb_gen_procedure_body(LB_Procedure *procedure) {
     }
 }
 
+internal LB_Struct *lb_gen_struct(Ast_Struct *struct_decl) {
+    LB_Struct *lb_struct = lb_alloc(LB_Struct);
+    lb_struct->name = struct_decl->name;
+
+    lb_struct->type = LLVMStructCreateNamed(LLVMGetGlobalContext(), (char *)lb_struct->name->data);
+
+    lb_struct->element_types.reserve(struct_decl->fields.count);
+
+    for (int i = 0; i < struct_decl->fields.count; i++) {
+        Ast_Struct_Field *field = struct_decl->fields[i];
+        LLVMTypeRef field_type = lb_gen_type(field->type_info);
+        lb_struct->element_types.push(field_type);
+    }
+
+    LLVMStructSetBody(lb_struct->type, lb_struct->element_types.data, (unsigned)lb_struct->element_types.count, false);
+
+    return lb_struct;
+} 
+
+internal void lb_gen_decl(Ast_Decl *decl) {
+    switch (decl->kind) {
+    case AST_PROC:
+    {
+        Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
+        LB_Procedure *lb_proc = lb_gen_procedure(proc);
+        lb_g_global_procedures.push(lb_proc);
+        break;
+    }
+    case AST_STRUCT:
+    {
+        Ast_Struct *struct_decl = static_cast<Ast_Struct*>(decl);
+        LB_Struct *lb_struct = lb_gen_struct(struct_decl);
+        lb_g_structs.push(lb_struct);
+        break;
+    }
+    }
+}
+
 internal void lb_backend(Source_File *file, Ast_Root *root) {
     lb_g_module = LLVMModuleCreateWithName("my_module");
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
-        if (decl->kind == AST_PROC) {
-            Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
-            LB_Procedure *lb_proc = lb_gen_procedure(proc);
-        }
+        lb_gen_decl(decl);
     }
 
     for (int proc_idx = 0; proc_idx < lb_g_global_procedures.count; proc_idx++) {

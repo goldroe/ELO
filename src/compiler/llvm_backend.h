@@ -11,13 +11,13 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
-// #include <llvm-c/Transforms/AggressiveInstCombine.h>
-// #include <llvm-c/Transforms/InstCombine.h>
-// #include <llvm-c/Transforms/IPO.h>
-// #include <llvm-c/Transforms/PassManagerBuilder.h>
-// #include <llvm-c/Transforms/Scalar.h>
-// #include <llvm-c/Transforms/Utils.h>
-// #include <llvm-c/Transforms/Vectorize.h>
+struct LB_Struct {
+    Atom *name;
+    Ast_Struct *decl;
+
+    LLVMTypeRef type;
+    Auto_Array<LLVMTypeRef> element_types;
+};
 
 struct LB_Var {
     Atom *name;
