@@ -12,3 +12,6 @@
 GPATH
 GRTAGS
 GTAGS
+
+*.bc
+*.ll
