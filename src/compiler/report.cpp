@@ -58,10 +58,7 @@ internal void report_ast_error(Ast *node, const char *fmt, ...) {
     va_start(args, fmt);
     String8 message = str8_pushfv(g_report_arena, fmt, args);
     va_end(args);
-
-    Source_File *file = node->start.file;
-
-    Report *report = submit_report(file, REPORT_AST_ERROR, message, node->start, node);
+    Report *report = submit_report(node->file, REPORT_AST_ERROR, message, node->start, node);
 }
 
 internal int report_sort_compare(const void *a, const void *b) {
@@ -124,15 +121,10 @@ internal void print_report(Report *report, Source_File *file) {
     {
         printf("%s:%llu:%llu: error: %s", file->path.data, report->node->start.line, report->node->start.col, report->message.data);
         String8 buffer = file->text;
-        u64 line_begin = report->node->start.index - report->node->start.col;
         u64 line_end = get_next_line_boundary(buffer, report->node->start.index);
 
-        if (line_begin != report->node->start.col) {
-            String8 pre = str8(buffer.data + line_begin, report->node->start.col);
-            printf("\x1B[38;2;168;153;132m");
-            printf("%.*s", (int)pre.count, pre.data);
-            printf(ANSI_RESET);
-        }
+        //@Note Print indent
+        printf("        ");
 
         u64 end_index = report->node->end.index;
         if (end_index > line_end) end_index = line_end;
