@@ -23,6 +23,7 @@ enum Ast_Kind {
 
     AST_TYPE_DEFN,
     AST_TYPE_INFO,
+    AST_ARRAY_TYPE_INFO,
     AST_STRUCT_TYPE_INFO,
     AST_ENUM_TYPE_INFO,
     AST_PROC_TYPE_INFO,
@@ -67,6 +68,8 @@ enum Ast_Kind {
     AST_FOR,
     AST_BLOCK,
     AST_RETURN,
+    AST_CONTINUE,
+    AST_BREAK,
     AST_GOTO,
     AST_DEFER,
 
@@ -77,14 +80,16 @@ struct Ast {
     Ast *parent = NULL;
     Ast_Kind kind = AST_NIL;
 
+    Source_File *file = NULL;
     Source_Pos start = {};
     Source_Pos end = {};
+
     b32 is_poisoned = 0;
     b32 visited = 0;
 
-    void mark_start(Source_Pos pos) { start = pos; }
-    void mark_end(Source_Pos pos)   { end = pos; }
-    void mark_range(Source_Pos p0, Source_Pos p1) { start = p0; end = p1; }
+    void mark_start(Source_Pos pos) { start = pos; file = pos.file; }
+    void mark_end(Source_Pos pos)   { end = pos; file = pos.file; }
+    void mark_range(Source_Pos p0, Source_Pos p1) { start = p0; end = p1; file = p0.file; }
 
     bool invalid() { return is_poisoned; }
     bool valid() { return !is_poisoned; }
@@ -155,8 +160,9 @@ struct Ast_Type_Defn : Ast {
 
 enum Expr_Flags {
     EXPR_FLAG_NIL         = 0,
-    EXPR_FLAG_LVALUE      = (1<<0),
-    EXPR_FLAG_OP_CALL     = (1<<1),
+    EXPR_FLAG_CONSTANT    = (1<<0),
+    EXPR_FLAG_LVALUE      = (1<<1),
+    EXPR_FLAG_OP_CALL     = (1<<9),
     EXPR_FLAG_ARITHMETIC  = (1<<10),
     EXPR_FLAG_BOOLEAN     = (1<<11),
     EXPR_FLAG_ASSIGNMENT  = (1<<12),
@@ -168,7 +174,13 @@ struct Ast_Expr : Ast {
     Ast_Expr() { kind = AST_EXPR; }
     Expr_Flags expr_flags;
     Ast_Type_Info *type_info;
-    void operator+(Ast_Expr *lhs);
+
+    union {
+        s64 eval_integer;
+        f64 eval_float;
+    };
+
+    bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
 };
 
 struct Ast_Paren : Ast_Expr {
@@ -184,9 +196,8 @@ struct Ast_Index : Ast_Expr {
 
 struct Ast_Field : Ast_Expr {
     Ast_Field() { kind = AST_FIELD; }
-    Ast_Field *field_prev;
-    Ast_Field *field_next;
-    b32 is_parent = false; 
+    Ast_Field *field_parent;
+    Ast_Field *field_child;
     Ast_Expr *elem;
 };
 
@@ -407,6 +418,14 @@ struct Ast_Block : Ast_Stmt {
 struct Ast_Return : Ast_Stmt {
     Ast_Return() { kind = AST_RETURN; }
     Ast_Expr *expr;
+};
+
+struct Ast_Break : Ast_Stmt {
+    Ast_Break() { kind = AST_BREAK; }
+};
+
+struct Ast_Continue : Ast_Stmt {
+    Ast_Continue() { kind = AST_CONTINUE; }
 };
 
 #endif // AST_H

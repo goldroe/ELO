@@ -1,5 +1,16 @@
 global Arena *g_ast_arena;
 
+Ast_Enum_Field *lookup_field(Ast_Enum *enum_decl, Atom *name) {
+    Ast_Enum_Field *result = NULL;
+    for (int i = 0; i < enum_decl->fields.count; i++) {
+        Ast_Enum_Field *field = enum_decl->fields[i];
+        if (atoms_match(name, field->name)) {
+            return field;
+        }
+    }
+    return NULL;
+}
+
 Ast_Decl *Ast_Scope::lookup(Atom *name) {
     for (Ast_Scope *scope = this; scope; scope = scope->scope_parent) {
         for (int i = 0; i < scope->declarations.count; i++) {
@@ -121,8 +132,8 @@ internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base) {
     return result;
 }
 
-internal Ast_Type_Info *ast_array_type_info(Ast_Type_Info *base) {
-    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+internal Ast_Array_Type_Info *ast_array_type_info(Ast_Type_Info *base) {
+    Ast_Array_Type_Info *result = AST_NEW(Ast_Array_Type_Info);
     result->base = base;
     result->type_flags = TYPE_FLAG_ARRAY;
     return result;
@@ -167,6 +178,7 @@ internal Ast_Ident *ast_ident(Token name) {
 
 internal Ast_Literal *ast_intlit(Token token) {
     Ast_Literal *result = AST_NEW(Ast_Literal);
+    result->expr_flags |= EXPR_FLAG_CONSTANT;
     result->literal_flags = LITERAL_INT;
     result->int_val = token.intlit;
     return result;
@@ -174,6 +186,7 @@ internal Ast_Literal *ast_intlit(Token token) {
 
 internal Ast_Literal *ast_floatlit(Token token) {
     Ast_Literal *result = AST_NEW(Ast_Literal);
+    result->expr_flags |= EXPR_FLAG_CONSTANT;
     result->literal_flags = LITERAL_FLOAT;
     result->float_val = token.floatlit;
     return result;
@@ -181,6 +194,7 @@ internal Ast_Literal *ast_floatlit(Token token) {
 
 internal Ast_Literal *ast_strlit(Token token) {
     Ast_Literal *result = AST_NEW(Ast_Literal);
+    result->expr_flags |= EXPR_FLAG_CONSTANT;
     result->literal_flags = LITERAL_STRING;
     result->str_val = token.strlit;
     return result;
@@ -242,10 +256,10 @@ internal Ast_Call *ast_call_expr(Token op, Ast_Expr *elem, Auto_Array<Ast_Expr*>
     return result;
 }
 
-internal Ast_Field *ast_field_expr(Ast_Expr *elem, Ast_Field *parent) {
+internal Ast_Field *ast_field_expr(Ast_Field *parent, Ast_Expr *elem) {
     Ast_Field *result = AST_NEW(Ast_Field);
-    if (parent) parent->field_next = result;
     result->elem = elem;
+    result->field_parent = parent;
     return result;
 }
 
@@ -284,6 +298,7 @@ internal Ast_Assignment *ast_assignment_expr(Token op, Ast_Expr *lhs, Ast_Expr *
     result->op = op;
     result->lhs = lhs;
     result->rhs = rhs;
+    result->mark_range(lhs->start, rhs->end);
     return result;
 }
 
@@ -483,14 +498,13 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_FIELD:
     {
         Ast_Field *field = (Ast_Field *)expr;
-        cstring str = string_from_expr(field->elem);
-
-        //@Todo Instead of going forward to next fields, start from the parent field and go until you reach this field. I think this only works for the parent field expression.
-        for (Ast_Field *node = field->field_next; node; node = node->field_next) {
-            Assert(node->elem->kind == AST_IDENT);
-            Ast_Ident *name = static_cast<Ast_Ident*>(node->elem);
+        cstring str = "";
+        if (field->field_parent) {
+            str = string_from_expr(field->field_parent);
             str = cstring_append(str, ".");
-            str = cstring_append(str, (char *)name->name->data);
+            str = cstring_append(str, string_from_expr(field->elem));
+        } else {
+            str = string_from_expr(field->elem);
         }
         result = str;
         break;
