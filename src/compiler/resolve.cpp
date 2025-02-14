@@ -362,6 +362,7 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
                 else type = decl->type_info;
             } else {
                 report_ast_error(t, "undeclared type '%s'.\n", t->name->data);
+                return type_poison;
             }
             break;
         }
@@ -373,7 +374,24 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
         }
         case TYPE_DEFN_ARRAY:
         {
-            Ast_Type_Info *array = ast_array_type_info(type);
+            Ast_Expr *array_size = t->array_size;
+            Ast_Array_Type_Info *array = ast_array_type_info(type);
+
+            if (array_size) {
+                resolve_expr(array_size);
+                if (array_size->type_info->is_integral_type()) {
+                    if (array_size->is_constant()) {
+                        array->array_size = array_size->eval_integer;
+                        array->is_fixed = true;
+                    } else {
+                        array->is_dynamic = true;
+                    }
+                } else {
+                    report_ast_error(array_size, "array size is not of integral type.\n");
+                    return type_poison;
+                }
+            }
+
             type = array;
             break;
         }
@@ -604,12 +622,15 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
 void Resolver::resolve_literal(Ast_Literal *literal) {
     if (literal->literal_flags & LITERAL_INT) {
         literal->type_info = type_s32;
+        literal->eval_integer = (s64)literal->int_val;
     } else if (literal->literal_flags & LITERAL_FLOAT) {
         literal->type_info = type_f32;
+        literal->eval_float = literal->float_val;
     } else if (literal->literal_flags & LITERAL_STRING) {
         // literal->type_info = type_string;
     } else if (literal->literal_flags & LITERAL_BOOLEAN) {
         literal->type_info = type_bool;
+        literal->eval_integer = literal->int_val;
     } else {
         Assert(0);
     }
@@ -710,63 +731,64 @@ void Resolver::resolve_deref_expr(Ast_Deref *deref) {
 }
 
 void Resolver::resolve_field_expr(Ast_Field *field_expr) {
-    resolve_expr(field_expr->elem);
-
-    if (field_expr->elem->invalid()) {
-        field_expr->poison();
-        return;
+    Ast_Field *parent = field_expr->field_parent;
+    if (parent) {
+        resolve_expr(parent);  
+        if (parent->invalid()) {
+            field_expr->poison();
+            return;
+        }
     }
 
-    //@Note Prevents from assigning to type declarations, such as enums (e.g Token_Kind.Name = ...)
-    if (field_expr->elem->expr_flags & EXPR_FLAG_LVALUE) {
-        field_expr->expr_flags |= EXPR_FLAG_LVALUE;
-    }
+    //@Note This is the base field so just assign its element's type info
+    if (!parent) {
+        Ast_Expr *elem = field_expr->elem;
+        resolve_expr(elem);
 
-    Ast_Type_Info *field_expr_type = field_expr->elem->type_info;
-    for (Ast_Field *field = field_expr->field_next; field; field = field->field_next) {
-        Assert(field->elem->kind == AST_IDENT);
-        
-        Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
-
-        Ast_Type_Info *struct_type = NULL;
-        Ast_Type_Info *enum_type = NULL;
-        if (field_expr_type->type_flags & TYPE_FLAG_POINTER) {
-            Ast_Type_Info *type = field_expr_type->deref();
-            if (type->type_flags & TYPE_FLAG_STRUCT) {
-                struct_type = type;
-            }
-        } else if (field_expr_type->type_flags & TYPE_FLAG_STRUCT) {
-            struct_type = field_expr_type;
-        } else if (field_expr_type->type_flags & TYPE_FLAG_ENUM) {
-            enum_type = field_expr_type;
+        if (elem->type_info->is_struct_type()) {
+            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
-        if (struct_type) {
-            Ast_Struct_Field *struct_field = struct_lookup((Ast_Struct *)struct_type->decl, name->name);
+        if (!elem->type_info->is_struct_type() && !elem->type_info->is_enum_type()) {
+            report_ast_error(field_expr, "'%s' is not a struct, enum or struct pointer type.\n", string_from_expr(field_expr));
+            field_expr->poison();
+        }
+
+        field_expr->type_info = elem->type_info;
+    } else {
+        Assert(field_expr->elem->kind == AST_IDENT);
+
+        Ast_Ident *name = static_cast<Ast_Ident*>(field_expr->elem);
+
+        if (parent->type_info->is_struct_type()) {
+            Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(parent->type_info);
+            Ast_Struct_Field *struct_field = struct_lookup(static_cast<Ast_Struct*>(struct_type->decl), name->name);
             if (struct_field) {
-                field_expr_type = struct_field->type_info;
+                field_expr->type_info = struct_field->type_info;
+                field_expr->expr_flags |= EXPR_FLAG_LVALUE;
             } else {
-                report_ast_error(field->elem, "'%s' is not a member of '%s'.\n", name->name->data, struct_type->decl->name->data);
+                report_ast_error(field_expr, "'%s' is not a member of '%s'.\n", name->name->data, struct_type->decl->name->data);
                 field_expr->poison();
-                break;
             }
-        } else if (enum_type) {
+        } else if (parent->type_info->is_enum_type()) {
+            if (parent->field_parent && parent->field_parent->type_info->is_struct_type()) {
+                report_ast_error(field_expr, "cannot field expression of enum inside struct.\n");
+                field_expr->poison();
+            }
+
+            Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(parent->type_info);
             Ast_Enum_Field *enum_field = enum_lookup((Ast_Enum *)enum_type->decl, name->name);
             if (enum_field) {
-                field_expr_type = type_s32;
+                field_expr->type_info = type_s32;
             } else {
-                report_ast_error(field, "'%s' is not a member of '%s'.\n", name->name->data, enum_type->decl->name->data);
+                report_ast_error(field_expr, "'%s' is not a member of '%s'.\n", name->name->data, enum_type->decl->name->data);
                 field_expr->poison();
-                break;
             }
         } else {
-            report_ast_error(field->field_prev, "'%s' is not a struct, enum, or pointer to struct type.\n", string_from_expr(field->field_prev)); 
+            report_ast_error(field_expr, "left .'%s' is not a struct/enum type.\n", (char *)name->name->data);
             field_expr->poison();
-            break;
         }
     }
-
-    field_expr->type_info = field_expr_type;
 }
 
 void Resolver::resolve_range_expr(Ast_Range *range) {
