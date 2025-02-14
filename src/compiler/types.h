@@ -47,9 +47,12 @@ struct Ast_Type_Info : Ast {
 
     inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }
+    inline bool is_enum_type() { return type_flags & TYPE_FLAG_ENUM; }
     inline bool is_proc_type() { return type_flags & TYPE_FLAG_PROC; }
     inline bool is_builtin_type() { return type_flags & TYPE_FLAG_BUILTIN; }
     inline bool is_conditional_type() { return (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_array_type() { return type_flags & TYPE_FLAG_ARRAY; }
+    inline bool is_pointer_type() { return type_flags & TYPE_FLAG_POINTER; }
     inline bool is_indirection_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ARRAY); }
     inline bool is_arithmetic_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_integral_type() { return (type_flags & TYPE_FLAG_INTEGRAL); }
@@ -81,5 +84,12 @@ struct Ast_Proc_Type_Info : Ast_Type_Info {
     Auto_Array<Ast_Type_Info*> parameters;
     Ast_Type_Info *return_type;
 }; 
+
+struct Ast_Array_Type_Info : Ast_Type_Info {
+    Ast_Array_Type_Info() { kind = AST_ARRAY_TYPE_INFO; }
+    b32 is_dynamic;
+    b32 is_fixed;
+    u64 array_size;
+};
 
 #endif // TYPES_H
