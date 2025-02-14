@@ -1,4 +1,5 @@
 
+#include "ast.h"
 global Arena *lb_arena;
 global Ast_Scope *lb_g_scope;
 global LLVMModuleRef lb_g_module;
@@ -46,15 +47,14 @@ internal LB_Struct *lb_get_struct(Atom *name) {
 }
     
 internal unsigned lb_get_struct_field_index(Ast_Struct *struct_decl, Atom *name) {
-    unsigned result = 0;
-    for (int i = 0; i < struct_decl->fields.count; i++) {
+    for (unsigned i = 0; i < struct_decl->fields.count; i++) {
         Ast_Struct_Field *field = struct_decl->fields[i];
         if (atoms_match(field->name, name)) {
-            result = i;
-            break;
+            return i;
         }
     }
-    return result;
+    Assert(0);
+    return 0;
 } 
 
 internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
@@ -99,9 +99,70 @@ internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
             result = LLVMDoubleType();
             break;
         }
-    } else if (type_info->type_flags & TYPE_FLAG_STRUCT) {
+    } else if (type_info->is_struct_type()) {
         LB_Struct *lb_struct = lb_get_struct(type_info->decl->name);
         result = lb_struct->type;
+    } else if (type_info->is_array_type()) {
+        Ast_Array_Type_Info *array_type_info = static_cast<Ast_Array_Type_Info*>(type_info);
+        LLVMTypeRef element_type = lb_build_type(array_type_info->base);
+        LLVMTypeRef array_type = LLVMArrayType2(element_type, array_type_info->array_size);
+        result = array_type;
+    } else if (type_info->is_pointer_type()) {
+        LLVMTypeRef element_type = lb_build_type(type_info->base);
+        LLVMTypeRef pointer_type = LLVMPointerType(element_type, 0);
+        result = pointer_type;
+    }
+
+    Assert(result);
+
+    return result;
+}
+
+internal LB_Addr lb_build_addr(Ast_Expr *expr) {
+    LB_Addr result = {};
+    LLVMBuilderRef builder = lb_g_procedure->builder;
+
+    switch (expr->kind) {
+    case AST_IDENT:
+    {
+        Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
+        LB_Var *var = lb_get_named_value(ident->name);
+        Assert(var);
+        result.value = var->alloca;
+        break;
+    }
+
+    case AST_FIELD:
+    {
+        Ast_Field *field = static_cast<Ast_Field*>(expr);
+        Ast_Field *parent = field->field_parent;
+        if (!parent) {
+            LB_Addr addr = lb_build_addr(field->elem);
+            result.value = addr.value;
+        } else {
+            LB_Addr addr = lb_build_addr(field->field_parent);
+            if (parent->type_info->is_struct_type()) {
+                Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+                Ast_Struct *struct_node = static_cast<Ast_Struct*>(parent->type_info->decl);
+                LB_Struct *lb_struct = lb_get_struct(struct_node->name);
+                unsigned idx = lb_get_struct_field_index(struct_node, name->name);
+                LLVMValueRef field_ptr_value = LLVMBuildStructGEP2(builder, lb_struct->type, addr.value, idx, "fieldaddr_tmp");
+                result.value = field_ptr_value;
+            }
+        }
+        break;
+    }
+
+    case AST_INDEX:
+    {
+        Ast_Index *index = static_cast<Ast_Index*>(expr);
+        LB_Addr addr = lb_build_addr(index->lhs);
+        LB_Value rhs = lb_build_expr(index->rhs);
+        LLVMTypeRef type = lb_build_type(index->lhs->type_info);
+        LLVMValueRef value = LLVMBuildGEP2(builder, type, addr.value, &rhs.value, 1, "indexaddr");
+        result.value = value;
+        break;
+    }
     }
 
     return result;
@@ -185,6 +246,14 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     
     case AST_INDEX:
     {
+        Ast_Index *index = static_cast<Ast_Index*>(expr);
+        LLVMTypeRef array_type = lb_build_type(index->lhs->type_info);
+        LLVMTypeRef type = lb_build_type(index->type_info);
+        LB_Addr addr = lb_build_addr(index->lhs);
+        LB_Value rhs = lb_build_expr(index->rhs);
+        LLVMValueRef pointer = LLVMBuildGEP2(builder, array_type, addr.value, &rhs.value, 1, "indexaddr");
+        LLVMValueRef value = LLVMBuildLoad2(builder, type, pointer, "indextmp");
+        result.value = value;
         break;
     }
 
@@ -222,11 +291,18 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
 
     case AST_ADDRESS:
     {
+        Ast_Address *address = static_cast<Ast_Address*>(expr);
+        LB_Addr addr = lb_build_addr(address->elem);
+        result.value = addr.value;
         break;
     }
 
     case AST_DEREF:
     {
+        Ast_Deref *deref = static_cast<Ast_Deref*>(expr);
+        LB_Addr addr = lb_build_addr(deref->elem);
+        LLVMTypeRef type = lb_build_type(deref->elem->type_info);
+        LLVMValueRef value = LLVMBuildLoad2(builder, type, addr.value, "dereftmp");
         break;
     }
 
@@ -296,7 +372,6 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
             }
         }
         result.type = lb_build_type(binary->type_info);
-        
         break;
     }
 
@@ -306,28 +381,29 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
         //@Todo Multiple assignments not supported!
         Assert(assignment->rhs->kind != AST_ASSIGNMENT);
 
+        LB_Addr addr = lb_build_addr(assignment->lhs);
 
-        //@Todo Get address of variable, instead of this
-        if (assignment->rhs->kind == AST_COMPOUND_LITERAL) {
-            Assert(assignment->lhs->kind == AST_IDENT);
-            Ast_Ident *ident = static_cast<Ast_Ident*>(assignment->lhs);
-            LB_Var *var = lb_get_named_value(ident->name);
-
-            Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(assignment->rhs);
-            for (int i = 0; i < compound->elements.count; i++) {
-                Ast_Expr *elem = compound->elements[i];
-                LB_Value elem_value = lb_build_expr(elem);
-                LLVMBuildStructGEP2(builder, lb_build_type(elem->type_info), var->alloca, i, "fieldtmp");
+        if (assignment->lhs->type_info->is_struct_type()) {
+            Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(assignment->lhs->type_info);
+            LB_Struct *lb_struct = lb_get_struct(struct_type->decl->name);
+            
+            if (assignment->rhs->kind == AST_COMPOUND_LITERAL) {
+                Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(assignment->rhs);
+                for (int i = 0; i < compound->elements.count; i++) {
+                    Ast_Expr *elem = compound->elements[i];
+                    LB_Value value = lb_build_expr(elem);
+                    LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, lb_struct->type, addr.value, (unsigned)i, "fieldaddr_tmp");
+                    LLVMBuildStore(builder, value.value, field_addr);
+                }
+            } else {
+                Assert(0);
+                //@Todo Get addresses of each field in rhs and store in lhs fields
             }
         } else {
+            LB_Addr addr = lb_build_addr(assignment->lhs);
             LB_Value rhs = lb_build_expr(assignment->rhs);
-            if (assignment->lhs->kind == AST_IDENT) {
-                LB_Var *var = lb_get_named_value(static_cast<Ast_Ident*>(assignment->lhs)->name);
-                LLVMBuildStore(builder, rhs.value, var->alloca);
-            } else {
-                LB_Value lhs = lb_build_expr(assignment->lhs);
-                LLVMBuildStore(builder, rhs.value, lhs.value);
-            }
+
+            LLVMBuildStore(builder, rhs.value, addr.value);
         }
         break;
     }
@@ -336,22 +412,31 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     {
         Ast_Field *field = static_cast<Ast_Field*>(expr);
 
-        //@Todo Get address of field, instead of this
-        if (field->elem->kind == AST_IDENT) {
-            Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
-            Ast_Var *var_node = static_cast<Ast_Var*>(name->reference);
-            LB_Var *var = lb_get_named_value(name->name);
+        Ast_Field *parent = field->field_parent;
+        Ast_Field *child = field->field_child;
 
-            if (var_node->type_info->type_flags & TYPE_FLAG_STRUCT) {
-                Ast_Struct *struct_decl = static_cast<Ast_Struct*>(var_node->type_info->decl);
-                Atom *next = static_cast<Ast_Ident*>(field->field_next->elem)->name;
-                unsigned index = lb_get_struct_field_index(struct_decl, next);
-                result.value = LLVMBuildStructGEP2(builder, var->type, var->alloca, index, "fieldtmp");
-            }
+        LB_Addr addr = {};
+        if (!parent) {
+            addr = lb_build_addr(field->elem);
+            result.value = addr.value;
         } else {
+            addr = lb_build_addr(parent);
+            
+            if (parent->type_info->is_struct_type()) {
+                Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+                Ast_Struct *struct_node = static_cast<Ast_Struct*>(parent->type_info->decl);
+                LB_Struct *lb_struct = lb_get_struct(struct_node->name);
+                unsigned idx = lb_get_struct_field_index(struct_node, name->name);
+
+                LLVMValueRef field_ptr_value = LLVMBuildStructGEP2(builder, lb_struct->type, addr.value, idx, "fieldaddr_tmp");
+                addr.value = field_ptr_value;
+            }
         }
 
-        result.type = lb_build_type(field->type_info);
+        if (!child) {
+            LLVMTypeRef type = lb_build_type(parent->type_info);
+            result.value = LLVMBuildLoad2(builder, type, addr.value, "fieldload");
+        }
         break;
     }
 
@@ -396,8 +481,20 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
             lb_g_procedure->named_values.push(var);
 
             if (var_node->init) {
-                LB_Value init_value = lb_build_expr(var_node->init);
-                LLVMBuildStore(builder, init_value.value, var->alloca);
+                Ast_Expr *init = var_node->init;
+                if (var_node->type_info->is_struct_type()) {
+                    LB_Struct *lb_struct = lb_get_struct(var_node->type_info->decl->name);
+                    Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(init);
+                    for (int i = 0; i < compound->elements.count; i++) {
+                        Ast_Expr *elem = compound->elements[i];
+                        LB_Value value = lb_build_expr(elem);
+                        LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, lb_struct->type, var->alloca, (unsigned)i, "fieldaddr_tmp");
+                        LLVMBuildStore(builder, value.value, field_addr);
+                    }
+                } else {
+                    LB_Value init_value = lb_build_expr(init);
+                    LLVMBuildStore(builder, init_value.value, var->alloca);
+                }
             } else {
             }
         }

@@ -16,6 +16,17 @@ struct LB_Value {
     LLVMTypeRef type;
 };
 
+enum LB_Addr_Kind {
+    LB_ADDR_NIL,
+    LB_ADDR_COUNT
+};
+
+struct LB_Addr {
+    LB_Addr_Kind kind;
+
+    LLVMValueRef value;
+};
+
 struct LB_Struct {
     Atom *name;
     Ast_Struct *decl;
@@ -46,6 +57,8 @@ struct LB_Procedure {
     Auto_Array<LB_Var*> named_values;
 };
 
+internal LB_Addr lb_build_addr(Ast_Expr *expr);
+internal LB_Value lb_build_expr(Ast_Expr *expr);
 internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt);
 
 #endif // LLVM_BACKEND_H
