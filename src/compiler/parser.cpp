@@ -11,6 +11,7 @@ void Parser::expect(Token_Kind token) {
 }
 
 Ast_Compound_Literal *Parser::parse_compound_literal() {
+    Source_Pos start = lexer->current().start;
     expect(TOKEN_LBRACE);
 
     Auto_Array<Ast_Expr*> elements;
@@ -29,7 +30,7 @@ Ast_Compound_Literal *Parser::parse_compound_literal() {
     expect(TOKEN_RBRACE);
 
     Ast_Compound_Literal *compound = ast_compound_literal(elements, NULL);
-    compound->mark_end(end);
+    compound->mark_range(start, end);
     return compound;
 }
 
@@ -129,26 +130,24 @@ Ast_Expr *Parser::parse_postfix_expr() {
 
         case TOKEN_DOT:
         {
-            Ast_Field *field_expr = ast_field_expr(expr, NULL);
-            field_expr->is_parent = true;
+            Ast_Field *field_expr = ast_field_expr(NULL, expr);
             field_expr->mark_range(expr->start, expr->end);
-            Ast_Field *tail = field_expr;
 
             while (lexer->eat(TOKEN_DOT)) {
                 Token name = lexer->current();
                 if (!lexer->eat(TOKEN_IDENT)) {
-                    report_parser_error(lexer, "missing name after '.'.\n");
+                    report_parser_error(lexer, "missing name after '.'\n");
                     terminate = true;
                     break;
                 }
 
-                Ast_Field *field = ast_field_expr(ast_ident(name), tail);
-                field->mark_range(field_expr->start, name.end);
-                field->field_prev = tail;
-                tail = field;
+                Ast_Field *field = ast_field_expr(field_expr, ast_ident(name));
+                field->mark_range(name.start, name.end);
+                field->field_parent = field_expr;
+                field->field_child = NULL;
+                field_expr->field_child = field;
+                field_expr = field;
             }
-            field_expr->mark_end(tail->end);
-            
             expr = field_expr;
             break;
         }
@@ -264,9 +263,6 @@ internal int get_operator_precedence(Token_Kind op) {
     default:
         return -1;
 
-    // case TOKEN_ELLIPSIS:
-        // return 11000;
-
     case TOKEN_STAR:
     case TOKEN_SLASH:
     case TOKEN_MOD:
@@ -302,19 +298,6 @@ internal int get_operator_precedence(Token_Kind op) {
     case TOKEN_LSHIFT:
     case TOKEN_RSHIFT:
         return 2000;
-
-    // case TOKEN_EQ:
-    // case TOKEN_PLUS_EQ:
-    // case TOKEN_MINUS_EQ:
-    // case TOKEN_SLASH_EQ:
-    // case TOKEN_STAR_EQ:
-    // case TOKEN_MOD_EQ:
-    // case TOKEN_LSHIFT_EQ:
-    // case TOKEN_RSHIFT_EQ:
-    // case TOKEN_BAR_EQ:
-    // case TOKEN_AMPER_EQ:
-    // case TOKEN_XOR_EQ:
-    //     return 1000;
     }
 }
 
@@ -445,14 +428,21 @@ Ast_Stmt *Parser::parse_simple_stmt() {
 
 Ast_If *Parser::parse_if_stmt() {
     Ast_If *stmt = NULL;
+    Source_Pos start = lexer->current().start;
+
     expect(TOKEN_IF);
+
     Ast_Expr *cond = parse_expr();
     Ast_Block *block = parse_block();
+    Source_Pos end = block->end;
     stmt = ast_if_stmt(cond, block);
+
+    stmt->mark_range(start, end);
     return stmt;
 }
 
 Ast_While *Parser::parse_while_stmt() {
+    Source_Pos start = lexer->current().start;
     expect(TOKEN_WHILE);
 
     Ast_Expr *cond = parse_expr();
@@ -465,23 +455,31 @@ Ast_While *Parser::parse_while_stmt() {
     }
 
     Ast_Block *block = parse_block();
-
+    Source_Pos end = block->end;
     Ast_While *stmt = ast_while_stmt(cond, block);
+    stmt->mark_range(start, end);
     return stmt;
 }
 
 Ast_Expr *Parser::parse_range_expr() {
+    Source_Pos start = lexer->current().start;
     Ast_Expr *lhs = parse_expr();
     Ast_Expr *rhs = NULL;
     if (lexer->eat(TOKEN_ELLIPSIS)) {
         rhs = parse_expr();
         Ast_Range *range = ast_range_expr(lhs, rhs);
+        Source_Pos end = rhs->end;
+        range->mark_range(start, end);
         return range;
     }
+
+    Source_Pos end = lexer->current().end;
+    lhs->mark_range(start, end);
     return lhs;
 }
 
 Ast_For *Parser::parse_for_stmt() {
+    Source_Pos start = lexer->current().start;
     expect(TOKEN_FOR);
 
     Ast_Iterator *iterator = NULL;
@@ -507,13 +505,13 @@ Ast_For *Parser::parse_for_stmt() {
     Ast_Block *block = parse_block();
 
     Ast_For *for_stmt = ast_for_stmt(iterator, block);
-
+    Source_Pos end = block->end;
+    for_stmt->mark_range(start, end);
     return for_stmt;
 }
 
 Ast_Stmt *Parser::parse_stmt() {
     Ast_Stmt *stmt = NULL;
-
     bool stmt_error = false;
 
     switch (lexer->peek()) {
@@ -543,6 +541,7 @@ Ast_Stmt *Parser::parse_stmt() {
     {
         Ast_Block *block = parse_block();
         stmt = block;
+        stmt->mark_range(block->start, block->end);
         break;
     }
 
@@ -590,17 +589,24 @@ Ast_Stmt *Parser::parse_stmt() {
     case TOKEN_FOR:
     {
         Ast_For *for_stmt = parse_for_stmt();
+
         stmt = for_stmt;
         break;
     }
 
     case TOKEN_BREAK:
     {
+        lexer->next_token();
+        Ast_Break *break_stmt = AST_NEW(Ast_Break);
+        stmt = break_stmt;
         break;
     }
 
     case TOKEN_CONTINUE:
     {
+        lexer->next_token();
+        Ast_Continue *continue_stmt = AST_NEW(Ast_Continue);
+        stmt = continue_stmt;
         break;
     }
 
