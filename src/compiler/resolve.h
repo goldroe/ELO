@@ -80,6 +80,10 @@ struct Resolver {
 
     void register_global_declarations();
     void resolve();
+
+    
+    Eval eval_unary_expr(Ast_Unary *u);
+    Eval eval_binary_expr(Ast_Binary *b);
 };
 
 #endif // RESOLVE_H

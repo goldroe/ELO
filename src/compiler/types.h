@@ -56,6 +56,8 @@ struct Ast_Type_Info : Ast {
     inline bool is_indirection_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ARRAY); }
     inline bool is_arithmetic_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_integral_type() { return (type_flags & TYPE_FLAG_INTEGRAL); }
+    inline bool is_float_type() { return (type_flags & TYPE_FLAG_FLOAT); }
+    inline bool is_signed() { return (type_flags & TYPE_FLAG_SIGNED); }
     inline Ast_Type_Info *deref() { return base; }
 };
 

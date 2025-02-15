@@ -310,65 +310,75 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     {
         Ast_Binary *binary = static_cast<Ast_Binary*>(expr);
 
-        LB_Value lhs = lb_build_expr(binary->lhs);
-        LB_Value rhs = lb_build_expr(binary->rhs);
 
         if (binary->expr_flags & EXPR_FLAG_OP_CALL) {
             
         } else {
-            switch (binary->op.kind) {
-            default:
-                Assert(0);
-                break;
+            if (binary->is_constant()) {
+                LLVMTypeRef type = lb_build_type(binary->type_info);
+                if (binary->type_info->is_integral_type()) {
+                    result.value = LLVMConstInt(type, binary->eval.int_val, binary->type_info->is_signed());
+                } else if (binary->type_info->is_float_type()) {
+                    result.value = LLVMConstReal(type, binary->eval.float_val);
+                }
+            } else {
+                LB_Value lhs = lb_build_expr(binary->lhs);
+                LB_Value rhs = lb_build_expr(binary->rhs);
+                
+                switch (binary->op.kind) {
+                default:
+                    Assert(0);
+                    break;
 
-            case TOKEN_PLUS:
-                result.value = LLVMBuildAdd(builder, lhs.value, rhs.value, "addtmp");
-                break;
-            case TOKEN_MINUS:
-                result.value = LLVMBuildSub(builder, lhs.value, rhs.value, "subtmp");
-                break;
-            case TOKEN_STAR:
-                result.value = LLVMBuildMul(builder, lhs.value, rhs.value, "multmp");
-                break;
-            case TOKEN_SLASH:
-                result.value = LLVMBuildSDiv(builder, lhs.value, rhs.value, "sdivtmp");
-                break;
-            case TOKEN_MOD:
-                result.value = LLVMBuildSRem(builder, lhs.value, rhs.value, "sremtmp");
-                break;
-            case TOKEN_LSHIFT:
-                result.value = LLVMBuildShl(builder, lhs.value, rhs.value, "shltmp");
-                break;
-            case TOKEN_RSHIFT:
-                result.value = LLVMBuildLShr(builder, lhs.value, rhs.value, "shrtmp");
-                break;
-            case TOKEN_BAR:
-                result.value = LLVMBuildOr(builder, lhs.value, rhs.value, "ortmp");
-                break;
-            case TOKEN_AMPER:
-                result.value = LLVMBuildAnd(builder, lhs.value, rhs.value, "andtmp");
-                break;
-            case TOKEN_AND:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_OR:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_EQ2:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_LT:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_GT:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_LTEQ:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_GTEQ:
-                Assert(0); // unsupported
-                break;
+                case TOKEN_PLUS:
+                    result.value = LLVMBuildAdd(builder, lhs.value, rhs.value, "addtmp");
+                    break;
+                case TOKEN_MINUS:
+                    result.value = LLVMBuildSub(builder, lhs.value, rhs.value, "subtmp");
+                    break;
+                case TOKEN_STAR:
+                    result.value = LLVMBuildMul(builder, lhs.value, rhs.value, "multmp");
+                    break;
+                case TOKEN_SLASH:
+                    result.value = LLVMBuildSDiv(builder, lhs.value, rhs.value, "sdivtmp");
+                    break;
+                case TOKEN_MOD:
+                    result.value = LLVMBuildSRem(builder, lhs.value, rhs.value, "sremtmp");
+                    break;
+                case TOKEN_LSHIFT:
+                    result.value = LLVMBuildShl(builder, lhs.value, rhs.value, "shltmp");
+                    break;
+                case TOKEN_RSHIFT:
+                    result.value = LLVMBuildLShr(builder, lhs.value, rhs.value, "shrtmp");
+                    break;
+                case TOKEN_BAR:
+                    result.value = LLVMBuildOr(builder, lhs.value, rhs.value, "ortmp");
+                    break;
+                case TOKEN_AMPER:
+                    result.value = LLVMBuildAnd(builder, lhs.value, rhs.value, "andtmp");
+                    break;
+                case TOKEN_AND:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_OR:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_EQ2:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_LT:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_GT:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_LTEQ:
+                    Assert(0); // unsupported
+                    break;
+                case TOKEN_GTEQ:
+                    Assert(0); // unsupported
+                    break;
+                }
             }
         }
         result.type = lb_build_type(binary->type_info);

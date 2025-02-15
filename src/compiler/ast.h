@@ -170,15 +170,17 @@ enum Expr_Flags {
 };
 EnumDefineFlagOperators(Expr_Flags);
 
+//@Todo Sign, Precision
+union Eval {
+    s64 int_val;
+    f64 float_val;
+};
+
 struct Ast_Expr : Ast {
     Ast_Expr() { kind = AST_EXPR; }
     Expr_Flags expr_flags;
     Ast_Type_Info *type_info;
-
-    union {
-        s64 eval_integer;
-        f64 eval_float;
-    };
+    Eval eval;
 
     bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
 };

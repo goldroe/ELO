@@ -1,4 +1,5 @@
 
+
 Resolver::Resolver(Parser *_parser) {
     arena = arena_alloc(get_virtual_allocator(), MB(4));
     parser = _parser;
@@ -381,7 +382,7 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
                 resolve_expr(array_size);
                 if (array_size->type_info->is_integral_type()) {
                     if (array_size->is_constant()) {
-                        array->array_size = array_size->eval_integer;
+                        array->array_size = array_size->eval.int_val;
                         array->is_fixed = true;
                     } else {
                         array->is_dynamic = true;
@@ -404,47 +405,186 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
     Ast_Expr *lhs = binary->lhs;
     Ast_Expr *rhs = binary->rhs;
     if (binary->expr_flags & EXPR_FLAG_ASSIGNMENT) {
+        Assert(0);
         if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
             report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
+            binary->poison();
         }
 
         if (lhs->valid() && rhs->valid()) {
             if (!typecheck(lhs->type_info, rhs->type_info)) {
                 report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+                binary->poison();
             }
         }
         binary->type_info = lhs->type_info;
     }
 
     if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
-        if (lhs->valid() && !binary->lhs->type_info->is_arithmetic_type()) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        if (lhs->valid() && !lhs->type_info->is_arithmetic_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
-        if (rhs->valid() && !binary->rhs->type_info->is_arithmetic_type()) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        if (rhs->valid() && !rhs->type_info->is_arithmetic_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
         binary->type_info = lhs->type_info;
     }
 
     if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
-        if (lhs->valid() && !binary->lhs->type_info->is_integral_type()) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        if (lhs->valid() && !lhs->type_info->is_integral_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
-        if (rhs->valid() && !binary->rhs->type_info->is_integral_type()) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        if (rhs->valid() && !rhs->type_info->is_integral_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
         binary->type_info = lhs->type_info;
     }
 
     if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
-        if (lhs->valid() && !binary->lhs->type_info->is_arithmetic_type()) {
-            report_ast_error(binary->lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+        if (lhs->valid() && !lhs->type_info->is_arithmetic_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
-        if (rhs->valid() && !binary->rhs->type_info->is_arithmetic_type()) {
-            report_ast_error(binary->rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+        if (rhs->valid() && !rhs->type_info->is_arithmetic_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
+            binary->poison();
         }
         binary->type_info = lhs->type_info;
     }
+
+    if (binary->valid() &&
+        lhs->is_constant() && rhs->is_constant()) {
+        binary->expr_flags |= EXPR_FLAG_CONSTANT;
+        binary->eval = eval_binary_expr(binary);
+    }
+}
+
+Eval Resolver::eval_unary_expr(Ast_Unary *u) {
+    Eval result = {};
+    Eval e = u->elem->eval;
+    if (u->elem->type_info->is_integral_type()) {
+        switch (u->op.kind) {
+        case TOKEN_PLUS:
+            result.int_val = e.int_val;
+        case TOKEN_MINUS:
+            result.int_val = e.int_val;
+        case TOKEN_BANG:
+            result.int_val = !e.int_val;
+        }
+    } else if (u->elem->type_info->is_float_type()) {
+        switch (u->op.kind) {
+        case TOKEN_PLUS:
+            result.float_val = e.float_val;
+        case TOKEN_MINUS:
+            result.float_val = -e.float_val;
+        case TOKEN_BANG:
+            result.float_val = !e.float_val;
+        }
+    }
+    return result;
+}
+
+Eval Resolver::eval_binary_expr(Ast_Binary *b) {
+    Eval result = {};
+    Eval lhs = b->lhs->eval;
+    Eval rhs = b->rhs->eval;    
+
+    if (b->lhs->type_info->is_integral_type()) {
+        switch (b->op.kind) {
+        case TOKEN_PLUS:
+            result.int_val = lhs.int_val + rhs.int_val;
+            break;
+        case TOKEN_MINUS:
+            result.int_val = lhs.int_val - rhs.int_val;
+            break;
+        case TOKEN_STAR:
+            result.int_val = lhs.int_val * rhs.int_val;
+            break;
+        case TOKEN_SLASH:
+            result.int_val = lhs.int_val / rhs.int_val;
+            break;
+        case TOKEN_MOD:
+            result.int_val = lhs.int_val % rhs.int_val;
+            break;
+        case TOKEN_NEQ:
+            result.int_val = lhs.int_val != rhs.int_val;
+            break;
+        case TOKEN_LT:
+            result.int_val = lhs.int_val < rhs.int_val;
+            break;
+        case TOKEN_LTEQ:
+            result.int_val = lhs.int_val <= rhs.int_val;
+            break;
+        case TOKEN_GT:
+            result.int_val = lhs.int_val > rhs.int_val;
+            break;
+        case TOKEN_GTEQ:
+            result.int_val = lhs.int_val >= rhs.int_val;
+            break;
+        case TOKEN_AMPER:
+            result.int_val = lhs.int_val & rhs.int_val;
+            break;
+        case TOKEN_AND:
+            result.int_val = lhs.int_val && rhs.int_val;
+            break;
+        case TOKEN_BAR:
+            result.int_val = lhs.int_val | rhs.int_val;
+            break;
+        case TOKEN_OR:
+            result.int_val = lhs.int_val || rhs.int_val;
+            break;
+        case TOKEN_XOR:
+            result.int_val = lhs.int_val ^ rhs.int_val;
+            break;
+        }
+    }    
+    
+    if (b->lhs->type_info->is_float_type()) {
+        switch (b->op.kind) {
+        case TOKEN_PLUS:
+            result.float_val = lhs.float_val + rhs.float_val;
+            break;
+        case TOKEN_MINUS:
+            result.float_val = lhs.float_val - rhs.float_val;
+            break;
+        case TOKEN_STAR:
+            result.float_val = lhs.float_val * rhs.float_val;
+            break;
+        case TOKEN_SLASH:
+            result.float_val = lhs.float_val / rhs.float_val;
+            break;
+        case TOKEN_MOD:
+            result.float_val = fmod(lhs.float_val, rhs.float_val);
+            break;
+        case TOKEN_NEQ:
+            result.float_val = lhs.float_val != rhs.float_val;
+            break;
+        case TOKEN_LT:
+            result.float_val = lhs.float_val < rhs.float_val;
+            break;
+        case TOKEN_LTEQ:
+            result.float_val = lhs.float_val <= rhs.float_val;
+            break;
+        case TOKEN_GT:
+            result.float_val = lhs.float_val > rhs.float_val;
+            break;
+        case TOKEN_GTEQ:
+            result.float_val = lhs.float_val >= rhs.float_val;
+            break;
+        case TOKEN_AND:
+            result.float_val = lhs.float_val && rhs.float_val;
+            break;
+        case TOKEN_OR:
+            result.float_val = lhs.float_val || rhs.float_val;
+            break;
+        }        
+    }
+
+    return result;
 }
 
 void Resolver::resolve_user_defined_operator_expr(Ast_Binary *expr) {
@@ -602,6 +742,17 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     }
 }
 
+bool inline is_constant_unary_op(Token_Kind op) {
+    switch (op) {
+    default:
+        return false;
+    case TOKEN_PLUS:
+    case TOKEN_MINUS:
+    case TOKEN_BANG:
+        return true;
+    }
+}
+
 void Resolver::resolve_unary_expr(Ast_Unary *unary) {
     resolve_expr(unary->elem);
 
@@ -617,23 +768,32 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
     } else {
         unary->poison();
     }
+
+    if (unary->valid() && unary->elem->is_constant()) {
+        if (is_constant_unary_op(unary->op.kind)) {
+            unary->expr_flags |= EXPR_FLAG_CONSTANT;
+            unary->eval = eval_unary_expr(unary);
+        }
+    }
 }
 
 void Resolver::resolve_literal(Ast_Literal *literal) {
     if (literal->literal_flags & LITERAL_INT) {
         literal->type_info = type_s32;
-        literal->eval_integer = (s64)literal->int_val;
+        literal->eval.int_val = (s64)literal->int_val;
     } else if (literal->literal_flags & LITERAL_FLOAT) {
         literal->type_info = type_f32;
-        literal->eval_float = literal->float_val;
+        literal->eval.float_val = literal->float_val;
     } else if (literal->literal_flags & LITERAL_STRING) {
         // literal->type_info = type_string;
     } else if (literal->literal_flags & LITERAL_BOOLEAN) {
         literal->type_info = type_bool;
-        literal->eval_integer = literal->int_val;
+        literal->eval.int_val = literal->int_val;
     } else {
         Assert(0);
     }
+
+    literal->expr_flags |= EXPR_FLAG_CONSTANT;
 }
 
 void Resolver::resolve_ident(Ast_Ident *ident) {
@@ -849,7 +1009,12 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         resolve_expr(paren->elem);
         paren->type_info = paren->elem->type_info;
 
-        if (paren->elem->invalid()) {
+        if (paren->elem->valid()) {
+            if (paren->elem->is_constant()) {
+                paren->expr_flags |= EXPR_FLAG_CONSTANT;
+                paren->eval = paren->elem->eval;
+            }
+        } else {
             paren->poison();
         }
         break;
