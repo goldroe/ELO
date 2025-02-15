@@ -270,18 +270,27 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     case AST_UNARY:
     {
         Ast_Unary *unary = static_cast<Ast_Unary*>(expr);
-        LB_Value elem_value = lb_build_expr(unary->elem);
 
         if (unary->expr_flags & EXPR_FLAG_OP_CALL) {
             
         } else {
-            switch (unary->op.kind) {
-            case TOKEN_MINUS:
-                result.value = LLVMBuildNeg(builder, elem_value.value, "negtmp");
-                break;
-            case TOKEN_BANG:
-                result.value = LLVMBuildNot(builder, elem_value.value, "nottmp");
-                break;
+            if (unary->is_constant()) {
+                LLVMTypeRef type = lb_build_type(unary->type_info);
+                if (unary->type_info->is_integral_type()) {
+                    result.value = LLVMConstInt(type, unary->eval.int_val, unary->type_info->is_signed());
+                } else if (unary->type_info->is_float_type()) {
+                    result.value = LLVMConstReal(type, unary->eval.float_val);
+                }
+            } else {
+                LB_Value elem_value = lb_build_expr(unary->elem);
+                switch (unary->op.kind) {
+                case TOKEN_MINUS:
+                    result.value = LLVMBuildNeg(builder, elem_value.value, "negtmp");
+                    break;
+                case TOKEN_BANG:
+                    result.value = LLVMBuildNot(builder, elem_value.value, "nottmp");
+                    break;
+                }
             }
         }
 
