@@ -389,9 +389,9 @@ struct Ast_Continue : Ast_Stmt {
 };
 
 
-#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T)) = T()))
+#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
 
-internal Ast *ast_alloc(size_t bytes);
+internal Ast *ast_alloc(u64 size, int alignment);
 internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base);
 
 #endif // AST_H

@@ -6,12 +6,14 @@ internal bool atoms_match(Atom *a, Atom *b) {
 }
 
 internal void atom_init() {
-    g_atom_arena = arena_alloc(get_virtual_allocator(), MB(1));
+    g_atom_arena = arena_create();
 
-    g_atom_table = push_array(g_atom_arena, Atom_Table, 1);
+    g_atom_table = alloc_item(heap_allocator(), Atom_Table);
+    MemoryZero(g_atom_table, sizeof(Atom_Table));
     Atom_Table *table = g_atom_table;
     table->bucket_count = 128;
-    table->buckets = push_array(g_atom_arena, Atom_Bucket, table->bucket_count);
+    table->buckets = (Atom_Bucket *)arena_alloc(g_atom_arena, sizeof(Atom_Bucket) * table->bucket_count, alignof(Atom_Bucket));
+    MemoryZero(table->buckets, sizeof(Atom_Bucket) * table->bucket_count);
 }
 
 internal u64 atom_hash(String8 string) {
@@ -51,7 +53,7 @@ internal Atom *atom_create(String8 string) {
     }
 
     u64 mem_size = sizeof(Atom) + string.count + 1;
-    Atom *atom = (Atom *)arena_push(g_atom_arena, mem_size);
+    Atom *atom = (Atom *)arena_alloc(g_atom_arena, mem_size, DEFAULT_MEMORY_ALIGNMENT);
     atom->flags = ATOM_FLAG_IDENT;
     atom->count = string.count;
     MemoryCopy(atom->data, string.data, string.count);

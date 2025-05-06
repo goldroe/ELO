@@ -1,7 +1,6 @@
 
-
 Resolver::Resolver(Parser *_parser) {
-    arena = arena_alloc(get_virtual_allocator(), MB(4));
+    arena = arena_create();
     parser = _parser;
 }
 
@@ -412,7 +411,7 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
 
         if (lhs->valid() && rhs->valid()) {
             if (!typecheck(lhs->type_info, rhs->type_info)) {
-                report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+                report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
                 report_note(binary->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
                 binary->poison();
             }
@@ -627,7 +626,7 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
 
     if (lhs->valid() && rhs->valid()) {
         if (!typecheck(lhs->type_info, rhs->type_info)) {
-            report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+            report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
             report_note(rhs->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
             assignment->poison();
         }

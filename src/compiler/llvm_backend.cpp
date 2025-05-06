@@ -3,7 +3,7 @@ global LB_Procedure *lb_g_procedure;
 global Auto_Array<LB_Procedure*> lb_g_global_procedures;
 global Auto_Array<LB_Struct*> lb_g_structs;
 
-#define lb_alloc(T) (T*)lb_backend_alloc(sizeof(T))
+#define lb_alloc(T) (T*)lb_backend_alloc(sizeof(T), alignof(T))
 
 LB_Generator::LB_Generator(Source_File *file, Ast_Root *root) {
     this->root = root;
@@ -44,9 +44,9 @@ internal LB_Procedure *lb_get_procedure(Atom *name) {
     return NULL;
 }
 
-internal void *lb_backend_alloc(size_t bytes) {
-    void *result = (void *)push_array(lb_arena, u8, bytes);
-    MemoryZero(result, bytes);
+internal void *lb_backend_alloc(u64 size, int alignment) {
+    void *result = (void *)arena_alloc(lb_arena, size, alignment);
+    MemoryZero(result, size);
     return result;
 }
 

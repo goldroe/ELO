@@ -1,5 +1,14 @@
 global Arena *g_ast_arena;
 
+internal Ast *ast_alloc(u64 size, int alignment) {
+    Ast *node = (Ast *)arena_alloc(g_ast_arena, size, alignment);
+    return node;
+}
+
+internal inline Allocator ast_allocator() {
+    return arena_allocator(g_ast_arena);
+}
+
 Ast_Enum_Field *lookup_field(Ast_Enum *enum_decl, Atom *name) {
     Ast_Enum_Field *result = NULL;
     for (int i = 0; i < enum_decl->fields.count; i++) {
@@ -36,13 +45,8 @@ Auto_Array<Ast_Decl*> Scope::lookup_proc(Atom *name) {
     return found;
 }
 
-internal Ast *ast_alloc(size_t bytes) {
-    Ast *memory = (Ast *)push_array(g_ast_arena, u8, bytes);
-    return memory;
-}
-
 internal Scope *make_scope(Scope_Flags flags) {
-    Scope *result = (Scope*)ast_alloc(sizeof(Scope));
+    Scope *result = (Scope*)ast_alloc(sizeof(Scope), alignof(Scope));
     result->scope_flags = flags;
     return result;
 }
@@ -74,7 +78,7 @@ internal Ast_Proc *ast_proc(Atom *name, Auto_Array<Ast_Param*> parameters, Ast_T
 
 internal Ast_Operator_Proc *ast_operator_proc(Token_Kind op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
     Ast_Operator_Proc *result = AST_NEW(Ast_Operator_Proc);
-    result->name = atom_create(str8_pushf(g_ast_arena, "operator%s", string_from_token(op)));
+    result->name = atom_create(str8_pushf(ast_allocator(), "operator%s", string_from_token(op)));
     result->op = op;
     result->parameters = parameters;
     result->return_type_defn = return_type;

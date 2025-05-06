@@ -203,9 +203,9 @@ internal OS_File_Flags os_file_attributes(String8 file_name) {
     return flags;
 }
 
-internal OS_File os_file_from_win32_data(Arena *arena, WIN32_FIND_DATAA win32_data) {
+internal OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA win32_data) {
     OS_File file{};
-    file.file_name = str8_copy(arena, str8_cstring(win32_data.cFileName));
+    file.file_name = str8_copy(allocator, str8_cstring(win32_data.cFileName));
     file.file_size = ((u64)win32_data.nFileSizeHigh<<32) | win32_data.nFileSizeLow;
     OS_File_Flags flags = OS_FileFlag_Nil;
     DWORD attribs = win32_data.dwFileAttributes;
@@ -218,12 +218,12 @@ internal OS_File os_file_from_win32_data(Arena *arena, WIN32_FIND_DATAA win32_da
     return file;
 }
 
-internal OS_Handle os_find_first_file(Arena *arena, String8 path, OS_File *file) {
-    String8 find_path = str8_concat(arena, path, str8_lit("\\*"));
+internal OS_Handle os_find_first_file(Allocator allocator, String8 path, OS_File *file) {
+    String8 find_path = str8_concat(allocator, path, str8_lit("\\*"));
     WIN32_FIND_DATAA win32_data;
     HANDLE find_file_handle = FindFirstFileA((const char *)find_path.data, &win32_data);
     if (find_file_handle) {
-        *file = os_file_from_win32_data(arena, win32_data);
+        *file = os_file_from_win32_data(allocator, win32_data);
     } else {
         DWORD err = GetLastError();
         printf("find_first_file ERROR '%d'\n", err);
@@ -231,13 +231,13 @@ internal OS_Handle os_find_first_file(Arena *arena, String8 path, OS_File *file)
     return (OS_Handle)find_file_handle;
 }
 
-internal bool os_find_next_file(Arena *arena, OS_Handle find_file_handle, OS_File *file) {
+internal bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file) {
     if ((HANDLE)find_file_handle == INVALID_HANDLE_VALUE) {
         return false;
     }
     WIN32_FIND_DATAA win32_data;
     if (FindNextFileA((HANDLE)find_file_handle, &win32_data)) {
-        *file = os_file_from_win32_data(arena, win32_data);
+        *file = os_file_from_win32_data(allocator, win32_data);
         return true;
     } else {
         DWORD err = GetLastError();
@@ -256,16 +256,16 @@ internal bool os_path_exists(String8 path) {
     return PathFileExistsA((char *)path.data);
 }
 
-internal String8 os_home_path(Arena *arena) {
+internal String8 os_home_path(Allocator allocator) {
     char buffer[MAX_PATH];
     GetEnvironmentVariableA("USERPROFILE", buffer, MAX_PATH);
-    String8 result = str8_copy(arena, str8_cstring(buffer));
+    String8 result = str8_copy(allocator, str8_cstring(buffer));
     return result;
 }
 
-internal String8 os_current_dir(Arena *arena) {
+internal String8 os_current_dir(Allocator allocator) {
     DWORD length = GetCurrentDirectoryA(0, NULL);
-    u8 *buffer = (u8 *)arena_push(arena, length + 2);
+    u8 *buffer = array_alloc(allocator, u8, length + 2);
     DWORD ret = GetCurrentDirectoryA(length, (LPSTR)buffer);
     for (DWORD i = 0; i < length; i++) {
         if (buffer[i] == '\\') buffer[i] = '/';
@@ -275,9 +275,9 @@ internal String8 os_current_dir(Arena *arena) {
     return result;
 }
 
-internal String8 os_exe_path(Arena *arena) {
+internal String8 os_exe_path(Allocator allocator) {
     char buffer[MAX_PATH] = {};
     DWORD len = GetModuleFileNameA(NULL, buffer, MAX_PATH);
-    String8 result = path_strip_dir_name(arena, str8((u8 *)buffer, len));
+    String8 result = path_strip_dir_name(allocator, str8((u8 *)buffer, len));
     return result;
 }

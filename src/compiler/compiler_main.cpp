@@ -1,5 +1,7 @@
+
 #include "base/base_core.h"
-#include "base/base_arena.h"
+#include "base/base_memory.h"
+// #include "base/base_arena.h"
 #include "base/base_strings.h"
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb_sprintf.h>
@@ -7,7 +9,8 @@
 #include "path/path.h"
 
 #include "base/base_core.cpp"
-#include "base/base_arena.cpp"
+#include "base/base_memory.cpp"
+// #include "base/base_arena.cpp"
 #include "base/base_strings.cpp"
 #include "os/os.cpp"
 #include "path/path.cpp"
@@ -34,7 +37,6 @@
 #include "llvm_backend.cpp"
 
 global Auto_Array<Source_File*> g_source_files;
-global Arena *temp_arena;
 
 internal void add_source_file(Source_File *file) {
     g_source_files.push(file);
@@ -43,9 +45,10 @@ internal void add_source_file(Source_File *file) {
 internal void compiler_error(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 string = str8_pushfv(g_report_arena, fmt, args);
+    String8 string = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
     printf("ELO: error: %s", (char *)string.data);
+    free(heap_allocator(), string.data);
 }
 
 #ifdef OS_WINDOWS
@@ -86,8 +89,8 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    g_report_arena = arena_alloc(get_virtual_allocator(), KB(64));
-    g_ast_arena = arena_alloc(get_virtual_allocator(), MB(8));
+    g_report_arena = arena_create();
+    g_ast_arena = arena_create();
 
     atom_init();
 
@@ -112,11 +115,11 @@ int main(int argc, char **argv) {
 
     register_builtin_types();
 
-    temp_arena = arena_alloc(get_malloc_allocator(), KB(64));
+    temporary_arena = arena_create();
 
     String8 file_name = str8_cstring(argv[0]);
-    String8 file_path = path_join(temp_arena, os_current_dir(temp_arena), file_name);
-    file_path = normalize_path(temp_arena, file_path);
+    String8 file_path = path_join(heap_allocator(), os_current_dir(temporary_allocator()), file_name);
+    file_path = normalize_path(heap_allocator(), file_path);
 
     String8 extension = path_get_extension(file_path);
 
@@ -168,7 +171,7 @@ int main(int argc, char **argv) {
     }
 
     if (error_count == 0) {
-        lb_arena = arena_alloc(get_virtual_allocator(), MB(2));
+        lb_arena = arena_create();
         LB_Generator *generator = new LB_Generator(g_source_files[0], parser->root);
         generator->generate();
     }

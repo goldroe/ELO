@@ -35,19 +35,19 @@ internal String8 str8_rng(String8 string, Rng_U64 rng) {
     return result;
 }
 
-internal String8 str8_copy(Arena *arena, String8 string) {
+internal String8 str8_copy(Allocator allocator, String8 string) {
     String8 result;
     result.count = string.count;
-    result.data = (u8 *)arena_push(arena, result.count + 1);
+    result.data = array_alloc(allocator, u8, result.count + 1);
     MemoryCopy(result.data, string.data, string.count);
     result.data[result.count] = 0;
     return result;
 }
 
-internal String8 str8_concat(Arena *arena, String8 first, String8 second) {
+internal String8 str8_concat(Allocator allocator, String8 first, String8 second) {
     String8 result;
     result.count = first.count + second.count;
-    result.data = push_array(arena, u8, result.count + 1);
+    result.data = array_alloc(allocator, u8, result.count + 1);
     MemoryCopy(result.data, first.data, first.count);
     MemoryCopy(result.data + first.count, second.data, second.count);
     result.data[result.count] = 0;
@@ -71,24 +71,24 @@ internal bool str8_match(String8 first, String8 second, String_Match_Flags flags
     return true;
 }
 
-internal String8 str8_pushfv(Arena *arena, const char *fmt, va_list args) {
+internal String8 str8_pushfv(Allocator allocator, const char *fmt, va_list args) {
     va_list args_;
     va_copy(args_, args);
     String8 result;
     int bytes = stbsp_vsnprintf(NULL, NULL, fmt, args_) + 1;
-    result.data = push_array(arena, u8, bytes);
+    result.data = array_alloc(allocator, u8, bytes);
     result.count = stbsp_vsnprintf((char *)result.data, bytes, fmt, args_);
     result.data[result.count] = 0;
     va_end(args_);
     return result;
 }
 
-internal String8 str8_pushf(Arena *arena, const char *fmt, ...) {
+internal String8 str8_pushf(Allocator allocator, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     String8 result;
     int bytes = stbsp_vsnprintf(NULL, NULL, fmt, args) + 1;
-    result.data = push_array(arena, u8, bytes);
+    result.data = array_alloc(allocator, u8, bytes);
     result.count = stbsp_vsnprintf((char *)result.data, bytes, fmt, args);
     result.data[result.count] = 0;
     va_end(args);

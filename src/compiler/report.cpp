@@ -1,4 +1,4 @@
-global Arena *g_report_arena;
+Arena *g_report_arena;
 
 void report_undeclared(Ast_Ident *ident) {
     report_ast_error(ident, "undeclared identifier '%s'.\n", ident->name->data);
@@ -9,7 +9,7 @@ void report_redeclaration(Ast_Decl *decl) {
 }
 
 internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
-    Report *result = push_array(g_report_arena, Report, 1);
+    Report *result = alloc_item(heap_allocator(), Report);
     result->kind = kind;
     result->message = message;
     result->source_pos = pos; 
@@ -33,7 +33,7 @@ internal Report *submit_report(Source_File *file, Report_Kind kind, String8 mess
 internal void report_note(Source_Pos pos, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
 
     Source_File *file = pos.file;
@@ -43,7 +43,7 @@ internal void report_note(Source_Pos pos, const char *fmt, ...) {
 internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
 
     Source_Pos pos = { lexer->column_number, lexer->line_number, lexer->stream_index, lexer->source_file };
@@ -55,7 +55,7 @@ internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
 internal void report_ast_error(Ast *node, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
     Report *report = submit_report(node->file, REPORT_AST_ERROR, message, node->start, node);
 }
