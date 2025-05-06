@@ -1,14 +1,28 @@
 #ifndef RESOLVE_H
 #define RESOLVE_H
 
-struct Ast_Expr_Node {
-    Ast_Expr_Node *next;
-    Ast_Expr *expr;
+enum Scope_Flags {
+    SCOPE_GLOBAL  = (1<<0),
+    SCOPE_PROC    = (1<<1),
+    SCOPE_BLOCK   = (1<<2),
 };
+EnumDefineFlagOperators(Scope_Flags);
 
-struct Ast_Expr_Stack {
-    Ast_Expr_Node *top;
-    Ast_Expr_Node *free;
+struct Scope {
+    Scope_Flags scope_flags;
+
+    Scope *parent = NULL;
+    Scope *first = NULL;
+    Scope *last = NULL;
+    Scope *next = NULL;
+    Scope *prev = NULL;
+
+    int level = 0;
+    Auto_Array<Ast_Decl*> declarations;
+    Ast_Block *block;
+
+    Ast_Decl *lookup(Atom *name);
+    Auto_Array<Ast_Decl*> lookup_proc(Atom *name);
 };
 
 struct Resolver {
@@ -18,8 +32,8 @@ struct Resolver {
 
     int error_count = 0;
 
-    Ast_Scope *global_scope = NULL;
-    Ast_Scope *current_scope = NULL;
+    Scope *global_scope = NULL;
+    Scope *current_scope = NULL;
     Ast_Proc *current_proc = NULL;
 
     Resolver(Parser *_parser);
@@ -30,8 +44,8 @@ struct Resolver {
     void add_entry(Ast_Decl *decl);
     Ast_Decl *lookup_local(Atom *name);
     Ast_Decl *lookup(Atom *name);
-    Ast_Decl *lookup(Ast_Scope *scope, Atom *name);
-    Ast_Scope *new_scope(Scope_Flags flags);
+    Ast_Decl *lookup(Scope *scope, Atom *name);
+    Scope *new_scope(Scope_Flags flags);
     void exit_scope();
 
     void resolve_block(Ast_Block *block);
