@@ -1,3 +1,13 @@
+Token_Kind :: enum {
+ Eof,
+ Name,
+ Int,
+ Float,
+ String,
+ Plus,
+ Minus,
+}
+
 Vector2 :: struct {
  x: f32;
  y: f32;
@@ -22,6 +32,7 @@ operator + :: (a: Vector3, b: Vector3) -> Vector3 {
 Fruit :: struct {
  calories: s32;
  nutrients: s32;
+ buzz: Buzz;
 }
 
 Buzz :: struct {
@@ -32,10 +43,22 @@ Foo :: struct {
  buzz: Buzz;
 }
 
+operator - :: (v: Vector2) -> Vector2 {
+ result : Vector2 = .{-v.x, -v.y};
+ return result;
+}
+
 main :: () {
+ str : string = "foo buzzz";
+
+ v: *u8;
+
+ tok := Token_Kind.Eof;
+ // Token_Kind.Int = 0; // error
+
  v0: Vector2 = .{0.0, 1.0};
  v1: Vector2 = .{1.0, 0.0};
- v2 := v0 + v1;
+ v2 := v0 + -v1;
 
  foo: Foo;
 
@@ -44,7 +67,7 @@ main :: () {
  // error
  foo.buzz.bar.foo.x = 0;
 
- arr2: ^^s32;
+ arr2: **s32;
 
  // error
  arr2[0][0][0] = 0;
@@ -54,24 +77,35 @@ main :: () {
  y := 10;
 
  // error
- y = x = x * 2 + 1 = x;
+ // y = x = x * 2 + 1 = x;
 
  apple: Fruit;
  apple.calories = 0;
  apple.nutrients = 40;
+ apple.bad_field = 0; // error
 
- // error
- apple.bad_field = 0;
+ orange : Fruit = .{100, 20, };
+ pear   : Fruit = .{100, 40};
 
- pear : Fruit = .{ 100, 40 };
+ ptr := *orange;
+ ptr.calories = 0;
+ ptr.* = 1;
 
  arr: []s32;
+ arr.data = null;
+ arr.count = cast(s64)0;
 
- for a in arr {
+ i := 0;
+ while i < 10 {
+  arr[i] = 0;
+  i = i + 1;
  }
+
+ // for a in arr {
+ // }
 
  n := 10;
  for i in 0..n  {
-  arr[i] = 10.0;
+  arr[i] = 0;
  }
 }
