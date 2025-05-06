@@ -15,7 +15,7 @@ void Resolver::add_entry(Ast_Decl *decl) {
 
 Ast_Decl *Resolver::lookup_local(Atom *name) {
     Ast_Decl *result = NULL;
-    Ast_Scope *scope = current_scope;
+    Scope *scope = current_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
         Ast_Decl *decl = scope->declarations[i];
         if (atoms_match(decl->name, name)) {
@@ -27,7 +27,7 @@ Ast_Decl *Resolver::lookup_local(Atom *name) {
 }
 
 Ast_Decl *Resolver::lookup(Atom *name) {
-    for (Ast_Scope *scope = current_scope; scope; scope = scope->scope_parent) {
+    for (Scope *scope = current_scope; scope; scope = scope->parent) {
         for (int i = 0; i < scope->declarations.count; i++) {
             Ast_Decl *decl = scope->declarations[i];
             if (atoms_match(decl->name, name)) {
@@ -38,7 +38,7 @@ Ast_Decl *Resolver::lookup(Atom *name) {
     return NULL;
 }
 
-Ast_Decl *Resolver::lookup(Ast_Scope *scope, Atom *name) {
+Ast_Decl *Resolver::lookup(Scope *scope, Atom *name) {
     for (int i = 0; i < scope->declarations.count; i++) {
         Ast_Decl *decl = scope->declarations[i];
         if (atoms_match(decl->name, name)) {
@@ -50,7 +50,7 @@ Ast_Decl *Resolver::lookup(Ast_Scope *scope, Atom *name) {
 
 Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, Ast_Type_Info *lhs, Ast_Type_Info *rhs) {
     Ast_Operator_Proc *result = NULL;
-    Ast_Scope *scope = global_scope;
+    Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
         Ast_Decl *decl = scope->declarations[i];
         if (decl->kind == AST_OPERATOR_PROC) {
@@ -70,7 +70,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, 
 
 Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(Token_Kind op, Ast_Type_Info *type) {
     Ast_Operator_Proc *result = NULL;
-    Ast_Scope *scope = global_scope;
+    Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
         Ast_Decl *decl = scope->declarations[i];
         if (decl->kind == AST_OPERATOR_PROC) {
@@ -91,7 +91,7 @@ Ast_Decl *Resolver::lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> argument
     Ast_Proc *result = NULL;
 
     //@Note Check local scopes first and return first
-    for (Ast_Scope *scope = current_scope; scope->scope_parent != NULL; scope = scope->scope_parent) {
+    for (Scope *scope = current_scope; scope->parent != NULL; scope = scope->parent) {
         for (int i = 0; i < scope->declarations.count; i++) {
             Ast_Decl *decl = scope->declarations[i];
             if (atoms_match(name, decl->name)) {
@@ -144,32 +144,30 @@ Ast_Decl *Resolver::lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> argument
     return result;
 }
 
-Ast_Scope *Resolver::new_scope(Scope_Flags scope_flags) {
-    Ast_Scope *parent = current_scope;
-    Ast_Scope *scope = ast_scope(scope_flags);
+Scope *Resolver::new_scope(Scope_Flags scope_flags) {
+    Scope *parent = current_scope;
+    Scope *scope = make_scope(scope_flags);
     if (parent) {
-        scope->scope_parent = parent;
+        scope->parent = parent;
         scope->level = parent->level + 1;
-        DLLPushBack(parent->scope_first, parent->scope_last, scope, scope_next, scope_prev);
+        DLLPushBack(parent->first, parent->last, scope, next, prev);
     }
     current_scope = scope;
     return scope;
 }
 
 void Resolver::exit_scope() {
-    current_scope = current_scope->scope_parent;
+    current_scope = current_scope->parent;
 }
 
-internal Ast_Struct_Field *struct_lookup(Ast_Struct *struct_decl, Atom *name) {
-    Ast_Struct_Field *result = NULL;
-    for (int i = 0; i < struct_decl->fields.count; i++) {
-        Ast_Struct_Field *field = struct_decl->fields[i];
+internal Struct_Field_Info *struct_lookup(Ast_Type_Info *type_info, Atom *name) {
+    for (int i = 0; i < type_info->aggregate.fields.count; i++) {
+        Struct_Field_Info *field = &type_info->aggregate.fields[i];
         if (atoms_match(field->name, name)) {
-            result = field;
-            break;
+            return field;
         }
     }
-    return result;
+    return NULL;
 }
 
 internal Ast_Enum_Field *enum_lookup(Ast_Enum *enum_decl, Atom *name) {
@@ -227,8 +225,8 @@ void Resolver::resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt) {
 
     Ast_Decl *found = lookup_local(decl->name);
     if (found == NULL) {
-        if (current_scope->scope_parent && (current_scope->scope_parent->scope_flags & SCOPE_PROC)) {
-            found = lookup(current_scope->scope_parent, decl->name);
+        if (current_scope->parent && (current_scope->parent->scope_flags & SCOPE_PROC)) {
+            found = lookup(current_scope->parent, decl->name);
             if (found) {
                 report_redeclaration(decl);
             }
@@ -255,6 +253,8 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
 }
 
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
+    Scope *scope = new_scope(SCOPE_BLOCK);
+
     Ast_Iterator *it = for_stmt->iterator;
     resolve_expr(it->range);
 
@@ -262,7 +262,6 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     Ast_Var *var = ast_var(it->ident->name, it->range, NULL);
     var->type_info = type_info;
 
-    Ast_Scope *scope = new_scope(SCOPE_BLOCK);
     scope->declarations.push(var);
 
     resolve_block(for_stmt->block);
@@ -334,7 +333,7 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
 }
 
 void Resolver::resolve_block(Ast_Block *block) {
-    Ast_Scope *scope = new_scope(SCOPE_BLOCK);
+    Scope *scope = new_scope(SCOPE_BLOCK);
     scope->block = block;
 
     block->scope = scope;
@@ -413,7 +412,8 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
 
         if (lhs->valid() && rhs->valid()) {
             if (!typecheck(lhs->type_info, rhs->type_info)) {
-                report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+                report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+                report_note(binary->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
                 binary->poison();
             }
         }
@@ -627,7 +627,8 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
 
     if (lhs->valid() && rhs->valid()) {
         if (!typecheck(lhs->type_info, rhs->type_info)) {
-            report_ast_error(rhs, "cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+            report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_expr(rhs), string_from_expr(lhs));
+            report_note(rhs->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
             assignment->poison();
         }
     }
@@ -710,20 +711,21 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     if (specified_type->is_struct_type()) {
         literal->type_info = specified_type;
 
-        Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(specified_type);
-        if (struct_type->fields.count < literal->elements.count) {
+        Ast_Type_Info *struct_type = specified_type;
+        if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
+            report_note(struct_type->decl->start, "see declaration of '%s'.\n", struct_type->decl->name->data);
             literal->poison();
         }
 
-        int elem_count = Min((int)struct_type->fields.count, (int)literal->elements.count);
+        int elem_count = Min((int)struct_type->aggregate.fields.count, (int)literal->elements.count);
         for (int i = 0; i < elem_count; i++) {
             Ast_Expr *elem = literal->elements[i];
             if (elem->invalid()) continue;
             
-            Struct_Field_Info field = struct_type->fields[i];
-            if (!typecheck(field.type, elem->type_info)) {
-                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(field.type));
+            Struct_Field_Info *field = &struct_type->aggregate.fields[i];
+            if (!typecheck(field->type_info, elem->type_info)) {
+                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(field->type_info));
                 literal->poison();
             }
         }
@@ -778,14 +780,17 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
 }
 
 void Resolver::resolve_literal(Ast_Literal *literal) {
-    if (literal->literal_flags & LITERAL_INT) {
+    if (literal->literal_flags & LITERAL_NULL) {
+        literal->type_info = type_null;
+        literal->eval.int_val = 0;
+    } else if (literal->literal_flags & LITERAL_INT) {
         literal->type_info = type_s32;
         literal->eval.int_val = (s64)literal->int_val;
     } else if (literal->literal_flags & LITERAL_FLOAT) {
         literal->type_info = type_f32;
         literal->eval.float_val = literal->float_val;
     } else if (literal->literal_flags & LITERAL_STRING) {
-        // literal->type_info = type_string;
+        literal->type_info = type_string;
     } else if (literal->literal_flags & LITERAL_BOOLEAN) {
         literal->type_info = type_bool;
         literal->eval.int_val = literal->int_val;
@@ -909,7 +914,7 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
             field_expr->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
-        if (!elem->type_info->is_struct_type() && !elem->type_info->is_enum_type()) {
+        if (!elem->type_info->is_struct_type() && !elem->type_info->is_enum_type() && !elem->type_info->is_array_type() && !(elem->type_info->type_flags & TYPE_FLAG_STRING) && !(elem->type_info->is_pointer_type() && elem->type_info->base->is_struct_type())) {
             report_ast_error(field_expr, "'%s' is not a struct, enum or struct pointer type.\n", string_from_expr(field_expr));
             field_expr->poison();
         }
@@ -920,14 +925,17 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
 
         Ast_Ident *name = static_cast<Ast_Ident*>(field_expr->elem);
 
-        if (parent->type_info->is_struct_type()) {
-            Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(parent->type_info);
-            Ast_Struct_Field *struct_field = struct_lookup(static_cast<Ast_Struct*>(struct_type->decl), name->name);
+        if (parent->type_info->is_struct_type() || (parent->type_info->is_pointer_type() && parent->type_info->base->is_struct_type())) {
+            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
+            Ast_Type_Info *struct_type = parent->type_info;
+            if (parent->type_info->is_pointer_type()) {
+                struct_type = parent->type_info->base;
+            }
+            Struct_Field_Info *struct_field = struct_lookup(struct_type, name->name);
             if (struct_field) {
                 field_expr->type_info = struct_field->type_info;
-                field_expr->expr_flags |= EXPR_FLAG_LVALUE;
             } else {
-                report_ast_error(field_expr, "'%s' is not a member of '%s'.\n", name->name->data, struct_type->decl->name->data);
+                report_ast_error(parent, "'%s' is not a member of '%s'.\n", name->name->data, struct_type->decl->name->data);
                 field_expr->poison();
             }
         } else if (parent->type_info->is_enum_type()) {
@@ -941,11 +949,33 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
             if (enum_field) {
                 field_expr->type_info = type_s32;
             } else {
-                report_ast_error(field_expr, "'%s' is not a member of '%s'.\n", name->name->data, enum_type->decl->name->data);
+                report_ast_error(parent, "'%s' is not a member of '%s'.\n", name->name->data, enum_type->decl->name->data);
+                field_expr->poison();
+            }
+        } else if (parent->type_info->is_array_type()) {
+            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
+
+            Ast_Type_Info *type = parent->type_info;
+            Struct_Field_Info *struct_field = struct_lookup(type, name->name);
+            if (struct_field) {
+                field_expr->type_info = struct_field->type_info;
+            } else {
+                report_ast_error(parent, "'%s' is not a member of array type.\n", name->name->data);
+                field_expr->poison();
+            }
+        } else if (parent->type_info->type_flags & TYPE_FLAG_STRING) {
+            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
+
+            Ast_Type_Info *type = parent->type_info;
+            Struct_Field_Info *struct_field = struct_lookup(type, name->name);
+            if (struct_field) {
+                field_expr->type_info = struct_field->type_info;
+            } else {
+                report_ast_error(parent, "'%s' is not a member of string type.\n", name->name->data);
                 field_expr->poison();
             }
         } else {
-            report_ast_error(field_expr, "left .'%s' is not a struct/enum type.\n", (char *)name->name->data);
+            report_ast_error(parent, "left .'%s' is not a struct/enum type.\n", (char *)name->name->data);
             field_expr->poison();
         }
     }
@@ -976,6 +1006,8 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
             report_ast_error(range, "mismatched types in range expression ('%s' and '%s').\n", string_from_type(range->lhs->type_info), string_from_type(range->rhs->type_info));
         }
     }
+
+    range->type_info = range->lhs->type_info;
 }
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
@@ -1174,7 +1206,7 @@ void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
 void Resolver::resolve_proc(Ast_Proc *proc) {
     resolve_proc_header(proc);
     if (in_global_scope()) {
-        Ast_Scope *scope = new_scope(SCOPE_PROC);
+        Scope *scope = new_scope(SCOPE_PROC);
         proc->scope = scope;
         current_proc = proc;
         for (int i = 0; i < proc->parameters.count; i++) {
@@ -1194,11 +1226,12 @@ void Resolver::resolve_struct(Ast_Struct *struct_decl) {
         field->type_info = resolve_type(field->type_defn);
 
         Struct_Field_Info field_info = {};
-        field_info.type = field->type_info;
+        field_info.name = field->name;
+        field_info.type_info = field->type_info;
         field_info.mem_offset = 0;
         struct_fields.push(field_info);
     }
-    Ast_Struct_Type_Info *type_info = ast_struct_type_info(struct_fields);
+    Ast_Type_Info *type_info = ast_struct_type_info(struct_fields);
     struct_decl->type_info = type_info;
     type_info->decl = struct_decl;
     type_info->name = struct_decl->name;
@@ -1346,7 +1379,7 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
 
 void Resolver::resolve_overloaded_proc(Ast_Proc *proc) {
     Ast_Decl *found = NULL;
-    Ast_Scope *scope = global_scope;
+    Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
         Ast_Decl *decl = scope->declarations[i];
 
