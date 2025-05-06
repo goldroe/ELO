@@ -26,8 +26,8 @@
 #include "report.cpp"
 #include "atom.cpp"
 #include "lexer.cpp"
-#include "ast.cpp"
 #include "types.cpp"
+#include "ast.cpp"
 #include "parser.cpp"
 #include "resolve.cpp"
 
@@ -118,7 +118,22 @@ int main(int argc, char **argv) {
     String8 file_path = path_join(temp_arena, os_current_dir(temp_arena), file_name);
     file_path = normalize_path(temp_arena, file_path);
 
+    String8 extension = path_get_extension(file_path);
+
+    if (!os_file_exists(file_path)) {
+        compiler_error("no such file or directory '%S'.\n", file_path);
+        return 1;
+    }
+    if (!str8_equal(extension, str8_lit("elo"))) {
+        compiler_error("'%S' is not a valid elo file.\n", file_path);
+        return 1;
+    }
+
     Lexer *lexer = new Lexer(file_path);
+
+    if (!lexer->stream) {
+        return 1;
+    }
 
     Parser *parser = new Parser(lexer);
     parser->parse();
@@ -136,20 +151,26 @@ int main(int argc, char **argv) {
 
         for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
             Report *report = file->reports[report_idx];
+
+#if !defined(_DEBUG)
             print_report(report, file);
+#endif
 
             if (report->kind == REPORT_PARSER_ERROR || report->kind == REPORT_AST_ERROR) error_count++;
 
             for (int i = 0; i < report->children.count; i++) {
                 Report *child = report->children[i];
+#if !defined(_DEBUG)
                 print_report(child, file);
+#endif
             }
         }
     }
 
     if (error_count == 0) {
         lb_arena = arena_alloc(get_virtual_allocator(), MB(2));
-        lb_backend(g_source_files[0], parser->root);
+        LB_Generator *generator = new LB_Generator(g_source_files[0], parser->root);
+        generator->generate();
     }
 
     if (error_count > 0) {
@@ -160,5 +181,5 @@ int main(int argc, char **argv) {
 
     printf("done.\n");
 
-    return 0;
+    return error_count == 0 ? 0 : 1;
 }
