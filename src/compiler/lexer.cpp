@@ -79,14 +79,12 @@ Lexer::Lexer(String8 file_path) {
     if (os_valid_handle(file_handle)) {
         file_text = os_read_file_string(file_handle);
         os_close_handle(file_handle);
-    } else {
-        compiler_error("no such file or directory %S.\n", file_path);
-    }
 
-    source_file = new Source_File(file_path, file_text);
-    add_source_file(source_file);
-    stream = source_file->text.data;
-    next_token();
+        source_file = new Source_File(file_path, file_text);
+        add_source_file(source_file);
+        stream = source_file->text.data;
+        next_token();
+    }
 }
 
 Token Lexer::current() {
@@ -544,6 +542,9 @@ lex_start:
         if (*stream == '.') {
             token.kind = TOKEN_ELLIPSIS;
             eat_char();
+        } else if (*stream == '*') {
+            token.kind = TOKEN_POSTFIX_DEREF;
+            eat_char();
         }
         break; 
     }
@@ -673,6 +674,9 @@ internal char *string_from_token(Token_Kind token) {
         return "||";
     case TOKEN_XOR:
         return "^";
+
+    case TOKEN_POSTFIX_DEREF:
+        return ".*";
 
     case TOKEN_LSHIFT:
         return "<<";
