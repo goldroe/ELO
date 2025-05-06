@@ -17,6 +17,10 @@ internal String8 str8(u8 *c, u64 count) {
     return result;
 }
 
+internal inline bool str8_equal(String8 first, String8 second) {
+    return first.count == second.count && (memcmp(first.data, second.data, first.count) == 0);
+}
+
 internal String8 str8_cstring(const char *c) {
     String8 result;
     result.count = cstr8_length(c);
