@@ -35,6 +35,24 @@ internal String8 path_strip_extension(Arena *arena, String8 path) {
     return str8_zero();
 }
 
+internal String8 path_get_extension(String8 path) {
+    Assert(path.data);
+    for (u64 i = path.count - 1; i > 0; i--) {
+        switch (path.data[i]) {
+        case '.':
+        {
+            String8 result = str8(path.data + i + 1, path.count - i - 1);
+            return result;
+        }
+        case '/':
+        case '\\':
+            //@Note no extension
+            return str8_zero();
+        }
+    }
+    return str8_zero();
+}
+
 internal String8 path_dir_name(String8 path) {
     String8 result = str8_zero();
     if (path.data) {
