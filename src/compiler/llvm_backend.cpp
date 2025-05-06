@@ -1,13 +1,38 @@
-
-#include "ast.h"
 global Arena *lb_arena;
-global Ast_Scope *lb_g_scope;
-global LLVMModuleRef lb_g_module;
 global LB_Procedure *lb_g_procedure;
 global Auto_Array<LB_Procedure*> lb_g_global_procedures;
 global Auto_Array<LB_Struct*> lb_g_structs;
 
 #define lb_alloc(T) (T*)lb_backend_alloc(sizeof(T))
+
+LB_Generator::LB_Generator(Source_File *file, Ast_Root *root) {
+    this->root = root;
+    this->file = file;
+    this->context = new LB_Context();
+}
+
+void LB_Generator::generate() {
+    module = LLVMModuleCreateWithName("my_module");
+
+    for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
+        Ast_Decl *decl = root->declarations[decl_idx];
+        build_decl(decl);
+    }
+
+    for (int proc_idx = 0; proc_idx < lb_g_global_procedures.count; proc_idx++) {
+        LB_Procedure *procedure = lb_g_global_procedures[proc_idx];
+        build_procedure_body(procedure);
+    }
+
+    char *error = NULL;
+    LLVMVerifyModule(module, LLVMPrintMessageAction, &error);
+    LLVMDisposeMessage(error);
+
+    char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
+    if (LLVMWriteBitcodeToFile(module, gen_file_path) != 0) {
+        fprintf(stderr, "error writing bitcode to file %s, skipping\n", gen_file_path);
+    }
+}
 
 internal LB_Procedure *lb_get_procedure(Atom *name) {
     for (int i = 0; i < lb_g_global_procedures.count; i++) {
@@ -45,7 +70,7 @@ internal LB_Struct *lb_get_struct(Atom *name) {
     }
     return NULL;
 }
-    
+
 internal unsigned lb_get_struct_field_index(Ast_Struct *struct_decl, Atom *name) {
     for (unsigned i = 0; i < struct_decl->fields.count; i++) {
         Ast_Struct_Field *field = struct_decl->fields[i];
@@ -57,7 +82,7 @@ internal unsigned lb_get_struct_field_index(Ast_Struct *struct_decl, Atom *name)
     return 0;
 } 
 
-internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
+LLVMTypeRef LB_Generator::build_type(Ast_Type_Info *type_info) {
     LLVMTypeRef result = 0;
 
     if (type_info->type_flags & TYPE_FLAG_BUILTIN) {
@@ -104,11 +129,11 @@ internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
         result = lb_struct->type;
     } else if (type_info->is_array_type()) {
         Ast_Array_Type_Info *array_type_info = static_cast<Ast_Array_Type_Info*>(type_info);
-        LLVMTypeRef element_type = lb_build_type(array_type_info->base);
+        LLVMTypeRef element_type = build_type(array_type_info->base);
         LLVMTypeRef array_type = LLVMArrayType2(element_type, array_type_info->array_size);
         result = array_type;
     } else if (type_info->is_pointer_type()) {
-        LLVMTypeRef element_type = lb_build_type(type_info->base);
+        LLVMTypeRef element_type = build_type(type_info->base);
         LLVMTypeRef pointer_type = LLVMPointerType(element_type, 0);
         result = pointer_type;
     }
@@ -118,7 +143,8 @@ internal LLVMTypeRef lb_build_type(Ast_Type_Info *type_info) {
     return result;
 }
 
-internal LB_Addr lb_build_addr(Ast_Expr *expr) {
+
+LB_Addr LB_Generator::build_addr(Ast_Expr *expr) {
     LB_Addr result = {};
     LLVMBuilderRef builder = lb_g_procedure->builder;
 
@@ -137,10 +163,10 @@ internal LB_Addr lb_build_addr(Ast_Expr *expr) {
         Ast_Field *field = static_cast<Ast_Field*>(expr);
         Ast_Field *parent = field->field_parent;
         if (!parent) {
-            LB_Addr addr = lb_build_addr(field->elem);
+            LB_Addr addr = build_addr(field->elem);
             result.value = addr.value;
         } else {
-            LB_Addr addr = lb_build_addr(field->field_parent);
+            LB_Addr addr = build_addr(field->field_parent);
             if (parent->type_info->is_struct_type()) {
                 Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
                 Ast_Struct *struct_node = static_cast<Ast_Struct*>(parent->type_info->decl);
@@ -156,9 +182,9 @@ internal LB_Addr lb_build_addr(Ast_Expr *expr) {
     case AST_INDEX:
     {
         Ast_Index *index = static_cast<Ast_Index*>(expr);
-        LB_Addr addr = lb_build_addr(index->lhs);
-        LB_Value rhs = lb_build_expr(index->rhs);
-        LLVMTypeRef type = lb_build_type(index->lhs->type_info);
+        LB_Addr addr = build_addr(index->lhs);
+        LB_Value rhs = build_expr(index->rhs);
+        LLVMTypeRef type = build_type(index->lhs->type_info);
         LLVMValueRef value = LLVMBuildGEP2(builder, type, addr.value, &rhs.value, 1, "indexaddr");
         result.value = value;
         break;
@@ -168,7 +194,7 @@ internal LB_Addr lb_build_addr(Ast_Expr *expr) {
     return result;
 }
 
-internal LB_Value lb_build_expr(Ast_Expr *expr) {
+LB_Value LB_Generator::build_expr(Ast_Expr *expr) {
     LB_Value result = {};
 
     LLVMBuilderRef builder = lb_g_procedure->builder;
@@ -177,14 +203,14 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     case AST_PAREN:
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
-        result = lb_build_expr(paren->elem);
+        result = build_expr(paren->elem);
         break;
     }
 
     case AST_LITERAL:
     {
         Ast_Literal *literal = static_cast<Ast_Literal*>(expr);
-        LLVMTypeRef type = lb_build_type(literal->type_info);
+        LLVMTypeRef type = build_type(literal->type_info);
 
         if (literal->literal_flags & LITERAL_INT) {
             result.value = LLVMConstInt(type, literal->int_val, (literal->type_info->type_flags & TYPE_FLAG_SIGNED));
@@ -214,7 +240,7 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
         Assert(var);
 
         result.value = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
-        result.type = lb_build_type(ident->type_info);
+        result.type = build_type(ident->type_info);
         break;
     }
 
@@ -231,13 +257,13 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
                 args.reserve(call->arguments.count);
                 for (int i = 0; i < call->arguments.count; i++) {
                     Ast_Expr *arg = call->arguments[i];
-                    LB_Value arg_value = lb_build_expr(arg);
+                    LB_Value arg_value = build_expr(arg);
                     args.push(arg_value.value);
                 }
             }
 
             result.value = LLVMBuildCall2(builder, procedure->type, procedure->value, args.data, (unsigned int)args.count, "calltmp");
-            result.type = lb_build_type(call->type_info);
+            result.type = build_type(call->type_info);
         } else {
             
         }
@@ -247,10 +273,10 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     case AST_INDEX:
     {
         Ast_Index *index = static_cast<Ast_Index*>(expr);
-        LLVMTypeRef array_type = lb_build_type(index->lhs->type_info);
-        LLVMTypeRef type = lb_build_type(index->type_info);
-        LB_Addr addr = lb_build_addr(index->lhs);
-        LB_Value rhs = lb_build_expr(index->rhs);
+        LLVMTypeRef array_type = build_type(index->lhs->type_info);
+        LLVMTypeRef type = build_type(index->type_info);
+        LB_Addr addr = build_addr(index->lhs);
+        LB_Value rhs = build_expr(index->rhs);
         LLVMValueRef pointer = LLVMBuildGEP2(builder, array_type, addr.value, &rhs.value, 1, "indexaddr");
         LLVMValueRef value = LLVMBuildLoad2(builder, type, pointer, "indextmp");
         result.value = value;
@@ -275,14 +301,14 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
             
         } else {
             if (unary->is_constant()) {
-                LLVMTypeRef type = lb_build_type(unary->type_info);
+                LLVMTypeRef type = build_type(unary->type_info);
                 if (unary->type_info->is_integral_type()) {
                     result.value = LLVMConstInt(type, unary->eval.int_val, unary->type_info->is_signed());
                 } else if (unary->type_info->is_float_type()) {
                     result.value = LLVMConstReal(type, unary->eval.float_val);
                 }
             } else {
-                LB_Value elem_value = lb_build_expr(unary->elem);
+                LB_Value elem_value = build_expr(unary->elem);
                 switch (unary->op.kind) {
                 case TOKEN_MINUS:
                     result.value = LLVMBuildNeg(builder, elem_value.value, "negtmp");
@@ -294,14 +320,14 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
             }
         }
 
-        result.type = lb_build_type(unary->type_info);
+        result.type = build_type(unary->type_info);
         break;
     }
 
     case AST_ADDRESS:
     {
         Ast_Address *address = static_cast<Ast_Address*>(expr);
-        LB_Addr addr = lb_build_addr(address->elem);
+        LB_Addr addr = build_addr(address->elem);
         result.value = addr.value;
         break;
     }
@@ -309,8 +335,8 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     case AST_DEREF:
     {
         Ast_Deref *deref = static_cast<Ast_Deref*>(expr);
-        LB_Addr addr = lb_build_addr(deref->elem);
-        LLVMTypeRef type = lb_build_type(deref->elem->type_info);
+        LB_Addr addr = build_addr(deref->elem);
+        LLVMTypeRef type = build_type(deref->elem->type_info);
         LLVMValueRef value = LLVMBuildLoad2(builder, type, addr.value, "dereftmp");
         break;
     }
@@ -324,15 +350,15 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
             
         } else {
             if (binary->is_constant()) {
-                LLVMTypeRef type = lb_build_type(binary->type_info);
+                LLVMTypeRef type = build_type(binary->type_info);
                 if (binary->type_info->is_integral_type()) {
                     result.value = LLVMConstInt(type, binary->eval.int_val, binary->type_info->is_signed());
                 } else if (binary->type_info->is_float_type()) {
                     result.value = LLVMConstReal(type, binary->eval.float_val);
                 }
             } else {
-                LB_Value lhs = lb_build_expr(binary->lhs);
-                LB_Value rhs = lb_build_expr(binary->rhs);
+                LB_Value lhs = build_expr(binary->lhs);
+                LB_Value rhs = build_expr(binary->rhs);
                 
                 switch (binary->op.kind) {
                 default:
@@ -390,7 +416,7 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
                 }
             }
         }
-        result.type = lb_build_type(binary->type_info);
+        result.type = build_type(binary->type_info);
         break;
     }
 
@@ -400,17 +426,17 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
         //@Todo Multiple assignments not supported!
         Assert(assignment->rhs->kind != AST_ASSIGNMENT);
 
-        LB_Addr addr = lb_build_addr(assignment->lhs);
+        LB_Addr addr = build_addr(assignment->lhs);
 
         if (assignment->lhs->type_info->is_struct_type()) {
-            Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(assignment->lhs->type_info);
+            Ast_Type_Info *struct_type = assignment->lhs->type_info;
             LB_Struct *lb_struct = lb_get_struct(struct_type->decl->name);
             
             if (assignment->rhs->kind == AST_COMPOUND_LITERAL) {
                 Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(assignment->rhs);
                 for (int i = 0; i < compound->elements.count; i++) {
                     Ast_Expr *elem = compound->elements[i];
-                    LB_Value value = lb_build_expr(elem);
+                    LB_Value value = build_expr(elem);
                     LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, lb_struct->type, addr.value, (unsigned)i, "fieldaddr_tmp");
                     LLVMBuildStore(builder, value.value, field_addr);
                 }
@@ -419,8 +445,8 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
                 //@Todo Get addresses of each field in rhs and store in lhs fields
             }
         } else {
-            LB_Addr addr = lb_build_addr(assignment->lhs);
-            LB_Value rhs = lb_build_expr(assignment->rhs);
+            LB_Addr addr = build_addr(assignment->lhs);
+            LB_Value rhs = build_expr(assignment->rhs);
 
             LLVMBuildStore(builder, rhs.value, addr.value);
         }
@@ -436,10 +462,10 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
 
         LB_Addr addr = {};
         if (!parent) {
-            addr = lb_build_addr(field->elem);
+            addr = build_addr(field->elem);
             result.value = addr.value;
         } else {
-            addr = lb_build_addr(parent);
+            addr = build_addr(parent);
             
             if (parent->type_info->is_struct_type()) {
                 Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
@@ -453,7 +479,7 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
         }
 
         if (!child) {
-            LLVMTypeRef type = lb_build_type(parent->type_info);
+            LLVMTypeRef type = build_type(parent->type_info);
             result.value = LLVMBuildLoad2(builder, type, addr.value, "fieldload");
         }
         break;
@@ -467,14 +493,14 @@ internal LB_Value lb_build_expr(Ast_Expr *expr) {
     return result;
 }
 
-internal void lb_block(LLVMBasicBlockRef basic_block, Ast_Block *block) {
+void LB_Generator::build_block(Ast_Block *block) {
     for (int i = 0; i < block->statements.count; i++) {
         Ast_Stmt *stmt = block->statements[i];
-        lb_stmt(basic_block, stmt);
+        build_stmt(stmt);
     }
 }
 
-internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
+void LB_Generator::build_stmt(Ast_Stmt *stmt) {
     LLVMBuilderRef builder = lb_g_procedure->builder;
 
     switch (stmt->kind) {
@@ -482,7 +508,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     {
         Ast_Expr_Stmt *expr_stmt = static_cast<Ast_Expr_Stmt*>(stmt);
         Ast_Expr *expr = expr_stmt->expr;
-        LB_Value value = lb_build_expr(expr);
+        LB_Value value = build_expr(expr);
         break;
     }
 
@@ -495,7 +521,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
             LB_Var *var = lb_alloc(LB_Var);
             var->name = var_node->name;
             var->decl = decl;
-            var->type = lb_build_type(var_node->type_info);
+            var->type = build_type(var_node->type_info);
             var->alloca = LLVMBuildAlloca(builder, var->type, (char *)var->name->data);
             lb_g_procedure->named_values.push(var);
 
@@ -506,12 +532,12 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
                     Ast_Compound_Literal *compound = static_cast<Ast_Compound_Literal*>(init);
                     for (int i = 0; i < compound->elements.count; i++) {
                         Ast_Expr *elem = compound->elements[i];
-                        LB_Value value = lb_build_expr(elem);
+                        LB_Value value = build_expr(elem);
                         LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, lb_struct->type, var->alloca, (unsigned)i, "fieldaddr_tmp");
                         LLVMBuildStore(builder, value.value, field_addr);
                     }
                 } else {
-                    LB_Value init_value = lb_build_expr(init);
+                    LB_Value init_value = build_expr(init);
                     LLVMBuildStore(builder, init_value.value, var->alloca);
                 }
             } else {
@@ -545,7 +571,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         if (return_stmt->expr) {
-            LB_Value ret = lb_build_expr(return_stmt->expr);
+            LB_Value ret = build_expr(return_stmt->expr);
             LLVMBuildRet(builder, ret.value);
         } else {
             LLVMBuildRetVoid(builder);
@@ -564,7 +590,7 @@ internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt) {
     }
 }
 
-internal LB_Procedure *lb_build_procedure(Ast_Proc *proc) {
+LB_Procedure *LB_Generator::build_procedure(Ast_Proc *proc) {
     Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
 
     LB_Procedure *lb_proc = lb_alloc(LB_Procedure);
@@ -575,14 +601,14 @@ internal LB_Procedure *lb_build_procedure(Ast_Proc *proc) {
 
     for (int i = 0; i < proc_type->parameters.count; i++) {
         Ast_Type_Info *type_info = proc_type->parameters[i];
-        LLVMTypeRef type = lb_build_type(type_info);
+        LLVMTypeRef type = build_type(type_info);
         lb_proc->parameter_types.push(type);
     }
-    lb_proc->return_type = lb_build_type(proc_type->return_type);
+    lb_proc->return_type = build_type(proc_type->return_type);
 
     lb_proc->type = LLVMFunctionType(lb_proc->return_type, lb_proc->parameter_types.data, (int)lb_proc->parameter_types.count, false);
 
-    lb_proc->value = LLVMAddFunction(lb_g_module, (char *)lb_proc->name->data, lb_proc->type);
+    lb_proc->value = LLVMAddFunction(module, (char *)lb_proc->name->data, lb_proc->type);
 
     lb_proc->entry = LLVMAppendBasicBlock(lb_proc->value, "entry");
 
@@ -597,7 +623,7 @@ internal LB_Procedure *lb_build_procedure(Ast_Proc *proc) {
         LB_Var *var = lb_alloc(LB_Var);
         var->name = param->name;
         var->decl = param;
-        var->type = lb_build_type(param->type_info);
+        var->type = build_type(param->type_info);
         var->alloca = LLVMBuildAlloca(lb_proc->builder, param_type, (char *)var->name->data);
         lb_proc->named_values.push(var);
 
@@ -606,17 +632,17 @@ internal LB_Procedure *lb_build_procedure(Ast_Proc *proc) {
     return lb_proc;
 }
 
-internal void lb_build_procedure_body(LB_Procedure *procedure) {
+void LB_Generator::build_procedure_body(LB_Procedure *procedure) {
     lb_g_procedure = procedure;
 
-    lb_block(procedure->entry, procedure->proc->block);
+    build_block(procedure->proc->block);
 
     if (procedure->proc->type_info == type_void) {
         LLVMBuildRetVoid(procedure->builder);
     }
 }
 
-internal LB_Struct *lb_build_struct(Ast_Struct *struct_decl) {
+LB_Struct *LB_Generator::build_struct(Ast_Struct *struct_decl) {
     LB_Struct *lb_struct = lb_alloc(LB_Struct);
     lb_struct->name = struct_decl->name;
 
@@ -626,53 +652,31 @@ internal LB_Struct *lb_build_struct(Ast_Struct *struct_decl) {
 
     for (int i = 0; i < struct_decl->fields.count; i++) {
         Ast_Struct_Field *field = struct_decl->fields[i];
-        LLVMTypeRef field_type = lb_build_type(field->type_info);
+        LLVMTypeRef field_type = build_type(field->type_info);
         lb_struct->element_types.push(field_type);
     }
 
     LLVMStructSetBody(lb_struct->type, lb_struct->element_types.data, (unsigned)lb_struct->element_types.count, false);
 
     return lb_struct;
-} 
+}
 
-internal void lb_build_decl(Ast_Decl *decl) {
+void LB_Generator::build_decl(Ast_Decl *decl) {
     switch (decl->kind) {
     case AST_PROC:
     {
         Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
-        LB_Procedure *lb_proc = lb_build_procedure(proc);
+        LB_Procedure *lb_proc = build_procedure(proc);
         lb_g_global_procedures.push(lb_proc);
         break;
     }
     case AST_STRUCT:
     {
         Ast_Struct *struct_decl = static_cast<Ast_Struct*>(decl);
-        LB_Struct *lb_struct = lb_build_struct(struct_decl);
+        LB_Struct *lb_struct = build_struct(struct_decl);
         lb_g_structs.push(lb_struct);
         break;
     }
     }
 }
 
-internal void lb_backend(Source_File *file, Ast_Root *root) {
-    lb_g_module = LLVMModuleCreateWithName("my_module");
-
-    for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
-        Ast_Decl *decl = root->declarations[decl_idx];
-        lb_build_decl(decl);
-    }
-
-    for (int proc_idx = 0; proc_idx < lb_g_global_procedures.count; proc_idx++) {
-        LB_Procedure *procedure = lb_g_global_procedures[proc_idx];
-        lb_build_procedure_body(procedure);
-    }
-
-    char *error = NULL;
-    LLVMVerifyModule(lb_g_module, LLVMPrintMessageAction, &error);
-    LLVMDisposeMessage(error);
-
-    char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
-    if (LLVMWriteBitcodeToFile(lb_g_module, gen_file_path) != 0) {
-        fprintf(stderr, "error writing bitcode to file %s, skipping\n", gen_file_path);
-    }
-}
