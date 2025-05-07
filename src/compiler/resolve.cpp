@@ -412,7 +412,6 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
         if (lhs->valid() && rhs->valid()) {
             if (!typecheck(lhs->type_info, rhs->type_info)) {
                 report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
-                report_note(binary->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
                 binary->poison();
             }
         }
@@ -626,8 +625,7 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
 
     if (lhs->valid() && rhs->valid()) {
         if (!typecheck(lhs->type_info, rhs->type_info)) {
-            report_ast_error(rhs, "type mismatch, cannot assign '%s' to '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
-            report_note(rhs->start, "expected '%s', got '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
+            report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
             assignment->poison();
         }
     }
@@ -684,10 +682,14 @@ void Resolver::resolve_index_expr(Ast_Index *index) {
     resolve_expr(index->lhs);
     resolve_expr(index->rhs);
 
-    if (index->lhs->valid() && index->lhs->type_info->is_indirection_type()) {
-        index->type_info = index->lhs->type_info->deref();
+    if (index->lhs->valid()) {
+        if (index->lhs->type_info->is_indirection_type()) {
+            index->type_info = index->lhs->type_info->deref();
+        } else {
+            report_ast_error(index->lhs, "'%s' is not a pointer or array type.\n", string_from_expr(index->lhs));
+            index->poison();
+        }
     } else {
-        report_ast_error(index->lhs, "'%s' is not a pointer or array type.\n", string_from_expr(index->lhs));
         index->poison();
     }
 
@@ -696,11 +698,15 @@ void Resolver::resolve_index_expr(Ast_Index *index) {
             report_ast_error(index->rhs, "array subscript is not of integral type.\n");
             index->poison();
         }
+    } else {
+        index->poison();
     }
 }
 
 void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     Ast_Type_Info *specified_type = resolve_type(literal->type_defn);
+
+    literal->type_info = specified_type;
 
     for (int i = 0; i < literal->elements.count; i++) {
         Ast_Expr *elem = literal->elements[i];
@@ -708,8 +714,6 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     }
 
     if (specified_type->is_struct_type()) {
-        literal->type_info = specified_type;
-
         Ast_Type_Info *struct_type = specified_type;
         if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
@@ -728,15 +732,14 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
                 literal->poison();
             }
         }
-    } else {
-        literal->type_info = ast_array_type_info(specified_type);
-
+    } else if (specified_type->is_array_type()) {
+        Ast_Type_Info *elem_type = specified_type->base;
         for (int i = 0; i < literal->elements.count; i++) {
             Ast_Expr *elem = literal->elements[i];
             if (elem->invalid()) break;
-            
-            if (!typecheck(specified_type, elem->type_info)) {
-                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(specified_type));
+
+            if (!typecheck(elem_type, elem->type_info)) {
+                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(elem_type));
                 literal->poison();
             }
         }
@@ -779,25 +782,73 @@ void Resolver::resolve_unary_expr(Ast_Unary *unary) {
 }
 
 void Resolver::resolve_literal(Ast_Literal *literal) {
-    if (literal->literal_flags & LITERAL_NULL) {
+    literal->expr_flags |= EXPR_FLAG_CONSTANT;
+
+    switch (literal->literal_flags) {
+    default:
+        Assert(0);
+        break;
+
+    case LITERAL_NULL:
         literal->type_info = type_null;
         literal->eval.int_val = 0;
-    } else if (literal->literal_flags & LITERAL_INT) {
+        break;
+
+    case LITERAL_INT:
+    case LITERAL_S32:
         literal->type_info = type_s32;
         literal->eval.int_val = (s64)literal->int_val;
-    } else if (literal->literal_flags & LITERAL_FLOAT) {
-        literal->type_info = type_f32;
-        literal->eval.float_val = literal->float_val;
-    } else if (literal->literal_flags & LITERAL_STRING) {
-        literal->type_info = type_string;
-    } else if (literal->literal_flags & LITERAL_BOOLEAN) {
+        break;
+
+    case LITERAL_S8:
+        literal->type_info = type_s8;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+    case LITERAL_S16:
+        literal->type_info = type_s16;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+     case LITERAL_S64:
+        literal->type_info = type_s64;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+
+     case LITERAL_U8:
+        literal->type_info = type_u8;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+     case LITERAL_U16:
+        literal->type_info = type_u16;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+     case LITERAL_U32:
+        literal->type_info = type_u32;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+     case LITERAL_U64:
+        literal->type_info = type_u64;
+        literal->eval.int_val = (s64)literal->int_val;
+        break;
+
+    case LITERAL_BOOLEAN:
         literal->type_info = type_bool;
         literal->eval.int_val = literal->int_val;
-    } else {
-        Assert(0);
-    }
+        break;
 
-    literal->expr_flags |= EXPR_FLAG_CONSTANT;
+    case LITERAL_FLOAT:
+    case LITERAL_F32:
+        literal->type_info = type_f32;
+        literal->eval.float_val = literal->float_val;
+        break;
+    case LITERAL_F64:
+        literal->type_info = type_f64;
+        literal->eval.float_val = literal->float_val;
+        break;
+
+    case LITERAL_STRING:
+        literal->type_info = type_string;
+        break;
+    }
 }
 
 void Resolver::resolve_ident(Ast_Ident *ident) {
@@ -1261,26 +1312,104 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
 }
 
 void Resolver::resolve_var(Ast_Var *var) {
-    Ast_Type_Info *specified_type = NULL;
-    if (var->type_defn) {
-        specified_type = resolve_type(var->type_defn);
-    }
-    if (var->init) {
-        resolve_expr(var->init);
-        if (var->init->invalid()) var->poison();
+    if (var->init && var->init->kind == AST_COMPOUND_LITERAL) {
+        Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(var->init);
+        literal->visited = true;
+
+        Auto_Array<Ast_Type_Info*> literal_types;
+        for (int i = 0; i < literal->elements.count; i++) {
+            Ast_Expr *element = literal->elements[i];
+            resolve_expr(element);
+            if (!literal_types.find(element->type_info)) {
+                literal_types.push(element->type_info);
+            }
+        }
+
+        Ast_Type_Info *literal_type_spec = resolve_type(literal->type_defn);
+        Ast_Type_Info *specified_type = resolve_type(var->type_defn);
+
+        if (specified_type && literal_type_spec) {
+            if (typecheck(specified_type, literal_type_spec)) {
+                var->type_info = specified_type;
+                literal->type_info = specified_type;
+            } else {
+                report_ast_error(literal, "type mismatch, cannot convert from '%s' to '%s'.\n", string_from_type(literal_type_spec), string_from_type(specified_type));
+                literal->poison();
+                goto ERROR_BLOCK;
+            }
+        }
+
+        Ast_Type_Info *type_info = specified_type;
+        if (!type_info) {
+            type_info = literal_type_spec;
+        }
+
+        var->type_info = type_info;
+
+        if (type_info) {
+            if (type_info->is_array_type()) {
+                Ast_Type_Info *base_type = type_info->base;
+                for (int i = 0; i < literal->elements.count; i++) {
+                    Ast_Expr *element = literal->elements[i];
+                    if (!typecheck(element->type_info, base_type)) {
+                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type_info), string_from_type(base_type));
+                        literal->poison();
+                        goto ERROR_BLOCK;
+                    }
+                }
+            } else if (type_info->is_struct_type()) {
+                int count = (int)Min(type_info->aggregate.fields.count, literal->elements.count);
+                for (int i = 0; i < count; i++) {
+                    Ast_Expr *element = literal->elements[i];
+                    Struct_Field_Info field = type_info->aggregate.fields[i];
+                    if (!typecheck(field.type_info, element->type_info)) {
+                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type_info), string_from_type(field.type_info));
+                        literal->poison();
+                        goto ERROR_BLOCK;
+                    }
+                }
+            }
+        } else {
+            if (literal_types.count == 1) {
+                Ast_Type_Info *type = ast_array_type_info(literal_types[0]);
+                literal->type_info = type;
+                var->type_info = type;
+            } else {
+                report_ast_error(literal, "cannot infer type of compound literal.\n");
+                literal->poison();
+                goto ERROR_BLOCK;
+            }
+        }
+    } else {
+        Ast_Type_Info *specified_type = NULL;
+        if (var->type_defn) {
+            specified_type = resolve_type(var->type_defn);
+        }
+
+        if (var->init) {
+            resolve_expr(var->init);
+            if (var->init->invalid()) {
+                goto ERROR_BLOCK;
+            }
+        }
+
+        if (var->type_defn && var->init) {
+            var->type_info = specified_type;
+            if (var->init->valid() && !typecheck(specified_type, var->init->type_info)) {
+                report_ast_error(var->init, "cannot assign '%s' of type '%s' to '%s'\n", string_from_expr(var->init), string_from_type(var->init->type_info), var->name->data);
+                goto ERROR_BLOCK;
+            }
+        } else if (var->type_defn != NULL) {
+            var->type_info = specified_type;
+        } else {
+            var->type_info = var->init->type_info;
+        }
     }
 
-    if (var->type_defn && var->init) {
-        var->type_info = specified_type;
-        if (var->init->valid() && !typecheck(specified_type, var->init->type_info)) {
-            report_ast_error(var->init, "cannot assign '%s' of type '%s' to '%s'\n", string_from_expr(var->init), string_from_type(var->init->type_info), var->name->data);
-            var->poison();
-        }
-    } else if (var->type_defn != NULL) {
-        var->type_info = specified_type;
-    } else {
-        var->type_info = var->init->type_info;
-    }
+    return;
+
+ERROR_BLOCK:
+    var->poison();
 }
 
 void Resolver::resolve_param(Ast_Param *param) {
