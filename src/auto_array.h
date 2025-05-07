@@ -26,6 +26,13 @@ public:
         capacity = array.capacity;
     }
 
+    Auto_Array(std::initializer_list<T> list) {
+        grow(list.size());
+        count = list.size();
+        const T *ptr = list.begin();
+        MemoryCopy(data, ptr, sizeof(T) * list.size());
+    }
+
     void grow(size_t num_elements) {
         size_t new_cap = 0;
         while (new_cap < capacity + num_elements) {

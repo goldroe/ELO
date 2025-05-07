@@ -188,8 +188,8 @@ struct OS_File_List {
 internal V2_F32 os_get_window_dim(OS_Handle window_handle);
 internal void os_quit_application(int exit_code);
 
-internal OS_Handle os_find_first_file(Arena *arena, String8 path, OS_File *file);
-internal bool os_find_next_file(Arena *arena, OS_Handle find_file_handle, OS_File *file);
+internal OS_Handle os_find_first_file(Allocator allocator, String8 path, OS_File *file);
+internal bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file);
 internal void os_find_close(OS_Handle find_file_handle);
 
 internal inline s64 get_wall_clock();

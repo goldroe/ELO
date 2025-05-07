@@ -4,26 +4,45 @@ internal inline bool is_separator(u8 c) {
     return c == '/' || c == '\\';
 }
 
-internal String8 path_join(Arena *arena, String8 parent, String8 child) {
+internal String8 path_join(Allocator allocator, String8 parent, String8 child) {
     Assert(parent.data);
     String8 result = str8_zero();
     bool ends_in_slash = is_separator(parent.data[parent.count - 1]);
     u64 count = parent.count + child.count - ends_in_slash + 1;
-    result.data = push_array(arena, u8, count + 1);
+    result.data = array_alloc(allocator, u8, count + 1);
     MemoryCopy(result.data, parent.data, parent.count - ends_in_slash);
     result.data[parent.count - ends_in_slash] = '/';
     MemoryCopy(result.data + parent.count - ends_in_slash + 1, child.data, child.count);
+    result.data[count] = 0;
     result.count = count;
     return result;
 }
 
-internal String8 path_strip_extension(Arena *arena, String8 path) {
+internal String8 path_strip_extension(Allocator allocator, String8 path) {
     Assert(path.data);
     for (u64 i = path.count - 1; i > 0; i--) {
         switch (path.data[i]) {
         case '.':
         {
-            String8 result = str8_copy(arena, str8(path.data + i + 1, path.count - i - 1));
+            String8 result = str8_copy(allocator, str8(path.data + i + 1, path.count - i - 1));
+            return result;
+        }
+        case '/':
+        case '\\':
+            //@Note no extension
+            return str8_zero();
+        }
+    }
+    return str8_zero();
+}
+
+internal String8 path_get_extension(String8 path) {
+    Assert(path.data);
+    for (u64 i = path.count - 1; i > 0; i--) {
+        switch (path.data[i]) {
+        case '.':
+        {
+            String8 result = str8(path.data + i + 1, path.count - i - 1);
             return result;
         }
         case '/':
@@ -80,7 +99,7 @@ internal String8 path_remove_extension(String8 path) {
     return result;
 }
 
-internal String8 path_strip_dir_name(Arena *arena, String8 path) {
+internal String8 path_strip_dir_name(Allocator allocator, String8 path) {
     String8 result = str8_zero();
     if (path.data) {
         u64 end = path.count - 1;
@@ -88,13 +107,13 @@ internal String8 path_strip_dir_name(Arena *arena, String8 path) {
             if (is_separator(path.data[end - 1])) break;
             end--;
         }
-        result = str8_copy(arena, str8(path.data, end));
+        result = str8_copy(allocator, str8(path.data, end));
         
     }
     return result;
 }
 
-internal String8 path_strip_file_name(Arena *arena, String8 path) {
+internal String8 path_strip_file_name(Allocator allocator, String8 path) {
     String8 result = str8_zero();
     if (path.data) {
         if (is_separator(path.data[path.count - 1])) {
@@ -103,7 +122,7 @@ internal String8 path_strip_file_name(Arena *arena, String8 path) {
         u64 start = path.count - 1;
         while (start > 0) {
             if (is_separator(path.data[start])) {
-                result = str8_copy(arena, str8(path.data + start + 1, path.count - start - 1));
+                result = str8_copy(allocator, str8(path.data + start + 1, path.count - start - 1));
                 break;
             }
             start--;
@@ -123,39 +142,36 @@ internal u64 path_last_segment(String8 path) {
     return result;
 }
 
-internal String8 normalize_path(Arena *arena, String8 path) {
+internal String8 normalize_path(Allocator allocator, String8 path) {
     Assert(path.data);
     String8 result = str8_zero();
-    Arena *scratch = arena_alloc(get_malloc_allocator(), path.count * 2);
-    String8 buffer;
-    buffer.data = push_array(scratch, u8, path.count + 1);
-    buffer.count = 0;
+    result.data = array_alloc(allocator, u8, path.count + 1);
+    result.count = 0;
     for (u64 idx = 0; idx < path.count; idx += 1) {
         //@Todo Check the last path segment even if no separator at end
         if (is_separator(path.data[idx])) {
-            u64 seg_pos = path_last_segment(buffer);
+            u64 seg_pos = path_last_segment(result);
             Rng_U64 rng = rng_u64(seg_pos, idx);
             String8 segment = str8_rng(path, rng);
             if (str8_match(segment, str8_lit("."), StringMatchFlag_Nil)) {
-                buffer.count -= rng.max - rng.min;
+                result.count -= rng.max - rng.min;
             } else if (str8_match(segment, str8_lit(".."), StringMatchFlag_Nil)) {
-                String8 b = buffer;
+                String8 b = result;
                 b.count = rng.min - 1;
                 u64 prev_seg = path_last_segment(b);
-                buffer.count = prev_seg;
+                result.count = prev_seg;
             }
 
-            if (buffer.data[buffer.count - 1] != '/') {
-                buffer.data[buffer.count] = '/';
-                buffer.count += 1;
+            if (result.data[result.count - 1] != '/') {
+                result.data[result.count] = '/';
+                result.count += 1;
             }
-            
         } else {
-            buffer.data[buffer.count] = path.data[idx];
-            buffer.count += 1;
+            result.data[result.count] = path.data[idx];
+            result.count += 1;
         }
     }
-    result = str8_copy(arena, buffer);
+    result.data[result.count] = 0;
     return result;
 }
 
@@ -175,4 +191,3 @@ internal bool path_is_absolute(String8 path) {
 internal bool path_is_relative(String8 path) {
     return !path_is_absolute(path);
 }
-

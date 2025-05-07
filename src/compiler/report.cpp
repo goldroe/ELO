@@ -1,4 +1,4 @@
-global Arena *g_report_arena;
+Arena *g_report_arena;
 
 void report_undeclared(Ast_Ident *ident) {
     report_ast_error(ident, "undeclared identifier '%s'.\n", ident->name->data);
@@ -9,7 +9,7 @@ void report_redeclaration(Ast_Decl *decl) {
 }
 
 internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
-    Report *result = push_array(g_report_arena, Report, 1);
+    Report *result = alloc_item(heap_allocator(), Report);
     result->kind = kind;
     result->message = message;
     result->source_pos = pos; 
@@ -23,7 +23,6 @@ internal Report *submit_report(Source_File *file, Report_Kind kind, String8 mess
         file->reports.push(result);
     }
 
-
 #ifdef _DEBUG
     print_report(result, file);
 #endif
@@ -34,7 +33,7 @@ internal Report *submit_report(Source_File *file, Report_Kind kind, String8 mess
 internal void report_note(Source_Pos pos, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
 
     Source_File *file = pos.file;
@@ -44,7 +43,7 @@ internal void report_note(Source_Pos pos, const char *fmt, ...) {
 internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
 
     Source_Pos pos = { lexer->column_number, lexer->line_number, lexer->stream_index, lexer->source_file };
@@ -56,7 +55,7 @@ internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
 internal void report_ast_error(Ast *node, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 message = str8_pushfv(g_report_arena, fmt, args);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
     Report *report = submit_report(node->file, REPORT_AST_ERROR, message, node->start, node);
 }
@@ -92,6 +91,18 @@ internal int report_sort_compare(const void *a, const void *b) {
     return 0;
 }
 
+internal u64 get_line_start_after_spaces(String8 string, u64 start) {
+    for (u64 i = start; i < string.count; i++) {
+        if (string.data[i] == '\n' || string.data[i] == '\r') {
+            return start;
+        }
+        if (!isspace(string.data[i])) {
+            return i;
+        }
+    }
+    return start;
+}
+
 internal u64 get_next_line_boundary(String8 string, u64 start) {
     for (u64 i = start; i < string.count; i++) {
         if (string.data[i] == '\n' || string.data[i] == '\r') {
@@ -121,13 +132,18 @@ internal void print_report(Report *report, Source_File *file) {
     {
         printf("%s:%llu:%llu: error: %s", file->path.data, report->node->start.line, report->node->start.col, report->message.data);
         String8 buffer = file->text;
+        u64 line_start = get_line_start_after_spaces(buffer, report->node->start.index - report->node->start.col);
         u64 line_end = get_next_line_boundary(buffer, report->node->start.index);
+        u64 end_index = Min(report->node->end.index, line_end);
 
-        //@Note Print indent
         printf("        ");
 
-        u64 end_index = report->node->end.index;
-        if (end_index > line_end) end_index = line_end;
+        if (line_start < report->node->start.index) {
+            printf("\x1B[38;2;168;153;132m");
+            String8 pre_string = str8(buffer.data + line_start, report->node->start.index - line_start);
+            printf("%.*s", (int)pre_string.count, pre_string.data);
+            printf(ANSI_RESET);
+        }
 
         String8 elem_string = str8(buffer.data + report->node->start.index, end_index - report->node->start.index);
         printf("\x1B[38;2;204;36;29m");

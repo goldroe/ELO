@@ -2,6 +2,7 @@ global Ast_Type_Info *g_builtin_types[BUILTIN_TYPE_COUNT];
 
 global Ast_Type_Info *type_poison;
 global Ast_Type_Info *type_void;
+global Ast_Type_Info *type_null;
 
 global Ast_Type_Info *type_u8;
 global Ast_Type_Info *type_u16;
@@ -16,6 +17,8 @@ global Ast_Type_Info *type_bool;
 global Ast_Type_Info *type_s64;
 global Ast_Type_Info *type_f32;
 global Ast_Type_Info *type_f64;
+
+global Ast_Type_Info *type_string;
 
 internal Ast_Type_Info *ast_type_info(Atom *name, Type_Info_Flags flags) {
     Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
@@ -35,7 +38,9 @@ internal Ast_Type_Info *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8
 
 internal void register_builtin_types() {
     type_poison = ast_type_info(NULL, TYPE_FLAG_POISON);
-    type_void   = ast_builtin_type(BUILTIN_TYPE_VOID, str8_lit("void"), 0, TYPE_FLAG_NIL);
+    type_void   = ast_builtin_type(BUILTIN_TYPE_VOID, str8_lit("void"), 0, TYPE_FLAG_VOID);
+    type_null   = ast_builtin_type(BUILTIN_TYPE_NULL, str8_lit("null"), 0, TYPE_FLAG_NULL);
+
     type_u8     = ast_builtin_type(BUILTIN_TYPE_U8,   str8_lit("u8"),   1, TYPE_FLAG_INTEGER);
     type_u16    = ast_builtin_type(BUILTIN_TYPE_U16,  str8_lit("u16"),  2, TYPE_FLAG_INTEGER);
     type_u32    = ast_builtin_type(BUILTIN_TYPE_U32,  str8_lit("u32"),  4, TYPE_FLAG_INTEGER);
@@ -47,6 +52,14 @@ internal void register_builtin_types() {
     type_bool   = ast_builtin_type(BUILTIN_TYPE_BOOL, str8_lit("bool"), 4, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
     type_f32    = ast_builtin_type(BUILTIN_TYPE_F32,  str8_lit("f32"),  4, TYPE_FLAG_FLOAT);
     type_f64    = ast_builtin_type(BUILTIN_TYPE_F64,  str8_lit("f64"),  8, TYPE_FLAG_FLOAT);
+
+    {
+        type_string = ast_builtin_type(BUILTIN_TYPE_STRING, str8_lit("string"), 16, TYPE_FLAG_STRING);
+        type_string->aggregate.fields = {
+            { atom_create(str8_lit("data")), ast_pointer_type_info(type_u8) },
+            { atom_create(str8_lit("count")), type_s64 }
+        };
+    }
 }
 
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
@@ -58,10 +71,21 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     //@Note Any results of poisoned types, just okay it
     if (t0->is_poisoned || t1->is_poisoned) return true;
 
+    //@Note Nullable types
+    if (t1->type_flags & TYPE_FLAG_NULL) {
+        if (t0->is_indirection_type()) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     //@Note Indirection testing
     if (t0->is_indirection_type() != t1->is_indirection_type()) {
         return false;
-    } else if (t0->is_indirection_type() && t1->is_indirection_type()) {
+    }
+
+    if (t0->is_indirection_type() && t1->is_indirection_type()) {
         Ast_Type_Info *a = t0, *b = t1;
         for (;;) {
             //@Note Bad indirection

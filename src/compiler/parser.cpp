@@ -12,6 +12,16 @@ void Parser::expect(Token_Kind token) {
 
 Ast_Compound_Literal *Parser::parse_compound_literal() {
     Source_Pos start = lexer->current().start;
+
+    Ast_Type_Defn *type_defn = NULL;
+    if (lexer->match(TOKEN_IDENT)) {
+        Token name = lexer->current();
+        lexer->next_token();
+        type_defn = ast_type_defn(TYPE_DEFN_NAME, NULL);
+        type_defn->name = name.name;
+        type_defn->mark_range(name.start, name.end);
+    }
+
     expect(TOKEN_LBRACE);
 
     Auto_Array<Ast_Expr*> elements;
@@ -29,7 +39,7 @@ Ast_Compound_Literal *Parser::parse_compound_literal() {
 
     expect(TOKEN_RBRACE);
 
-    Ast_Compound_Literal *compound = ast_compound_literal(elements, NULL);
+    Ast_Compound_Literal *compound = ast_compound_literal(elements, type_defn);
     compound->mark_range(start, end);
     return compound;
 }
@@ -43,14 +53,15 @@ Ast_Expr *Parser::parse_primary_expr() {
     case TOKEN_DOT:
     {
         lexer->next_token();
-        if (lexer->match(TOKEN_LBRACE)) { // @Note initializer list
+        if (lexer->match(TOKEN_LBRACE) ||
+            (lexer->match(TOKEN_IDENT) && lexer->lookahead(1).kind == TOKEN_LBRACE)) {
             Ast_Compound_Literal *compound = parse_compound_literal();
             compound->mark_start(token.start);
             expr = compound;
-        } else { // @Note Designated initializer?
         }
         break;
     }
+
     case TOKEN_LPAREN:
     {
         lexer->next_token();
@@ -62,15 +73,18 @@ Ast_Expr *Parser::parse_primary_expr() {
         expr = paren;
         break;
     }
+
     case TOKEN_NULL:
     {
         lexer->next_token();
-        Ast_Literal *literal = ast_intlit(token);
-        literal->mark_range(token.start, token.end);
+        Ast_Literal *literal = AST_NEW(Ast_Literal);
+        literal->literal_flags = LITERAL_NULL;
         literal->int_val = 0;
+        literal->mark_range(token.start, token.end);
         expr = literal;
         break;
     }
+
     case TOKEN_TRUE:
     case TOKEN_FALSE:
     {
@@ -82,6 +96,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         expr = literal;
         break;
     }
+
     case TOKEN_IDENT:
     {
         lexer->next_token();
@@ -89,6 +104,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         expr = ident;
         break;
     }
+
     case TOKEN_INTLIT:
     {
         lexer->next_token();
@@ -97,6 +113,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         expr = literal;
         break;
     }
+
     case TOKEN_FLOATLIT:
     {
         lexer->next_token();
@@ -105,6 +122,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         expr = literal;
         break;
     }
+
     case TOKEN_STRLIT:
     {
         lexer->next_token();
@@ -149,6 +167,14 @@ Ast_Expr *Parser::parse_postfix_expr() {
                 field_expr = field;
             }
             expr = field_expr;
+            break;
+        }
+
+        case TOKEN_POSTFIX_DEREF:
+        {
+            lexer->next_token();
+            Ast_Deref *deref_expr = ast_deref_expr(op, expr);
+            expr = deref_expr;
             break;
         }
 
@@ -241,14 +267,8 @@ Ast_Expr *Parser::parse_unary_expr() {
         Ast_Unary *expr = ast_unary_expr(op, operand);
         return expr;
     }
+
     case TOKEN_STAR:
-    {
-        lexer->next_token();
-        Ast_Expr *operand = parse_unary_expr();
-        Ast_Deref *expr = ast_deref_expr(op, operand);
-        return expr;
-    }
-    case TOKEN_XOR:
     {
         lexer->next_token();
         Ast_Expr *operand = parse_unary_expr();
@@ -340,6 +360,7 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
         case TOKEN_ELLIPSIS:
             lhs = ast_range_expr(op, lhs, rhs);
             break;
+
         case TOKEN_PLUS:
         case TOKEN_MINUS:
         case TOKEN_STAR:
@@ -349,12 +370,14 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
         case TOKEN_RSHIFT:
             lhs = ast_arithmetic_expr(op, lhs, rhs);
             break;
+
         case TOKEN_BAR:
         case TOKEN_AMPER:
         case TOKEN_AND:
         case TOKEN_OR:
             lhs = ast_boolean_expr(op, lhs, rhs);
             break;
+
         case TOKEN_EQ2:
         case TOKEN_LT:
         case TOKEN_GT:
@@ -487,7 +510,7 @@ Ast_For *Parser::parse_for_stmt() {
     if (lexer->lookahead(1).kind == TOKEN_IN) {
         Ast_Expr *expr = parse_expr();
         if (expr->kind != AST_IDENT) {
-            report_parser_error(lexer, "missing identifier before ':'.\n");
+            report_parser_error(lexer, "missing identifier before 'in'.\n");
         }
         lexer->eat(TOKEN_IN);
         Ast_Expr *range = parse_range_expr();
@@ -661,7 +684,7 @@ Ast_Type_Defn *Parser::parse_type() {
             terminate = true;
             break;
         }
-        case TOKEN_XOR:
+        case TOKEN_STAR:
         {
             Token op = lexer->current();
             lexer->next_token();

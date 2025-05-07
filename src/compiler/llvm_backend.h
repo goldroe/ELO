@@ -11,6 +11,8 @@
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
+struct LB_Decl;
+
 struct LB_Value {
     LLVMValueRef value;
     LLVMTypeRef type;
@@ -27,7 +29,17 @@ struct LB_Addr {
     LLVMValueRef value;
 };
 
-struct LB_Struct {
+enum LB_Decl_Kind {
+    LB_DECL_VAR,
+    LB_DECL_PROC,
+    LB_DECL_STRUCT
+};
+
+struct LB_Decl {
+    LB_Decl_Kind kind;
+};
+
+struct LB_Struct : LB_Decl {
     Atom *name;
     Ast_Struct *decl;
 
@@ -35,14 +47,14 @@ struct LB_Struct {
     Auto_Array<LLVMTypeRef> element_types;
 };
 
-struct LB_Var {
+struct LB_Var : LB_Decl {
     Atom *name;
     Ast_Decl *decl;
     LLVMTypeRef type;
     LLVMValueRef alloca;
 };
 
-struct LB_Procedure {
+struct LB_Procedure : LB_Decl {
     Atom *name;
     Ast_Proc *proc;
 
@@ -57,8 +69,32 @@ struct LB_Procedure {
     Auto_Array<LB_Var*> named_values;
 };
 
-internal LB_Addr lb_build_addr(Ast_Expr *expr);
-internal LB_Value lb_build_expr(Ast_Expr *expr);
-internal void lb_stmt(LLVMBasicBlockRef basic_block, Ast_Stmt *stmt);
+struct LB_Context {
+    Scope *scope;
+    // LB_Block *block;
+};
+
+struct LB_Generator {
+    Ast_Root *root;
+    Source_File *file;
+    LLVMModuleRef module;
+
+    LB_Context *context;
+
+    LB_Generator(Source_File *file, Ast_Root *root);
+    void generate();
+    
+    LB_Addr build_addr(Ast_Expr *expr);
+    LB_Value build_expr(Ast_Expr *expr);
+    LLVMTypeRef build_type(Ast_Type_Info *type_info);
+
+    void build_decl(Ast_Decl *decl);
+    LB_Procedure *build_procedure(Ast_Proc *proc);
+    void build_procedure_body(LB_Procedure *procedure);
+    LB_Struct *build_struct(Ast_Struct *struct_decl);
+    
+    void build_stmt(Ast_Stmt *stmt);
+    void build_block(Ast_Block *block);
+};
 
 #endif // LLVM_BACKEND_H

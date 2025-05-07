@@ -1,8 +1,6 @@
 #ifndef AST_H
 #define AST_H
 
-#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T)) = T()))
-
 struct Ast;
 struct Ast_Expr;
 struct Ast_Stmt;
@@ -10,7 +8,7 @@ struct Ast_Decl;
 struct Ast_Block;
 struct Ast_Type_Defn;
 struct Ast_Type_Info;
-struct Ast_Scope;
+struct Scope;
 struct Ast_Ident;
 struct Ast_Operator_Proc;
 
@@ -24,7 +22,6 @@ enum Ast_Kind {
     AST_TYPE_DEFN,
     AST_TYPE_INFO,
     AST_ARRAY_TYPE_INFO,
-    AST_STRUCT_TYPE_INFO,
     AST_ENUM_TYPE_INFO,
     AST_PROC_TYPE_INFO,
 
@@ -99,46 +96,7 @@ struct Ast {
 struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
     Auto_Array<Ast_Decl*> declarations;
-    Ast_Scope *scope = NULL;
-};
-
-enum Scope_Flags {
-    SCOPE_GLOBAL  = (1<<0),
-    SCOPE_PROC    = (1<<1),
-    SCOPE_BLOCK   = (1<<2),
-};
-EnumDefineFlagOperators(Scope_Flags);
-
-struct Ast_Scope : Ast {
-    Ast_Scope() { kind = AST_SCOPE; }
-    Scope_Flags scope_flags;
-
-    Ast_Scope *scope_parent = NULL;
-    Ast_Scope *scope_first = NULL;
-    Ast_Scope *scope_last = NULL;
-    Ast_Scope *scope_next = NULL;
-    Ast_Scope *scope_prev = NULL;
-
-    int level = 0;
-    Auto_Array<Ast_Decl*> declarations;
-    Ast_Block *block;
-
-    Ast_Decl *lookup(Atom *name);
-    Auto_Array<Ast_Decl*> lookup_proc(Atom *name);
-};
-
-enum Ast_Name_Scope_Kind {
-    NAME_SCOPE_DECLARATION,
-    NAME_SCOPE_TYPE,
-};
-
-struct Ast_Name_Scope : Ast {
-    Ast_Name_Scope() { kind = AST_NAME_SCOPE; } 
-    Ast_Name_Scope *parent;
-    union {
-        Ast_Scope *scope;
-        Ast_Type_Info *type_info;
-    };
+    Scope *scope = NULL;
 };
 
 enum Type_Defn_Kind {
@@ -211,11 +169,11 @@ struct Ast_Range : Ast_Expr {
 
 
 enum Literal_Flags {
-    LITERAL_NIL      = 0,
-    LITERAL_INT      = (1<<0),
-    LITERAL_FLOAT    = (1<<1),
-    LITERAL_STRING   = (1<<2),
+    LITERAL_NULL     = (1<<0),
+    LITERAL_INT      = (1<<1),
+    LITERAL_FLOAT    = (1<<2),
     LITERAL_BOOLEAN  = (1<<3),
+    LITERAL_STRING   = (1<<4),
 };
 
 struct Ast_Literal : Ast_Expr {
@@ -349,7 +307,7 @@ struct Ast_Proc : Ast_Decl {
     Ast_Proc() { kind = AST_PROC; }
     Auto_Array<Ast_Param*> parameters;
     Ast_Type_Defn *return_type_defn = NULL;
-    Ast_Scope *scope = NULL;
+    Scope *scope = NULL;
     Ast_Block *block = NULL;
     b32 returns = false;
 };
@@ -413,7 +371,7 @@ struct Ast_Block : Ast_Stmt {
     Ast_Block *block_last = NULL;
 
     Auto_Array<Ast_Stmt*> statements;
-    Ast_Scope *scope = NULL;
+    Scope *scope = NULL;
     b32 returns;
 };
 
@@ -429,5 +387,11 @@ struct Ast_Break : Ast_Stmt {
 struct Ast_Continue : Ast_Stmt {
     Ast_Continue() { kind = AST_CONTINUE; }
 };
+
+
+#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
+
+internal Ast *ast_alloc(u64 size, int alignment);
+internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base);
 
 #endif // AST_H

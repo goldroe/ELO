@@ -1,5 +1,14 @@
 global Arena *g_ast_arena;
 
+internal Ast *ast_alloc(u64 size, int alignment) {
+    Ast *node = (Ast *)arena_alloc(g_ast_arena, size, alignment);
+    return node;
+}
+
+internal inline Allocator ast_allocator() {
+    return arena_allocator(g_ast_arena);
+}
+
 Ast_Enum_Field *lookup_field(Ast_Enum *enum_decl, Atom *name) {
     Ast_Enum_Field *result = NULL;
     for (int i = 0; i < enum_decl->fields.count; i++) {
@@ -11,8 +20,8 @@ Ast_Enum_Field *lookup_field(Ast_Enum *enum_decl, Atom *name) {
     return NULL;
 }
 
-Ast_Decl *Ast_Scope::lookup(Atom *name) {
-    for (Ast_Scope *scope = this; scope; scope = scope->scope_parent) {
+Ast_Decl *Scope::lookup(Atom *name) {
+    for (Scope *scope = this; scope; scope = scope->parent) {
         for (int i = 0; i < scope->declarations.count; i++) {
             Ast_Decl *decl = scope->declarations[i];
             if (atoms_match(decl->name, name)) {
@@ -23,9 +32,9 @@ Ast_Decl *Ast_Scope::lookup(Atom *name) {
     return NULL;
 }
 
-Auto_Array<Ast_Decl*> Ast_Scope::lookup_proc(Atom *name) {
+Auto_Array<Ast_Decl*> Scope::lookup_proc(Atom *name) {
     Auto_Array<Ast_Decl*> found;
-    for (Ast_Scope *scope = this; scope; scope = scope->scope_parent) {
+    for (Scope *scope = this; scope; scope = scope->parent) {
         for (int i = 0; i < scope->declarations.count; i++) {
             Ast_Decl *decl = scope->declarations[i];
             if (atoms_match(decl->name, name)) {
@@ -36,13 +45,8 @@ Auto_Array<Ast_Decl*> Ast_Scope::lookup_proc(Atom *name) {
     return found;
 }
 
-internal Ast *ast_alloc(size_t bytes) {
-    Ast *memory = (Ast *)push_array(g_ast_arena, u8, bytes);
-    return memory;
-}
-
-internal Ast_Scope *ast_scope(Scope_Flags flags) {
-    Ast_Scope *result = AST_NEW(Ast_Scope);
+internal Scope *make_scope(Scope_Flags flags) {
+    Scope *result = (Scope*)ast_alloc(sizeof(Scope), alignof(Scope));
     result->scope_flags = flags;
     return result;
 }
@@ -74,7 +78,7 @@ internal Ast_Proc *ast_proc(Atom *name, Auto_Array<Ast_Param*> parameters, Ast_T
 
 internal Ast_Operator_Proc *ast_operator_proc(Token_Kind op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
     Ast_Operator_Proc *result = AST_NEW(Ast_Operator_Proc);
-    result->name = atom_create(str8_pushf(g_ast_arena, "operator%s", string_from_token(op)));
+    result->name = atom_create(str8_pushf(ast_allocator(), "operator%s", string_from_token(op)));
     result->op = op;
     result->parameters = parameters;
     result->return_type_defn = return_type;
@@ -132,10 +136,22 @@ internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base) {
     return result;
 }
 
+internal Struct_Field_Info struct_field_info(Atom *name, Ast_Type_Info *type_info) {
+    Struct_Field_Info result = {};
+    result.name = name;
+    result.type_info = type_info;
+    result.mem_offset = 0;
+    return result;
+}
+
 internal Ast_Array_Type_Info *ast_array_type_info(Ast_Type_Info *base) {
     Ast_Array_Type_Info *result = AST_NEW(Ast_Array_Type_Info);
     result->base = base;
     result->type_flags = TYPE_FLAG_ARRAY;
+    result->aggregate.fields = {
+        struct_field_info(atom_create(str8_lit("data")), ast_pointer_type_info(base)),
+        struct_field_info(atom_create(str8_lit("count")), type_s64)
+    };
     return result;
 }
 
@@ -147,11 +163,10 @@ internal Ast_Proc_Type_Info *ast_proc_type_info(Ast_Type_Info *return_type, Auto
     return result;
 }
 
-internal Ast_Struct_Type_Info *ast_struct_type_info(Auto_Array<Struct_Field_Info> fields) {
-    Ast_Struct_Type_Info *result = AST_NEW(Ast_Struct_Type_Info);
+internal Ast_Type_Info *ast_struct_type_info(Auto_Array<Struct_Field_Info> fields) {
+    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
     result->type_flags = TYPE_FLAG_STRUCT;
-    result->fields = fields;
-    result->mem_bytes = 0;
+    result->aggregate.fields = fields;
     return result;
 }
 
@@ -370,7 +385,7 @@ internal char *string_from_type(Ast_Type_Info *type_info) {
     cstring string = NULL;
     for (Ast_Type_Info *type = type_info; type; type = type->base) {
         if (type->type_flags & TYPE_FLAG_STRUCT) {
-            Ast_Struct_Type_Info *struct_type = static_cast<Ast_Struct_Type_Info*>(type);
+            Ast_Type_Info *struct_type = static_cast<Ast_Type_Info*>(type);
             string = cstring_append(string, (char *)type->decl->name->data);
         } else if (type->type_flags & TYPE_FLAG_ENUM) {
             Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(type);
@@ -392,7 +407,7 @@ internal char *string_from_type(Ast_Type_Info *type_info) {
         } else if (type->type_flags & TYPE_FLAG_ARRAY) {
             string = cstring_append(string, "[..]");
         } else if (type->type_flags & TYPE_FLAG_POINTER) {
-            string = cstring_append(string, "^");
+            string = cstring_append(string, "*");
         } else if (type->type_flags & TYPE_FLAG_BUILTIN) {
             string = cstring_append(string, (char *)type->name->data);
         } else {
@@ -403,7 +418,7 @@ internal char *string_from_type(Ast_Type_Info *type_info) {
 }
 
 internal char *string_from_expr(Ast_Expr *expr) {
-    if (expr == NULL) return "";
+    if (expr == NULL) return NULL;
     
     cstring result = NULL;
     switch (expr->kind) {
@@ -473,7 +488,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_ADDRESS:
     {
         Ast_Address *address = (Ast_Address *)expr;
-        cstring str = make_cstring("^");
+        cstring str = make_cstring("*");
         str = cstring_append(str, string_from_expr(address->elem));
         result = str;
         break;
@@ -481,8 +496,8 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_DEREF:
     {
         Ast_Deref *deref = (Ast_Deref *)expr;
-        cstring str = make_cstring("*");
-        str = cstring_append(str, string_from_expr(deref->elem));
+        cstring str = string_from_expr(deref->elem);
+        str = cstring_append(str, ".*");
         result = str;
         break;
     }
@@ -498,14 +513,12 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_FIELD:
     {
         Ast_Field *field = (Ast_Field *)expr;
-        cstring str = "";
+        cstring str = NULL;
         if (field->field_parent) {
             str = string_from_expr(field->field_parent);
             str = cstring_append(str, ".");
-            str = cstring_append(str, string_from_expr(field->elem));
-        } else {
-            str = string_from_expr(field->elem);
         }
+        str = cstring_append(str, string_from_expr(field->elem));
         result = str;
         break;
     }
