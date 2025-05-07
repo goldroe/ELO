@@ -1,4 +1,6 @@
 
+global Token poisoned_token = {TOKEN_ERR};
+
 internal void compiler_error(char *fmt, ...);
 internal void add_source_file(Source_File *file);
 
@@ -187,46 +189,126 @@ int Lexer::get_next_hex_digit() {
     u8 digit = peek_character();
     digit = (u8)toupper(digit);
 
-    if (digit >= 'A' && digit <= 'Z') {
+    if (digit >= 'A' && digit <= 'F') {
         result = digit - 'A';
     } else if (digit >= '0'  && digit <= '9') {
         result = digit - '0';
     } else {
         result = -1;
-        report_parser_error(this, "invalid literal suffix '%c'.\n", digit);
     }
 
     return result;
 }
 
-u64 Lexer::scan_integer() {
-    u64 result = 0;
+String8 Lexer::scan_number_suffix() {
+    u8 *start = stream;
+    for (;;) {
+        u8 c = peek_character();
+        if (!isalnum(c)) {
+            break;
+        }
+        eat_char();
+    }
+    String8 result = str8(start, stream - start);
+    return result;
+}
+
+Token Lexer::scan_integer() {
+    Token result = {};
     int base = 10;
+
+    u8 *start = stream;
+
     if (peek_character() == '0') {
         eat_char();
-        u8 suffix = peek_character();
-        if (suffix == 'X' || suffix == 'x') {
+        u8 c = peek_character();
+        if (c == 'X' || c == 'x') {
             eat_char();
             base = 16;
-        } else if (suffix == 'b' || suffix == 'B') {
+        } else if (c == 'b' || c == 'B') {
             eat_char();
             base = 2;
-        } else if (isalnum(suffix)) {
-            report_parser_error(this, "invalid suffix '%c'.\n", suffix);
         }
     }
 
+    bool bad_suffix = false;
+    String8 suffix = str8_zero();
+
+    u64 value = 0;
     while (isalnum(*stream)) {
         u8 digit_char = peek_character();
         int digit = get_next_hex_digit();
+
         if (digit >= base) {
-            report_parser_error(this, "'%c' is outside of base range.\n", digit_char);
+            bad_suffix = true;
+            continue;
+        }
+
+        if (digit == -1) {
+            suffix = scan_number_suffix();
             break;
         }
 
-        result = result * base + digit;
+        value = value * base + digit;
         eat_char();
     }
+
+    if (bad_suffix) {
+        report_parser_error(this, "bad suffix in number.\n");
+        return poisoned_token;
+    }
+
+    String8 valid_suffixes[] = {
+        str8_lit("s8"), 
+        str8_lit("s16"), 
+        str8_lit("s32"), 
+        str8_lit("s64"), 
+        str8_lit("u8"), 
+        str8_lit("u16"), 
+        str8_lit("u32"), 
+        str8_lit("u64"), 
+        str8_lit("f32"),
+        str8_lit("f64"),
+    };
+
+    //@Note Encountered suffix to check
+    if (suffix.count > 0) {
+        bool illegal_suffix = false;
+
+        if (!(suffix.count == 2 || suffix.count == 3)) {
+            illegal_suffix = true;
+        }
+
+        String8 *valid_suffix = NULL;
+        for (int i = 0; i < ArrayCount(valid_suffixes); i++) {
+            String8 valid = valid_suffixes[i];
+            if (valid.count == suffix.count) {
+                bool equal = true;
+                for (int j = 0; j < suffix.count; j++) {
+                    if (tolower(suffix.data[j]) != valid.data[j]) {
+                        equal = false;
+                    }
+                }
+
+                if (equal) {
+                    valid_suffix = &valid_suffixes[i];
+                    break;
+                }
+            }
+        }
+
+        if (!valid_suffix) {
+            illegal_suffix = true;
+        }
+
+        if (illegal_suffix) {
+            report_parser_error(this, "illegal suffix: '%.*s'.\n", (int)suffix.count, suffix.data);
+            return poisoned_token;
+        }
+    }
+
+    result.kind = TOKEN_INTLIT;
+    result.intlit = value;
     return result;
 }
 
@@ -326,9 +408,9 @@ lex_start:
             token.kind = TOKEN_FLOATLIT;
             token.floatlit = float_val;
         } else {
-            u64 int_val = scan_integer();
+            Token int_token = scan_integer();
             token.kind = TOKEN_INTLIT;
-            token.intlit = int_val;
+            token.intlit = int_token.intlit;
         }
         break;
     }

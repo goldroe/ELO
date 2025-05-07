@@ -181,7 +181,9 @@ struct Lexer {
 
     int get_next_hex_digit();
 
-    u64 scan_integer();
+    bool is_valid_suffix(String8 suffix);
+    String8 scan_number_suffix();
+    Token scan_integer();
     f64 scan_float();
 
     u8 peek_character();
