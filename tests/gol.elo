@@ -1,0 +1,55 @@
+
+Cell :: struct {
+    live: bool;
+}
+
+main :: () {
+    // numbers := .[]s32{0, 1, 2, 3, 4, 5};
+
+    grid: [64][64]Cell;
+
+    for i in 0..64 {
+        for j in 0..64  {
+            grid[i][j].live = 0;
+        }
+    }
+
+    map_width := 64;
+    map_height := 64;
+
+    for y in 0..map_height {
+        for x in 0..map_width {
+            cell := *grid[y][x];
+            live := 0;
+
+            if y > 0 {
+                live += grid[y-1][x].live;
+                if x > 0 {
+                    live += grid[y-1][x-1].live;
+                }
+                if x < map_width - 1 {
+                    live += grid[y-1][x+1].live;
+                }
+            }
+
+            if y < map_height - 1 {
+                live += grid[y + 1][x].live;
+                if x > 0 {
+                    live += grid[y+1][x-1].live;
+                }
+                if x < map_width - 1 {
+                    live += grid[y+1][x+1].live;
+                }
+            }
+
+            if x > 0 {
+                live += grid[y][x-1].live;
+            }
+            if x < map_width - 1 {
+                live += grid[y][x + 1].live;
+            }
+        }
+    }
+
+    return;
+}
