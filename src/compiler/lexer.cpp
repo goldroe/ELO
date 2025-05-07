@@ -188,7 +188,7 @@ int Lexer::get_next_hex_digit() {
     digit = (u8)toupper(digit);
 
     if (digit >= 'A' && digit <= 'F') {
-        result = digit - 'A';
+        result = digit - 'A' + 10;
     } else if (digit >= '0'  && digit <= '9') {
         result = digit - '0';
     } else {
@@ -212,11 +212,12 @@ String8 Lexer::scan_number_suffix() {
 }
 
 Token Lexer::scan_integer() {
-    Token result = {};
-    int base = 10;
-
     u8 *start = stream;
 
+    Token result = {};
+    result.literal_flags = LITERAL_INT;
+
+    int base = 10;
     if (peek_character() == '0') {
         eat_char();
         u8 c = peek_character();
@@ -226,11 +227,12 @@ Token Lexer::scan_integer() {
         } else if (c == 'b' || c == 'B') {
             eat_char();
             base = 2;
+        } else if (isalnum(c)) {
+            base = 8;
         }
     }
 
     bool bad_suffix = false;
-    String8 suffix = str8_zero();
 
     u64 value = 0;
     while (isalnum(*stream)) {
@@ -239,11 +241,11 @@ Token Lexer::scan_integer() {
 
         if (digit >= base) {
             bad_suffix = true;
-            continue;
+            break;
         }
 
         if (digit == -1) {
-            suffix = scan_number_suffix();
+            bad_suffix = true;
             break;
         }
 
@@ -251,56 +253,42 @@ Token Lexer::scan_integer() {
         eat_char();
     }
 
+    String8 suffix = str8_zero();
     if (bad_suffix) {
-        report_parser_error(this, "bad suffix in number.\n");
-        return poisoned_token;
+        suffix = scan_number_suffix();
     }
 
-    String8 valid_suffixes[] = {
-        str8_lit("s8"), 
-        str8_lit("s16"), 
-        str8_lit("s32"), 
-        str8_lit("s64"), 
-        str8_lit("u8"), 
-        str8_lit("u16"), 
-        str8_lit("u32"), 
-        str8_lit("u64"), 
-        str8_lit("f32"),
-        str8_lit("f64"),
+    struct Suffix_Literal {
+        String8 string;
+        Literal_Flags literal;
+    } suffix_literals[] = {
+        {str_lit("u8"),  LITERAL_U8},
+        {str_lit("u16"), LITERAL_U16},
+        {str_lit("u32"), LITERAL_U32},
+        {str_lit("u64"), LITERAL_U64},
+        {str_lit("s8"),  LITERAL_S8},
+        {str_lit("s16"), LITERAL_S16},
+        {str_lit("s32"), LITERAL_S32},
+        {str_lit("s64"), LITERAL_S64},
+        {str_lit("f32"), LITERAL_F32},
+        {str_lit("f64"), LITERAL_F64}
     };
 
     //@Note Encountered suffix to check
     if (suffix.count > 0) {
-        bool illegal_suffix = false;
-
-        if (!(suffix.count == 2 || suffix.count == 3)) {
-            illegal_suffix = true;
-        }
-
-        String8 *valid_suffix = NULL;
-        for (int i = 0; i < ArrayCount(valid_suffixes); i++) {
-            String8 valid = valid_suffixes[i];
-            if (valid.count == suffix.count) {
-                bool equal = true;
-                for (int j = 0; j < suffix.count; j++) {
-                    if (tolower(suffix.data[j]) != valid.data[j]) {
-                        equal = false;
-                    }
-                }
-
-                if (equal) {
-                    valid_suffix = &valid_suffixes[i];
-                    break;
-                }
+        Suffix_Literal *valid_suffix = NULL;
+        for (int i = 0; i < ArrayCount(suffix_literals); i++) {
+            Suffix_Literal suffix_literal = suffix_literals[i];
+            if (str8_match(suffix_literal.string, suffix, StringMatchFlag_CaseInsensitive)) {
+                valid_suffix = &suffix_literals[i]; 
+                break;
             }
         }
 
-        if (!valid_suffix) {
-            illegal_suffix = true;
-        }
-
-        if (illegal_suffix) {
-            report_parser_error(this, "illegal suffix: '%.*s'.\n", (int)suffix.count, suffix.data);
+        if (valid_suffix) {
+            result.literal_flags = valid_suffix->literal;
+        } else {
+            report_parser_error(this, "illegal literal suffix: '%S'.\n", suffix);
             return poisoned_token;
         }
     }
@@ -405,10 +393,12 @@ lex_start:
             f64 float_val = scan_float();
             token.kind = TOKEN_FLOATLIT;
             token.floatlit = float_val;
+            token.literal_flags = LITERAL_FLOAT;
         } else {
             Token int_token = scan_integer();
             token.kind = TOKEN_INTLIT;
             token.intlit = int_token.intlit;
+            token.literal_flags = int_token.literal_flags;
         }
         break;
     }
