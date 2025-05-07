@@ -102,12 +102,25 @@ public:
     }
 
     void remove(size_t index);
+
+    bool find(T value);
 };
 
 template<typename T>
 void Auto_Array<T>::reserve(size_t num_elements) {
     data = (T *)malloc(num_elements * sizeof(T));
     capacity = num_elements;
+}
+
+template<typename T>
+bool Auto_Array<T>::find(T value) {
+    for (u64 i = 0; i < count; i++) {
+        T o = data[i];
+        if (value == o) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Custom foreach iterator for custom Array container
