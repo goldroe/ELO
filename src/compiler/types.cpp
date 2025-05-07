@@ -12,9 +12,9 @@ global Ast_Type_Info *type_u64;
 global Ast_Type_Info *type_s8;
 global Ast_Type_Info *type_s16;
 global Ast_Type_Info *type_s32;
+global Ast_Type_Info *type_s64;
 global Ast_Type_Info *type_bool;
 
-global Ast_Type_Info *type_s64;
 global Ast_Type_Info *type_f32;
 global Ast_Type_Info *type_f64;
 
@@ -68,6 +68,8 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     Assert(t0 != NULL);
     Assert(t1 != NULL);
 
+    if (t0 == t1) return true;
+
     //@Note Any results of poisoned types, just okay it
     if (t0->is_poisoned || t1->is_poisoned) return true;
 
@@ -100,9 +102,15 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
             a = a->base;
             b = b->base;
         }
-    } else {
-        return t0 == t1;
     }
+
+    if (t0->is_integral_type() == t1->is_integral_type()) {
+        if (t0->bytes == t1->bytes) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 internal bool typecheck_castable(Ast_Type_Info *t0, Ast_Type_Info *t1) {
