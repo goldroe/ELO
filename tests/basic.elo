@@ -51,6 +51,16 @@ operator - :: (v: Vector2) -> Vector2 {
 main :: () {
  str : string = "foo buzzz";
 
+ numbers1 : []s32 = .[]s32{0, 1, 2, 3, 4, 5};
+
+ numbers2 := .{0, 1, 2, 3, 4, 5};
+
+ numbers3 : []f32 = .{0.0, 1.0, 2.0};
+
+ numbers4 := .{0, 1, 2, 3};
+ 
+ numbers4[0] = 12;
+
  v: *u8;
 
  tok := Token_Kind.Eof;
@@ -58,6 +68,8 @@ main :: () {
 
  v0: Vector2 = .{0.0, 1.0};
  v1: Vector2 = .{1.0, 0.0};
+ v3 := .Vector2{1.0, 2.0};
+
  v2 := v0 + -v1;
 
  foo: Foo;
