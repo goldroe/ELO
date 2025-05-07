@@ -18,6 +18,7 @@ struct cstring_header {
 #define CSTRING_CAP(str)    ((str) ? (CSTRING_HEADER(str))->cap : 0)
 
 #define str8_lit(S) {(u8 *)(S), sizeof((S)) - 1}
+#define str_lit(S) str8_lit(S)
 
 enum String_Match_Flags {
     StringMatchFlag_Nil = 0,

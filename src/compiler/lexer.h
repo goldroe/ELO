@@ -1,23 +1,7 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-enum Operator_Kind {
-    OPERATOR_NIL,
-    OPERATOR_ADD,
-    OPERATOR_SUB,
-    OPERATOR_MUL,
-    OPERATOR_DIV,
-    OPERATOR_MOD,
-    OPERATOR_EQUAL,
-    OPERATOR_NOT_EQUAL,
-    OPERATOR_LSHIFT,
-    OPERATOR_RSHIFT,
-    OPERATOR_OR,
-    OPERATOR_AND,
-    OPERATOR_INDEX,
-    OPERATOR_XOR,
-};
-
+struct Atom;
 struct Report;
 
 struct Source_File {
@@ -37,8 +21,6 @@ struct Source_Pos {
     u64 index;
     Source_File *file;
 };
-
-struct Atom;
 
 enum Token_Kind {
     TOKEN_ERR = -1,
@@ -142,16 +124,34 @@ enum Token_Kind {
     Token_COUNT
 };
 
+enum Literal_Flags {
+    LITERAL_NULL     = (1<<0),
+    LITERAL_INT      = (1<<1),
+    LITERAL_FLOAT    = (1<<2),
+    LITERAL_BOOLEAN  = (1<<3),
+    LITERAL_STRING   = (1<<4),
+    LITERAL_U8       = (1<<5),
+    LITERAL_U16      = (1<<6),
+    LITERAL_U32      = (1<<7),
+    LITERAL_U64      = (1<<8),
+    LITERAL_S8       = (1<<9),
+    LITERAL_S16      = (1<<10),
+    LITERAL_S32      = (1<<11),
+    LITERAL_S64      = (1<<12),
+    LITERAL_F32      = (1<<13),
+    LITERAL_F64      = (1<<14),
+};
+
 struct Token {
-    Token_Kind kind;
+    Token_Kind kind = TOKEN_ERR;
     Source_Pos start, end;
+    Literal_Flags literal_flags = (Literal_Flags)0;
 
     union {
         Atom *name;
         String8 strlit;
         u64 intlit;
         f64 floatlit;
-        Operator_Kind op;
     };
 };
 

@@ -89,8 +89,10 @@ int main(int argc, char **argv) {
     }
 #endif
 
+    temporary_arena = arena_create();
     g_report_arena = arena_create();
     g_ast_arena = arena_create();
+    lb_arena = arena_create();
 
     atom_init();
 
@@ -114,8 +116,6 @@ int main(int argc, char **argv) {
     atom_directive(TOKEN_IMPORT, str8_lit("#import"));
 
     register_builtin_types();
-
-    temporary_arena = arena_create();
 
     String8 file_name = str8_cstring(argv[0]);
     String8 file_path = path_join(heap_allocator(), os_current_dir(temporary_allocator()), file_name);
@@ -171,7 +171,6 @@ int main(int argc, char **argv) {
     }
 
     if (error_count == 0) {
-        lb_arena = arena_create();
         LB_Generator *generator = new LB_Generator(g_source_files[0], parser->root);
         generator->generate();
     }

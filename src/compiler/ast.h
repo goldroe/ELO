@@ -167,15 +167,6 @@ struct Ast_Range : Ast_Expr {
     Ast_Expr *rhs;
 };
 
-
-enum Literal_Flags {
-    LITERAL_NULL     = (1<<0),
-    LITERAL_INT      = (1<<1),
-    LITERAL_FLOAT    = (1<<2),
-    LITERAL_BOOLEAN  = (1<<3),
-    LITERAL_STRING   = (1<<4),
-};
-
 struct Ast_Literal : Ast_Expr {
     Ast_Literal() { kind = AST_LITERAL; }
     Literal_Flags literal_flags;

@@ -13,14 +13,7 @@ void Parser::expect(Token_Kind token) {
 Ast_Compound_Literal *Parser::parse_compound_literal() {
     Source_Pos start = lexer->current().start;
 
-    Ast_Type_Defn *type_defn = NULL;
-    if (lexer->match(TOKEN_IDENT)) {
-        Token name = lexer->current();
-        lexer->next_token();
-        type_defn = ast_type_defn(TYPE_DEFN_NAME, NULL);
-        type_defn->name = name.name;
-        type_defn->mark_range(name.start, name.end);
-    }
+    Ast_Type_Defn *type_defn = parse_type();;
 
     expect(TOKEN_LBRACE);
 
@@ -53,12 +46,9 @@ Ast_Expr *Parser::parse_primary_expr() {
     case TOKEN_DOT:
     {
         lexer->next_token();
-        if (lexer->match(TOKEN_LBRACE) ||
-            (lexer->match(TOKEN_IDENT) && lexer->lookahead(1).kind == TOKEN_LBRACE)) {
-            Ast_Compound_Literal *compound = parse_compound_literal();
-            compound->mark_start(token.start);
-            expr = compound;
-        }
+        Ast_Compound_Literal *compound = parse_compound_literal();
+        compound->mark_start(token.start);
+        expr = compound;
         break;
     }
 
@@ -708,7 +698,7 @@ Ast_Type_Defn *Parser::parse_type() {
         }
     }
 
-    if (type->type_defn_kind != TYPE_DEFN_NAME) {
+    if (type && type->type_defn_kind != TYPE_DEFN_NAME) {
         report_parser_error(lexer, "expected a type, got '%s'.\n", string_from_token(lexer->peek()));
         type->poison();
     }
@@ -966,15 +956,6 @@ Ast_Var *Parser::parse_var(Atom *name) {
                 report_parser_error(lexer, "expected expression after '='.\n");
                 goto ERROR_BLOCK;
             }
-
-            if (init->kind == AST_COMPOUND_LITERAL) {
-                Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(init);
-                //@Note Give compound literal the specified type for automatic type inference when assigning to variable
-                if (literal->type_defn == NULL) {
-                    literal->type_defn = type_defn;
-                }
-            }
-
         }
     } else if (lexer->eat(TOKEN_COLON_EQ)) {
         init = parse_expr();

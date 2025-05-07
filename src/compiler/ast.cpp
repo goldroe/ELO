@@ -194,7 +194,7 @@ internal Ast_Ident *ast_ident(Token name) {
 internal Ast_Literal *ast_intlit(Token token) {
     Ast_Literal *result = AST_NEW(Ast_Literal);
     result->expr_flags |= EXPR_FLAG_CONSTANT;
-    result->literal_flags = LITERAL_INT;
+    result->literal_flags = token.literal_flags;
     result->int_val = token.intlit;
     return result;
 }
@@ -202,7 +202,7 @@ internal Ast_Literal *ast_intlit(Token token) {
 internal Ast_Literal *ast_floatlit(Token token) {
     Ast_Literal *result = AST_NEW(Ast_Literal);
     result->expr_flags |= EXPR_FLAG_CONSTANT;
-    result->literal_flags = LITERAL_FLOAT;
+    result->literal_flags = token.literal_flags;
     result->float_val = token.floatlit;
     return result;
 }
