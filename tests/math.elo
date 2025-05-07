@@ -1,0 +1,129 @@
+
+Vector2 :: struct {
+ x: f32;
+ y: f32;
+}
+
+Vector3 :: struct {
+ x: f32;
+ y: f32;
+ z: f32;
+}
+
+Vector4 :: struct {
+ x: f32;
+ y: f32;
+ z: f32;
+ w: f32;
+}
+
+foo :: (x: s32) -> s32 {
+ return 0;
+}
+
+operator + :: (a: Vector2, b: Vector2) -> Vector2 {
+ result : Vector2 = .{a.x + b.x, a.y + b.y};
+ return result;
+}
+
+operator + :: (a: Vector3, b: Vector3) -> Vector3 {
+ result : Vector3 = .{a.x + b.x, a.y + b.y, a.z + b.z};
+ return result;
+}
+
+operator + :: (a: Vector4, b: Vector4) -> Vector4 {
+ result : Vector4 = .{a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
+ return result;
+}
+
+operator - :: (a: Vector2, b: Vector2) -> Vector2 {
+ result : Vector2 = .{a.x - b.x, a.y - b.y};
+ return result;
+}
+
+operator - :: (a: Vector3, b: Vector3) -> Vector3 {
+ result : Vector3 = .{a.x - b.x, a.y - b.y, a.z - b.z};
+ return result;
+}
+
+operator - :: (a: Vector4, b: Vector4) -> Vector4 {
+ result : Vector4 = .{a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w};
+ return result;
+}
+
+operator * :: (v: Vector2, s: f32) -> Vector2 {
+ result : Vector2 = .{v.x * s, v.y * s};
+ return result;
+}
+
+operator * :: (v: Vector3, s: f32) -> Vector3 {
+ result : Vector3 = .{v.x * s, v.y * s, v.z * s};
+ return result;
+}
+
+operator * :: (v: Vector4, s: f32) -> Vector4 {
+ result : Vector4 = .{v.x * s, v.y * s, v.z * s, v.w * s};
+ return result;
+}
+
+operator / :: (v: Vector2, s: f32) -> Vector2 {
+ result : Vector2 = .{v.x / s, v.y / s};
+ return result;
+}
+
+operator / :: (v: Vector3, s: f32) -> Vector3 {
+ result : Vector3 = .{v.x / s, v.y / s, v.z / s};
+ return result;
+}
+
+operator / :: (v: Vector4, s: f32) -> Vector4 {
+ result : Vector4 = .{v.x / s, v.y / s, v.z / s, v.w / s};
+ return result;
+}
+
+normalize :: (v: Vector2) -> Vector2 {
+ len := magnitude(v);
+ result: Vector2 = .{v.x / len, v.y / len};
+ return result;
+}
+
+normalize :: (v: Vector3) -> Vector3 {
+ len := magnitude(v);
+ result: Vector3 = .{v.x / len, v.y / len, v.z / len};
+ return result;
+}
+
+normalize :: (v: Vector4) -> Vector4 {
+ len := magnitude(v);
+ result: Vector4 = .{v.x / len, v.y / len, v.z / len, v.w / len};
+ return result;
+}
+
+magnitude :: (v: Vector2) -> f32 {
+ //@todo sqrt
+ result := v.x * v.x + v.y * v.y;
+ return result;
+}
+
+magnitude :: (v: Vector3) -> f32 {
+ //@todo sqrt
+ result := v.x * v.x + v.y * v.y + v.z * v.z;
+ return result;
+}
+
+magnitude :: (v: Vector4) -> f32 {
+ //@todo sqrt
+ result := v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+ return result;
+}
+
+main :: () {
+ {
+  a: Vector2 = .{0.0, 0.0};
+  b: Vector2 = .{1.0, 1.0};
+  c := a + b;
+  normal := normalize(c);
+ }
+
+ foo(1.0);
+}
