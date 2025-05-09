@@ -451,7 +451,7 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        binary->type_info = lhs->type_info;
+        binary->type_info = type_bool;
     }
 
     if (binary->valid() &&
@@ -1379,6 +1379,11 @@ void Resolver::resolve_var(Ast_Var *var) {
                 literal->poison();
                 goto ERROR_BLOCK;
             }
+        }
+
+        if (var->type_info->is_array_type()) {
+            Ast_Array_Type_Info *array_type = static_cast<Ast_Array_Type_Info*>(var->type_info);
+            array_type->array_size = literal->elements.count;
         }
     } else {
         Ast_Type_Info *specified_type = NULL;
