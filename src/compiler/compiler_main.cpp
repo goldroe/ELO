@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     temporary_arena = arena_create();
     g_report_arena = arena_create();
     g_ast_arena = arena_create();
-    lb_arena = arena_create();
+    llvm_arena = arena_create();
 
     atom_init();
 
@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
     }
 
     if (error_count == 0) {
-        LB_Generator *generator = new LB_Generator(g_source_files[0], parser->root);
+        LLVM_Generator *generator = new LLVM_Generator(g_source_files[0], parser->root);
         generator->generate();
     }
 

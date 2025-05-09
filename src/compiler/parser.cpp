@@ -674,6 +674,7 @@ Ast_Type_Defn *Parser::parse_type() {
             terminate = true;
             break;
         }
+
         case TOKEN_STAR:
         {
             Token op = lexer->current();
@@ -683,6 +684,7 @@ Ast_Type_Defn *Parser::parse_type() {
             type = t;
             break;
         }
+
         case TOKEN_LBRACKET:
         {
             Token op = lexer->current();
