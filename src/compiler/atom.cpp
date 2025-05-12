@@ -1,19 +1,15 @@
 global Atom_Table *g_atom_table;
 global Arena *g_atom_arena;
 
-internal bool atoms_match(Atom *a, Atom *b) {
-    return a == b;
+internal inline Allocator atom_allocator() {
+    Allocator result;
+    result.data = (void *)g_atom_arena;
+    result.proc = arena_allocator_proc;
+    return result;
 }
 
-internal void atom_init() {
-    g_atom_arena = arena_create();
-
-    g_atom_table = alloc_item(heap_allocator(), Atom_Table);
-    MemoryZero(g_atom_table, sizeof(Atom_Table));
-    Atom_Table *table = g_atom_table;
-    table->bucket_count = 128;
-    table->buckets = (Atom_Bucket *)arena_alloc(g_atom_arena, sizeof(Atom_Bucket) * table->bucket_count, alignof(Atom_Bucket));
-    MemoryZero(table->buckets, sizeof(Atom_Bucket) * table->bucket_count);
+internal bool atoms_match(Atom *a, Atom *b) {
+    return a == b;
 }
 
 internal u64 atom_hash(String8 string) {
@@ -53,7 +49,7 @@ internal Atom *atom_create(String8 string) {
     }
 
     u64 mem_size = sizeof(Atom) + string.count + 1;
-    Atom *atom = (Atom *)arena_alloc(g_atom_arena, mem_size, DEFAULT_MEMORY_ALIGNMENT);
+    Atom *atom = (Atom *)alloc(atom_allocator(), mem_size);
     atom->flags = ATOM_FLAG_IDENT;
     atom->count = string.count;
     MemoryCopy(atom->data, string.data, string.count);
@@ -76,3 +72,38 @@ internal Atom *atom_directive(Token_Kind token, String8 string) {
     atom->token = token;
     return atom;
 }
+
+internal void atom_init() {
+    g_atom_arena = arena_create();
+
+    g_atom_table = alloc_item(atom_allocator(), Atom_Table);
+    MemoryZero(g_atom_table, sizeof(Atom_Table));
+    Atom_Table *table = g_atom_table;
+    table->bucket_count = 128;
+    table->buckets = (Atom_Bucket *)array_alloc_align(atom_allocator(), Atom_Bucket, table->bucket_count);
+    for (int i = 0; i < table->bucket_count; i++) {
+        Atom_Bucket *bucket = &table->buckets[i];
+        bucket->first = bucket->last = NULL;
+        bucket->count = 0;
+    }
+
+    atom_keyword(TOKEN_NULL,     str8_lit("null"));
+    atom_keyword(TOKEN_ENUM,     str8_lit("enum"));
+    atom_keyword(TOKEN_STRUCT,   str8_lit("struct"));
+    atom_keyword(TOKEN_TRUE,     str8_lit("true"));
+    atom_keyword(TOKEN_FALSE,    str8_lit("false"));
+    atom_keyword(TOKEN_IF,       str8_lit("if"));
+    atom_keyword(TOKEN_WHILE,    str8_lit("while"));
+    atom_keyword(TOKEN_FOR,      str8_lit("for"));
+    atom_keyword(TOKEN_BREAK,    str8_lit("break"));
+    atom_keyword(TOKEN_CONTINUE, str8_lit("continue"));
+    atom_keyword(TOKEN_ELSE,     str8_lit("else"));
+    atom_keyword(TOKEN_RETURN,   str8_lit("return"));
+    atom_keyword(TOKEN_CAST,     str8_lit("cast"));
+    atom_keyword(TOKEN_OPERATOR, str8_lit("operator"));
+    atom_keyword(TOKEN_IN,       str8_lit("in"));
+
+    atom_directive(TOKEN_LOAD,   str8_lit("#load"));
+    atom_directive(TOKEN_IMPORT, str8_lit("#import"));
+}
+

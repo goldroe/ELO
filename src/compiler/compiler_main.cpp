@@ -1,7 +1,5 @@
-
 #include "base/base_core.h"
 #include "base/base_memory.h"
-// #include "base/base_arena.h"
 #include "base/base_strings.h"
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb_sprintf.h>
@@ -10,7 +8,6 @@
 
 #include "base/base_core.cpp"
 #include "base/base_memory.cpp"
-// #include "base/base_arena.cpp"
 #include "base/base_strings.cpp"
 #include "os/os.cpp"
 #include "path/path.cpp"
@@ -67,9 +64,7 @@ internal void compiler_exit() {
 }
 
 int main(int argc, char **argv) {
-    argc--;
-    argv++;
-
+    argc--; argv++;
     if (argc == 0) {
         printf("ELO compiler.\n");
         printf("Usage: ELO option... filename...");
@@ -95,25 +90,6 @@ int main(int argc, char **argv) {
     llvm_arena = arena_create();
 
     atom_init();
-
-    atom_keyword(TOKEN_NULL,     str8_lit("null"));
-    atom_keyword(TOKEN_ENUM,     str8_lit("enum"));
-    atom_keyword(TOKEN_STRUCT,   str8_lit("struct"));
-    atom_keyword(TOKEN_TRUE,     str8_lit("true"));
-    atom_keyword(TOKEN_FALSE,    str8_lit("false"));
-    atom_keyword(TOKEN_IF,       str8_lit("if"));
-    atom_keyword(TOKEN_WHILE,    str8_lit("while"));
-    atom_keyword(TOKEN_FOR,      str8_lit("for"));
-    atom_keyword(TOKEN_BREAK,    str8_lit("break"));
-    atom_keyword(TOKEN_CONTINUE, str8_lit("continue"));
-    atom_keyword(TOKEN_ELSE,     str8_lit("else"));
-    atom_keyword(TOKEN_RETURN,   str8_lit("return"));
-    atom_keyword(TOKEN_CAST,     str8_lit("cast"));
-    atom_keyword(TOKEN_OPERATOR, str8_lit("operator"));
-    atom_keyword(TOKEN_IN,       str8_lit("in"));
-
-    atom_directive(TOKEN_LOAD,   str8_lit("#load"));
-    atom_directive(TOKEN_IMPORT, str8_lit("#import"));
 
     register_builtin_types();
 
@@ -170,18 +146,19 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (error_count == 0) {
-        LLVM_Generator *generator = new LLVM_Generator(g_source_files[0], parser->root);
-        generator->generate();
-    }
-
     if (error_count > 0) {
         printf("%d error(s).\n", error_count);
     }
+
+    // if (error_count == 0) {
+        LLVM_Backend *backend = new LLVM_Backend(g_source_files[0], parser->root);
+        backend->emit();
+    // }
 
     compiler_exit();
 
     printf("done.\n");
 
-    return error_count == 0 ? 0 : 1;
+    return 0;
+    // return error_count == 0 ? 0 : 1;
 }
