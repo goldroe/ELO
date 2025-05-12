@@ -30,6 +30,9 @@ internal void free(Allocator allocator, void *memory);
 #define array_alloc(Alloc, T, Count) (T*)alloc(Alloc, sizeof(T) * (Count))
 #define alloc_item(Alloc, T) (T*)alloc(Alloc, sizeof(T))
 
+#define array_alloc_align(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
+#define alloc_item_align(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
+
 struct Memory_Block {
     Memory_Block *prev;
     u8 *memory;
