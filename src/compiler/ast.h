@@ -26,6 +26,7 @@ enum Ast_Kind {
     AST_PROC_TYPE_INFO,
 
     AST_EXPR,
+    AST_NULL,
     AST_PAREN,
     AST_LITERAL,
     AST_COMPOUND_LITERAL,
@@ -141,6 +142,10 @@ struct Ast_Expr : Ast {
     Eval eval;
 
     bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
+};
+
+struct Ast_Null : Ast_Expr {
+    Ast_Null() { kind = AST_NULL; }
 };
 
 struct Ast_Paren : Ast_Expr {
@@ -331,15 +336,17 @@ struct Ast_While : Ast_Stmt {
     Ast_Block *block;
 };
 
-struct Ast_Iterator : Ast_Expr {
-    Ast_Iterator() { kind = AST_ITERATOR; }
-    Ast_Ident *ident;
-    Ast_Expr *range;
-};
+// struct Ast_Iterator : Ast_Expr {
+//     Ast_Iterator() { kind = AST_ITERATOR; }
+//     Ast_Ident *ident;
+//     Ast_Expr *range;
+// };
 
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }
-    Ast_Iterator *iterator;
+    Ast_Stmt *init;
+    Ast_Expr *cond;
+    Ast_Expr *iterator;
     Ast_Block *block;
 };
 

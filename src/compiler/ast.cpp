@@ -367,8 +367,10 @@ internal Ast_While *ast_while_stmt(Ast_Expr *cond, Ast_Block *block) {
     return result;
 }
 
-internal Ast_For *ast_for_stmt(Ast_Iterator *iterator, Ast_Block *block) {
+internal Ast_For *ast_for_stmt(Ast_Stmt *init, Ast_Expr *cond, Ast_Expr *iterator, Ast_Block *block) {
     Ast_For *result = AST_NEW(Ast_For);
+    result->init = init;
+    result->cond = cond;
     result->iterator = iterator;
     result->block = block;
     return result;
