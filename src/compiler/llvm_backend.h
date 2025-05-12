@@ -61,7 +61,7 @@ struct LLVM_Procedure : LLVM_Decl {
     Auto_Array<LLVM_Var*> named_values;
 };
 
-struct LLVM_Generator {
+struct LLVM_Backend {
     Ast_Root *root;
     Source_File *file;
 
@@ -75,28 +75,36 @@ struct LLVM_Generator {
     LLVM_Procedure *current_proc;
     LLVMBasicBlockRef current_block;
 
-    LLVM_Generator(Source_File *file, Ast_Root *root);
-    void generate();
-    
-    LLVM_Addr build_addr(Ast_Expr *expr);
-    LLVM_Value build_expr(Ast_Expr *expr);
-    LLVMTypeRef build_type(Ast_Type_Info *type_info);
+    LLVM_Procedure *printf_procedure;
 
-    void build_decl(Ast_Decl *decl);
-    LLVM_Procedure *build_procedure(Ast_Proc *proc);
-    void build_procedure_body(LLVM_Procedure *procedure);
-    LLVM_Struct *build_struct(Ast_Struct *struct_decl);
+    LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
     
-    void build_stmt(Ast_Stmt *stmt);
-    void build_block(Ast_Block *block);
+    void emit();
+    LLVM_Procedure *printf_proc_emit();
+    
+    LLVMTypeRef emit_type(Ast_Type_Info *type_info);
+    LLVM_Addr emit_addr(Ast_Expr *expr);
+    LLVMValueRef emit_condition(Ast_Expr *expr);
 
-    LLVMValueRef build_condition(Ast_Expr *expr);
+    LLVM_Value emit_expr(Ast_Expr *expr);
+    LLVM_Value emit_binary_op(Ast_Binary *binop);
+
+    void emit_decl(Ast_Decl *decl);
+    LLVM_Procedure *emit_procedure(Ast_Proc *proc);
+    void emit_procedure_body(LLVM_Procedure *procedure);
+    LLVM_Struct *emit_struct(Ast_Struct *struct_decl);
+    
+    void emit_stmt(Ast_Stmt *stmt);
+    void emit_if(Ast_If *if_stmt);
+    void emit_while(Ast_While *while_stmt);
+    void emit_for(Ast_For *for_stmt);
+    void emit_block(Ast_Block *block);
 
     LLVMBasicBlockRef llvm_block_new(const char *s);
     void llvm_emit_block(LLVMBasicBlockRef block);
 
     LLVM_Procedure *lookup_proc(Atom *name);
-    LLVM_Struct *LLVM_Generator::lookup_struct(Atom *name);
+    LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
 };
 
 #endif // LLVM_BACKEND_H
