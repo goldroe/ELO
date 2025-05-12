@@ -67,11 +67,9 @@ Ast_Expr *Parser::parse_primary_expr() {
     case TOKEN_NULL:
     {
         lexer->next_token();
-        Ast_Literal *literal = AST_NEW(Ast_Literal);
-        literal->literal_flags = LITERAL_NULL;
-        literal->int_val = 0;
-        literal->mark_range(token.start, token.end);
-        expr = literal;
+        Ast_Null *null = AST_NEW(Ast_Null);
+        null->mark_range(token.start, token.end);
+        expr = null;
         break;
     }
 
@@ -491,36 +489,27 @@ Ast_Expr *Parser::parse_range_expr() {
     return lhs;
 }
 
+//@Todo Change loop syntax from c-like syntax to something better
 Ast_For *Parser::parse_for_stmt() {
     Source_Pos start = lexer->current().start;
     expect(TOKEN_FOR);
 
-    Ast_Iterator *iterator = NULL;
+    Ast_Stmt *init = parse_simple_stmt();
 
-    if (lexer->lookahead(1).kind == TOKEN_IN) {
-        Ast_Expr *expr = parse_expr();
-        if (expr->kind != AST_IDENT) {
-            report_parser_error(lexer, "missing identifier before 'in'.\n");
-        }
-        lexer->eat(TOKEN_IN);
-        Ast_Expr *range = parse_range_expr();
+    expect(TOKEN_SEMI);
 
-        iterator = AST_NEW(Ast_Iterator);
-        iterator->ident = static_cast<Ast_Ident*>(expr);
-        iterator->range = range;
-    } else {
-        Ast_Expr *range = parse_range_expr();
-        iterator = AST_NEW(Ast_Iterator);
-        iterator->ident = NULL;
-        iterator->range = range;
-    } 
+    Ast_Expr *cond = parse_expr();
+
+    expect(TOKEN_SEMI);
+
+    Ast_Expr *iterator = parse_expr();
 
     Ast_Block *block = parse_block();
 
-    Ast_For *for_stmt = ast_for_stmt(iterator, block);
+    Ast_For *stmt = ast_for_stmt(init, cond, iterator, block);
     Source_Pos end = block->end;
-    for_stmt->mark_range(start, end);
-    return for_stmt;
+    stmt->mark_range(start, end);
+    return stmt;
 }
 
 Ast_Stmt *Parser::parse_stmt() {

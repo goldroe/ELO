@@ -254,14 +254,11 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     Scope *scope = new_scope(SCOPE_BLOCK);
 
-    Ast_Iterator *it = for_stmt->iterator;
-    resolve_expr(it->range);
+    resolve_stmt(for_stmt->init);
 
-    Ast_Type_Info *type_info = it->range->type_info;
-    Ast_Var *var = ast_var(it->ident->name, it->range, NULL);
-    var->type_info = type_info;
+    resolve_expr(for_stmt->cond);
 
-    scope->declarations.push(var);
+    resolve_expr(for_stmt->iterator);
 
     resolve_block(for_stmt->block);
 
@@ -402,28 +399,15 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
 void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
     Ast_Expr *lhs = binary->lhs;
     Ast_Expr *rhs = binary->rhs;
-    if (binary->expr_flags & EXPR_FLAG_ASSIGNMENT) {
-        Assert(0);
-        if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
-            report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
-            binary->poison();
-        }
 
-        if (lhs->valid() && rhs->valid()) {
-            if (!typecheck(lhs->type_info, rhs->type_info)) {
-                report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
-                binary->poison();
-            }
-        }
-        binary->type_info = lhs->type_info;
-    }
-
+    Assert(lhs->valid() && rhs->valid());
+    
     if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
-        if (lhs->valid() && !lhs->type_info->is_arithmetic_type()) {
+        if (!lhs->type_info->is_arithmetic_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        if (rhs->valid() && !rhs->type_info->is_arithmetic_type()) {
+        if (!rhs->type_info->is_arithmetic_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
@@ -431,11 +415,11 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
     }
 
     if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
-        if (lhs->valid() && !lhs->type_info->is_integral_type()) {
+        if (!lhs->type_info->is_integral_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        if (rhs->valid() && !rhs->type_info->is_integral_type()) {
+        if (!rhs->type_info->is_integral_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
@@ -443,11 +427,15 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
     }
 
     if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
-        if (lhs->valid() && !lhs->type_info->is_arithmetic_type()) {
+        //@Note Give null expr type of lhs
+        if (rhs->kind == AST_NULL) {
+            rhs->type_info = lhs->type_info;
+        }
+        if (!lhs->type_info->is_arithmetic_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        if (rhs->valid() && !rhs->type_info->is_arithmetic_type()) {
+        if (!rhs->type_info->is_arithmetic_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
@@ -617,6 +605,11 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
 
     resolve_expr(lhs);
     resolve_expr(rhs);
+
+    //@Note Give null expr type of lhs
+    if (rhs->kind == AST_NULL) {
+        rhs->type_info = lhs->type_info;
+    }
 
     if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
         report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
@@ -796,7 +789,7 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
 
     case LITERAL_INT:
     case LITERAL_S32:
-        literal->type_info = type_s32;
+        literal->type_info = type_int;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
@@ -846,7 +839,7 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
         break;
 
     case LITERAL_STRING:
-        literal->type_info = type_string;
+        literal->type_info = ast_pointer_type_info(type_u8);
         break;
     }
 }
@@ -885,6 +878,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         bool overloaded = false;
         Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
         if (decl) {
+            resolve_decl(decl);
             name->reference = decl;
             elem_type = decl->type_info;
         } else {
@@ -1085,6 +1079,13 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         Assert(0);
         break;
 
+    case AST_NULL:
+    {
+        Ast_Null *null = static_cast<Ast_Null*>(expr);
+        null->type_info = type_null;
+        break;
+    }
+
     case AST_PAREN:
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
@@ -1256,6 +1257,7 @@ void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
 void Resolver::resolve_proc(Ast_Proc *proc) {
     resolve_proc_header(proc);
     if (in_global_scope()) {
+        // printf("RESOLVING '%s'\n", proc->name->data);
         Scope *scope = new_scope(SCOPE_PROC);
         proc->scope = scope;
         current_proc = proc;
@@ -1409,6 +1411,10 @@ void Resolver::resolve_var(Ast_Var *var) {
         } else {
             var->type_info = var->init->type_info;
         }
+
+        if (var->init && var->init->kind == AST_NULL) {
+            var->init->type_info = specified_type;
+        }
     }
 
     return;
@@ -1430,9 +1436,14 @@ void Resolver::register_global_declarations() {
 
     for (Builtin_Type_Kind builtin_type = BUILTIN_TYPE_VOID; builtin_type < BUILTIN_TYPE_COUNT; builtin_type = (Builtin_Type_Kind)(builtin_type + 1)) {
         Ast_Type_Info *type_info = g_builtin_types[builtin_type];
-        Ast_Type_Decl *decl = ast_type_decl(type_info->name, type_info);
-        global_scope->declarations.push(decl);
+        if (type_info->name) {
+            Ast_Type_Decl *decl = ast_type_decl(type_info->name, type_info);
+            global_scope->declarations.push(decl);
+        }
     }
+    // // int type
+    // Ast_Type_Decl *int_decl = ast_type_decl(atom_create("int"), type_s32);
+    // global_scope->declarations.push(int_decl);
 
     for (int i = 0; i < root->declarations.count; i++) {
         Ast_Decl *decl = root->declarations[i];
@@ -1455,6 +1466,11 @@ void Resolver::register_global_declarations() {
 }
 
 void Resolver::resolve_decl(Ast_Decl *decl) {
+    //@Fix This is to prevent a bug where the procedure body doesn't get resolved for some reason
+    if (in_global_scope() && decl->kind == AST_PROC) {
+        decl->resolve_state = RESOLVE_UNSTARTED;
+    }
+
     if (decl->resolve_state == RESOLVE_DONE) {
         return;
     } else if (decl->resolve_state == RESOLVE_STARTED &&
@@ -1485,9 +1501,6 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
     {
         Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
         resolve_proc(proc);
-        if (in_global_scope()) {
-            incomplete_resolve = true;
-        }
         break;
     }
     case AST_STRUCT:
@@ -1505,9 +1518,7 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
     }
 
     decl->resolve_state = RESOLVE_DONE;
-    if (incomplete_resolve) {
-        decl->resolve_state = RESOLVE_UNSTARTED;
-    }
+
 }
 
 void Resolver::resolve_overloaded_proc(Ast_Proc *proc) {
