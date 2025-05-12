@@ -898,29 +898,30 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         if (elem_type->is_proc_type()) {
             Ast_Proc *proc = static_cast<Ast_Proc*>(elem_type->decl);
             Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-            if (proc_type->parameters.count == call->arguments.count) {
-                call->type_info = proc_type->return_type;
-
-                bool bad_arg = false;
-                for (int i = 0; i < call->arguments.count; i++) {
-                    Ast_Type_Info *param = proc_type->parameters[i];
-                    Ast_Expr *arg = call->arguments[i];
-                    if (arg->valid() && !typecheck(param, arg->type_info)) {
-                        bad_arg = true;
-                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type_info), string_from_type(param));
-                        call->poison();
-                    }
-                }
-
-                if (bad_arg) {
-                    report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
-                }
-
-                call->type_info = proc_type->return_type;
-            } else {
+            call->type_info = proc_type->return_type;
+            if (!proc->has_varargs && (call->arguments.count != proc_type->parameters.count)) {
                 report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
                 report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
                 call->poison();
+                return;
+            }
+
+            bool bad_arg = false;
+            for (int i = 0, param_idx = 0; i < call->arguments.count; i++) {
+                Ast_Param *param = proc->parameters[param_idx];
+                Ast_Expr *arg = call->arguments[i];
+                if (!param->is_vararg) {
+                    if (arg->valid() && !typecheck(param->type_info, arg->type_info)) {
+                        bad_arg = true;
+                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type_info), string_from_type(param->type_info));
+                        call->poison();
+                    }
+                    param_idx++;
+                }
+            }
+
+            if (bad_arg) {
+                report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
             }
         } else {
             report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
@@ -1256,7 +1257,7 @@ void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
 
 void Resolver::resolve_proc(Ast_Proc *proc) {
     resolve_proc_header(proc);
-    if (in_global_scope()) {
+    if (in_global_scope() && proc->block) {
         // printf("RESOLVING '%s'\n", proc->name->data);
         Scope *scope = new_scope(SCOPE_PROC);
         proc->scope = scope;
@@ -1424,8 +1425,10 @@ ERROR_BLOCK:
 }
 
 void Resolver::resolve_param(Ast_Param *param) {
-    Ast_Type_Info *type_info = resolve_type(param->type_defn);
-    param->type_info = type_info;
+    if (!param->is_vararg) {
+        Ast_Type_Info *type_info = resolve_type(param->type_defn);
+        param->type_info = type_info;
+    }
 }
 
 void Resolver::register_global_declarations() {

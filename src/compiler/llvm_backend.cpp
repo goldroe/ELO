@@ -1,6 +1,8 @@
 global Arena *llvm_arena;
 #define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
 
+//@Todo Fix array indexing and probably pointer dereferncing as well
+
 internal void *llvm_backend_alloc(u64 size, int alignment) {
     void *result = (void *)arena_alloc(llvm_arena, size, alignment);
     MemoryZero(result, size);
@@ -18,30 +20,9 @@ void LLVM_Backend::llvm_emit_block(LLVMBasicBlockRef block) {
     current_block = block;
 }
 
-LLVM_Procedure *LLVM_Backend::printf_proc_emit() {
-    LLVM_Procedure *llvm_proc = llvm_alloc(LLVM_Procedure);
-    llvm_proc->name = atom_create(str8_lit("printf"));
-    llvm_proc->proc = NULL;
-
-    llvm_proc->parameter_types.push(LLVMPointerType(LLVMInt8Type(), 0));
-    llvm_proc->return_type = LLVMInt32Type();
-
-    llvm_proc->type = LLVMFunctionType(llvm_proc->return_type, llvm_proc->parameter_types.data, (int)llvm_proc->parameter_types.count, true);
-
-    llvm_proc->value = LLVMAddFunction(module, "printf", llvm_proc->type);
-
-    LLVMLinkage linkage = LLVMGetLinkage(llvm_proc->value);
-    LLVMSetLinkage(llvm_proc->value, LLVMExternalLinkage);
-    LLVMSetFunctionCallConv(llvm_proc->value, LLVMCCallConv);
-
-    return llvm_proc;
-}
-
 void LLVM_Backend::emit() {
     module = LLVMModuleCreateWithName("my_module");
     context = LLVMGetModuleContext(module);
-
-    printf_procedure = printf_proc_emit();
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
@@ -398,10 +379,6 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         if (call->elem->kind == AST_IDENT) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
             LLVM_Procedure *procedure = lookup_proc(ident->name);
-
-            if (atoms_match(ident->name, atom_create(str8_lit("printf")))) {
-                procedure = printf_procedure;
-            }
 
             Auto_Array<LLVMValueRef> args;
             for (int i = 0; i < call->arguments.count; i++) {
@@ -894,34 +871,43 @@ void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
 }
 
 LLVM_Procedure *LLVM_Backend::emit_procedure(Ast_Proc *proc) {
-    Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-
     LLVM_Procedure *llvm_proc = llvm_alloc(LLVM_Procedure);
     llvm_proc->name = proc->name;
     llvm_proc->proc = proc;
 
-    if (proc->parameters.count) llvm_proc->parameter_types.reserve(proc_type->parameters.count);
+    Ast_Proc_Type_Info *proc_type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
 
-    for (int i = 0; i < proc_type->parameters.count; i++) {
-        Ast_Type_Info *type_info = proc_type->parameters[i];
+    for (int i = 0; i < proc->parameters.count; i++) {
+        Ast_Param *param = proc->parameters[i];
+        if (param->is_vararg) break;
+
+        Ast_Type_Info *type_info = proc_type_info->parameters[i];
         LLVMTypeRef type = emit_type(type_info);
         llvm_proc->parameter_types.push(type);
     }
-    llvm_proc->return_type = emit_type(proc_type->return_type);
+    llvm_proc->return_type = emit_type(proc_type_info->return_type);
 
-    llvm_proc->type = LLVMFunctionType(llvm_proc->return_type, llvm_proc->parameter_types.data, (int)llvm_proc->parameter_types.count, false);
+    llvm_proc->type = LLVMFunctionType(llvm_proc->return_type, llvm_proc->parameter_types.data, (int)llvm_proc->parameter_types.count, proc->has_varargs);
 
     llvm_proc->value = LLVMAddFunction(module, (char *)llvm_proc->name->data, llvm_proc->type);
 
-    llvm_proc->builder = LLVMCreateBuilder();
+    if (proc->foreign) {
+        LLVMLinkage linkage = LLVMGetLinkage(llvm_proc->value);
+        // LLVMSetLinkage(llvm_proc->value, LLVMExternalLinkage);
+        // LLVMSetFunctionCallConv(llvm_proc->value, LLVMCCallConv);
+    }
 
     return llvm_proc;
 }
 
 void LLVM_Backend::emit_procedure_body(LLVM_Procedure *procedure) {
     Ast_Proc *proc = procedure->proc;
-    current_proc = procedure;
+    if (proc->foreign) {
+        return;
+    }
 
+    current_proc = procedure;
+    procedure->builder = LLVMCreateBuilder();
     builder = procedure->builder;
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, procedure->value, "entry");

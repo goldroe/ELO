@@ -266,7 +266,7 @@ struct Ast_Type_Decl : Ast_Decl {
 struct Ast_Param : Ast_Decl {
     Ast_Param() { kind = AST_PARAM; }
     Ast_Type_Defn *type_defn;
-    int stack_offset;
+    b32 is_vararg;
 };
 
 struct Ast_Var : Ast_Decl {
@@ -305,7 +305,9 @@ struct Ast_Proc : Ast_Decl {
     Ast_Type_Defn *return_type_defn = NULL;
     Scope *scope = NULL;
     Ast_Block *block = NULL;
-    b32 returns = false;
+    b32 foreign;
+    b32 has_varargs;
+    b32 returns;
 };
 
 struct Ast_Operator_Proc : Ast_Proc {

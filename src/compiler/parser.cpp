@@ -1,3 +1,4 @@
+
 Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
 }
@@ -591,7 +592,6 @@ Ast_Stmt *Parser::parse_stmt() {
     case TOKEN_FOR:
     {
         Ast_For *for_stmt = parse_for_stmt();
-
         stmt = for_stmt;
         break;
     }
@@ -699,16 +699,18 @@ Ast_Type_Defn *Parser::parse_type() {
 Ast_Param *Parser::parse_param() {
     Ast_Param *param = NULL;
     if (lexer->match(TOKEN_IDENT)) {
-        Token name = lexer->current();
+            Token name = lexer->current();
+            lexer->next_token();
+            expect(TOKEN_COLON);
+            Ast_Type_Defn *type_defn = parse_type();
+            if (!type_defn) {
+                report_parser_error(lexer, "expected type after ':', got '%s'.\n", string_from_token(lexer->peek()));
+            }
+            param = ast_param(name.name, type_defn);
+    } else if (lexer->match(TOKEN_ELLIPSIS)) {
         lexer->next_token();
-
-        expect(TOKEN_COLON);
-
-        Ast_Type_Defn *type_defn = parse_type();
-        if (!type_defn) {
-            report_parser_error(lexer, "expected type after ':', got '%s'.\n", string_from_token(lexer->peek()));
-        }
-        param = ast_param(name.name, type_defn);
+        param = ast_param(NULL, NULL);
+        param->is_vararg = true;
     }
     return param;
 }
@@ -729,12 +731,21 @@ Ast_Block *Parser::parse_block() {
 }
 
 Ast_Proc *Parser::parse_proc(Token name) {
+    bool has_varargs = false;
     Auto_Array<Ast_Param*> parameters;
     expect(TOKEN_LPAREN);
     while (!lexer->eof() && !lexer->match(TOKEN_RPAREN)) {
         Ast_Param *param = parse_param();
         if (param == NULL) break;
         parameters.push(param);
+
+        if (has_varargs && param->is_vararg) {
+            report_parser_error(lexer, "Variadic parameter must be used only once.\n");
+        } else if (has_varargs) {
+            report_parser_error(lexer, "Variadic parameter must be last.\n");
+        }
+
+        if (param->is_vararg) has_varargs = true;
 
         if (!lexer->eat(TOKEN_COMMA)) {
             break;
@@ -747,10 +758,19 @@ Ast_Proc *Parser::parse_proc(Token name) {
         return_type = parse_type();
     }
 
-    Ast_Block *block = parse_block();
-
+    bool is_foreign = false;
+    Ast_Block *block = NULL;
+    if (lexer->match(TOKEN_LBRACE)) {
+        block = parse_block();
+    } else if (lexer->eat(TOKEN_FOREIGN)) {
+        is_foreign = true;
+    }
+    Source_Pos end = lexer->current().start;
+    
     Ast_Proc *proc = ast_proc(name.name, parameters, return_type, block);
-    proc->mark_range(name.start, block->end);
+    proc->foreign = is_foreign;
+    proc->has_varargs = has_varargs;
+    proc->mark_range(name.start, end);
     return proc;
 }
 

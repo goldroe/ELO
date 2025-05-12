@@ -75,12 +75,9 @@ struct LLVM_Backend {
     LLVM_Procedure *current_proc;
     LLVMBasicBlockRef current_block;
 
-    LLVM_Procedure *printf_procedure;
-
     LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
     
     void emit();
-    LLVM_Procedure *printf_proc_emit();
     
     LLVMTypeRef emit_type(Ast_Type_Info *type_info);
     LLVM_Addr emit_addr(Ast_Expr *expr);
