@@ -1,4 +1,6 @@
 
+#define MAX_STRING_LENGTH 1024
+
 global Token poisoned_token = {TOKEN_ERR};
 
 internal void compiler_error(char *fmt, ...);
@@ -413,7 +415,7 @@ lex_start:
         u64 count = stream - start;
         eat_char();
 
-        String8 string = str8(start, count);
+        String8 string = str8_copy(heap_allocator(), str8(start, count));
         token.kind = TOKEN_STRLIT;
         token.strlit = string; 
         break;
