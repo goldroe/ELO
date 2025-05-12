@@ -1,10 +1,26 @@
 
-#define MAX_STRING_LENGTH 1024
+#define LEXER_MAX_STRING_LENGTH 1024
 
 global Token poisoned_token = {TOKEN_ERR};
 
+global u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];
+
 internal void compiler_error(char *fmt, ...);
 internal void add_source_file(Source_File *file);
+
+u8 Lexer::get_escape_character(u8 c) {
+    switch (c) {
+    default:
+        report_parser_error(this, "illegal escape character in string, '%c'.\n", c);
+        return 0;
+        break;
+    case '\\': return '\\';
+    case '0':  return 0;
+    case 't':  return 0x9;
+    case 'n':  return 0xA;
+    case 'r':  return 0xD;
+    }
+}
 
 internal Source_Pos source_pos(u64 line, u64 col, u64 index, Source_File *file) {
     Source_Pos result;
@@ -338,8 +354,8 @@ lex_start:
 
     case '#':
     {
-        eat_char();
         u8 *start = stream;
+        eat_char();
         while (isalpha(*stream) || *stream == '_') {
             u8 c = *stream;
             eat_char();
@@ -347,7 +363,12 @@ lex_start:
         u64 count = stream - start;
         String8 string = str8(start, count);
         Atom *atom = atom_lookup(string);
-        Assert(atom != NULL);
+        if (atom) {
+            Assert(atom->flags & ATOM_FLAG_DIRECTIVE);
+            token.kind = atom->token;
+        } else {
+            report_parser_error(this, "unknown directive '%S'.\n", string);
+        }
         break;
     }
 
@@ -409,13 +430,27 @@ lex_start:
     {
         eat_char();
         u8 *start = stream;
+        int count = 0;
         while (*stream && *stream != '"') {
-            eat_char();
-        }
-        u64 count = stream - start;
-        eat_char();
+            if (count >= LEXER_MAX_STRING_LENGTH)  {
+                report_parser_error(this, "string literal achieved max capacity.\n");
+                break;
+            }
 
-        String8 string = str8_copy(heap_allocator(), str8(start, count));
+            u8 character = peek_character();
+            eat_char();
+            if (character == '\\') {
+                u8 escape = peek_character();
+                eat_char();
+                character = get_escape_character(escape);
+            }
+            g_lexer_string_buffer[count] = character;
+            count++;
+        }
+        eat_char(); // eat '"'
+
+        g_lexer_string_buffer[count] = 0;
+        String8 string = str8_copy(heap_allocator(), str8(g_lexer_string_buffer, count));
         token.kind = TOKEN_STRLIT;
         token.strlit = string; 
         break;
@@ -525,7 +560,6 @@ lex_start:
             token.kind = TOKEN_SLASH_EQ;
             eat_char();
         } else if (*stream == '/') {
-            eat_char();
             eat_line();
             goto lex_start;
         }

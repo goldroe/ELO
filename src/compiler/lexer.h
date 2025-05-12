@@ -119,9 +119,10 @@ enum Token_Kind {
     TOKEN_DIRECTIVE_BEGIN,
     TOKEN_LOAD,
     TOKEN_IMPORT,
+    TOKEN_FOREIGN,
     TOKEN_DIRECTIVE_END,
 
-    Token_COUNT
+    TOKEN_COUNT
 };
 
 enum Literal_Flags {
@@ -188,6 +189,7 @@ struct Lexer {
     Token scan_integer();
     f64 scan_float();
 
+    u8 get_escape_character(u8 c);
     u8 peek_character();
     u8 peek_next_character();
     void eat_char();
