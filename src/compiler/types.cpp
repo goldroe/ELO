@@ -28,6 +28,54 @@ internal Ast_Type_Info *ast_type_info(Atom *name, Type_Info_Flags flags) {
     return result;
 }
 
+internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base) {
+    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+    result->base = base;
+    result->type_flags = TYPE_FLAG_POINTER;
+    return result;
+}
+
+internal Struct_Field_Info struct_field_info(Atom *name, Ast_Type_Info *type_info) {
+    Struct_Field_Info result = {};
+    result.name = name;
+    result.type_info = type_info;
+    result.mem_offset = 0;
+    return result;
+}
+
+internal Ast_Array_Type_Info *ast_array_type_info(Ast_Type_Info *base) {
+    Ast_Array_Type_Info *result = AST_NEW(Ast_Array_Type_Info);
+    result->base = base;
+    result->type_flags = TYPE_FLAG_ARRAY;
+    result->aggregate.fields = {
+        struct_field_info(atom_create(str8_lit("data")), ast_pointer_type_info(base)),
+        struct_field_info(atom_create(str8_lit("count")), type_s64)
+    };
+    return result;
+}
+
+internal Ast_Proc_Type_Info *ast_proc_type_info(Ast_Type_Info *return_type, Auto_Array<Ast_Type_Info*> parameters) {
+    Ast_Proc_Type_Info *result = AST_NEW(Ast_Proc_Type_Info);
+    result->type_flags = TYPE_FLAG_PROC;
+    result->return_type = return_type;
+    result->parameters = parameters;
+    return result;
+}
+
+internal Ast_Type_Info *ast_struct_type_info(Auto_Array<Struct_Field_Info> fields) {
+    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+    result->type_flags = TYPE_FLAG_STRUCT;
+    result->aggregate.fields = fields;
+    return result;
+}
+
+internal Ast_Enum_Type_Info *ast_enum_type_info(Auto_Array<Enum_Field_Info> fields) {
+    Ast_Enum_Type_Info *result = AST_NEW(Ast_Enum_Type_Info);
+    result->type_flags = TYPE_FLAG_ENUM;
+    result->fields = fields;
+    return result;
+}
+
 internal Ast_Type_Info *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8 name, int bytes, Type_Info_Flags flags) {
     Atom *atom = atom_create(name);
     Ast_Type_Info *result = ast_type_info(atom, flags | TYPE_FLAG_BUILTIN);

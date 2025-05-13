@@ -150,15 +150,14 @@ int main(int argc, char **argv) {
         printf("%d error(s).\n", error_count);
     }
 
-    // if (error_count == 0) {
+    if (error_count == 0) {
         LLVM_Backend *backend = new LLVM_Backend(g_source_files[0], parser->root);
         backend->emit();
-    // }
+    }
 
     compiler_exit();
 
     printf("done.\n");
 
-    return 0;
-    // return error_count == 0 ? 0 : 1;
+    return error_count == 0 ? 0 : 1;
 }

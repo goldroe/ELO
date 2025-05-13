@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#define LEXER_MAX_STRING_LENGTH 1024
+
 struct Atom;
 struct Report;
 

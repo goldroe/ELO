@@ -1,6 +1,4 @@
 
-#define LEXER_MAX_STRING_LENGTH 1024
-
 global Token poisoned_token = {TOKEN_ERR};
 
 global u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];

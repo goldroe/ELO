@@ -201,8 +201,8 @@ LLVM_Addr LLVM_Backend::emit_addr(Ast_Expr *expr) {
         LLVM_Addr addr = emit_addr(index->lhs);
         LLVM_Value rhs = emit_expr(index->rhs);
         LLVMTypeRef type = emit_type(index->type_info);
-        LLVMValueRef value = LLVMBuildGEP2(builder, type, addr.value, &rhs.value, 1, "indexaddr");
-        result.value = value;
+        LLVMValueRef ptr = LLVMBuildGEP2(builder, type, addr.value, &rhs.value, 1, "indexgep");
+        result.value = ptr;
         break;
     }
 
@@ -326,11 +326,30 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         Ast_Literal *literal = static_cast<Ast_Literal*>(expr);
         LLVMTypeRef type = emit_type(literal->type_info);
 
-        if (literal->literal_flags & LITERAL_INT) {
-            result.value = LLVMConstInt(type, literal->int_val, (literal->type_info->type_flags & TYPE_FLAG_SIGNED));
-        } else if (literal->literal_flags & LITERAL_FLOAT) {
+        bool sign_extend = true;
+
+        switch (literal->literal_flags) {
+        case LITERAL_U8:
+        case LITERAL_U16:
+        case LITERAL_U32:
+        case LITERAL_U64:
+        case LITERAL_BOOLEAN:
+            sign_extend = false;
+        case LITERAL_INT:
+        case LITERAL_S8:
+        case LITERAL_S16:
+        case LITERAL_S32:
+        case LITERAL_S64:
+            result.value = LLVMConstInt(type, literal->int_val, sign_extend);
+            break;
+        case LITERAL_FLOAT:
+        case LITERAL_F32:
+        case LITERAL_F64:
             result.value = LLVMConstReal(type, literal->float_val);
-        } else if (literal->literal_flags & LITERAL_STRING) {
+            break;
+
+        case LITERAL_STRING:
+        {
             LLVMValueRef value = LLVMConstString((char *)literal->str_val.data, (unsigned)literal->str_val.count, false);
             type = LLVMArrayType(LLVMInt32Type(), (unsigned)literal->str_val.count);
 
@@ -344,11 +363,11 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
 
             LLVMValueRef var = LLVMBuildGlobalString(builder, (char *)literal->str_val.data, ".str");
             result.value = var;
-        } else if (literal->literal_flags & LITERAL_BOOLEAN) {
-            result.value = LLVMConstInt(type, literal->int_val, false);
+            break;
         }
-        Assert(result.value);
+        }
 
+        Assert(result.value);
         result.type = type; 
         break;
     }
@@ -411,6 +430,22 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
 
     case AST_CAST:
     {
+        Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
+        Ast_Expr *elem = cast->elem;
+        printf("%s to %s\n", string_from_type(elem->type_info), string_from_type(cast->type_info));
+
+        LLVM_Value expr_value = emit_expr(cast->elem);
+        LLVMTypeRef dest_type = emit_type(cast->type_info);
+
+        if (cast->type_info->is_float_type() && elem->type_info->is_float_type()) {
+            result.value = LLVMBuildFPCast(builder, expr_value.value, dest_type, "fpcast");
+        } else if (cast->type_info->is_integral_type() && elem->type_info->is_integral_type()) {
+            if (cast->type_info->bytes < elem->type_info->bytes) {
+                result.value = LLVMBuildTrunc(builder, expr_value.value, dest_type, "trunc");
+            } else {
+                result.value = LLVMBuildIntCast2(builder, expr_value.value, dest_type, cast->type_info->is_signed(), "intcast");
+            }
+        }
         break;
     }
     
@@ -895,6 +930,11 @@ LLVM_Procedure *LLVM_Backend::emit_procedure(Ast_Proc *proc) {
         LLVMLinkage linkage = LLVMGetLinkage(llvm_proc->value);
         // LLVMSetLinkage(llvm_proc->value, LLVMExternalLinkage);
         // LLVMSetFunctionCallConv(llvm_proc->value, LLVMCCallConv);
+    } else {
+        llvm_proc->builder = LLVMCreateBuilder();
+        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, llvm_proc->value, "entry");
+        llvm_proc->entry = entry;
+        LLVMPositionBuilderAtEnd(llvm_proc->builder, entry);
     }
 
     return llvm_proc;
@@ -907,12 +947,7 @@ void LLVM_Backend::emit_procedure_body(LLVM_Procedure *procedure) {
     }
 
     current_proc = procedure;
-    procedure->builder = LLVMCreateBuilder();
     builder = procedure->builder;
-
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, procedure->value, "entry");
-    procedure->entry = entry;
-    LLVMPositionBuilderAtEnd(procedure->builder, entry);
 
     for (int i = 0; i < proc->parameters.count; i++) {
         Ast_Param *param = proc->parameters[i];
