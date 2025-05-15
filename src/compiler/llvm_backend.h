@@ -101,25 +101,25 @@ struct LLVM_Backend {
 
     LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
     
-    void emit();
+    void gen();
     
     llvm::Type* get_type(Ast_Type_Info *type_info);
-    LLVM_Addr emit_addr(Ast_Expr *expr);
-    llvm::Value* emit_condition(Ast_Expr *expr);
+    LLVM_Addr gen_addr(Ast_Expr *expr);
+    llvm::Value* gen_condition(Ast_Expr *expr);
 
-    LLVM_Value emit_expr(Ast_Expr *expr);
-    LLVM_Value emit_binary_op(Ast_Binary *binop);
+    LLVM_Value gen_expr(Ast_Expr *expr);
+    LLVM_Value gen_binary_op(Ast_Binary *binop);
 
-    void emit_decl(Ast_Decl *decl);
-    LLVM_Procedure *emit_procedure(Ast_Proc *proc);
-    void emit_procedure_body(LLVM_Procedure *procedure);
-    LLVM_Struct *emit_struct(Ast_Struct *struct_decl);
+    void gen_decl(Ast_Decl *decl);
+    LLVM_Procedure *gen_procedure(Ast_Proc *proc);
+    void gen_procedure_body(LLVM_Procedure *procedure);
+    LLVM_Struct *gen_struct(Ast_Struct *struct_decl);
     
-    void emit_stmt(Ast_Stmt *stmt);
-    void emit_if(Ast_If *if_stmt);
-    void emit_while(Ast_While *while_stmt);
-    void emit_for(Ast_For *for_stmt);
-    void emit_block(Ast_Block *block);
+    void gen_stmt(Ast_Stmt *stmt);
+    void gen_if(Ast_If *if_stmt);
+    void gen_while(Ast_While *while_stmt);
+    void gen_for(Ast_For *for_stmt);
+    void gen_block(Ast_Block *block);
 
     llvm::BasicBlock *llvm_block_new(const char *s);
 
@@ -127,6 +127,9 @@ struct LLVM_Backend {
 
     LLVM_Procedure *lookup_proc(Atom *name);
     LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
+
+
+    llvm::Value *get_ptr_from_struct_ptr(Ast_Field *field, LLVM_Addr addr);
 };
 
 #endif // LLVM_BACKEND_H
