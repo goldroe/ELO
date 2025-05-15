@@ -1,25 +1,48 @@
 #ifndef LLVM_BACKEND_H
 #define LLVM_BACKEND_H
 
-#include <llvm-c/Config/llvm-config.h>
-#include <llvm-c/Core.h>
-#include <llvm-c/ExecutionEngine.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/Analysis.h>
-#include <llvm-c/Object.h>
-#include <llvm-c/BitWriter.h>
-#include <llvm-c/DebugInfo.h>
-#include <llvm-c/Transforms/PassBuilder.h>
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#pragma warning(disable : 4244)
+#pragma warning(disable : 4245)
+#pragma warning(disable : 4267)
+#pragma warning(disable : 4310)
+#pragma warning(disable : 4324)
+#pragma warning(disable : 4458)
+#pragma warning(disable : 4624)
+#pragma warning(disable : 4996)
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/IR/Argument.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Bitcode/BitcodeWriter.h>
+#include <llvm/Support/Casting.h>
+#include <llvm/Support/ManagedStatic.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+#pragma warning(pop)
 
 struct LLVM_Decl;
 
 struct LLVM_Value {
-    LLVMValueRef value;
-    LLVMTypeRef type;
+    llvm::Value *value;
+    llvm::Type *type;
 };
 
 struct LLVM_Addr {
-    LLVMValueRef value;
+    llvm::Value *value;
 };
 
 enum LLVM_Decl_Kind {
@@ -34,29 +57,29 @@ struct LLVM_Decl {
 
 struct LLVM_Struct : LLVM_Decl {
     Atom *name;
-    LLVMTypeRef type;
-    Auto_Array<LLVMTypeRef> element_types;
+    llvm::Type* type;
+    Auto_Array<llvm::Type*> element_types;
     Ast_Struct *decl;
 };
 
 struct LLVM_Var : LLVM_Decl {
     Atom *name;
     Ast_Decl *decl;
-    LLVMTypeRef type;
-    LLVMValueRef alloca;
+    llvm::Type* type;
+    llvm::AllocaInst *alloca;
 };
 
 struct LLVM_Procedure : LLVM_Decl {
     Atom *name;
     Ast_Proc *proc;
 
-    LLVMValueRef value;
-    LLVMTypeRef type;
-    Auto_Array<LLVMTypeRef> parameter_types;
-    LLVMTypeRef return_type;
+    llvm::Function *fn;
+    llvm::FunctionType* type;
+    llvm::Type* return_type;
+    Auto_Array<llvm::Type*> parameter_types;
 
-    LLVMBuilderRef builder;
-    LLVMBasicBlockRef entry;
+    llvm::IRBuilder<> *builder;
+    llvm::BasicBlock *entry;
 
     Auto_Array<LLVM_Var*> named_values;
 };
@@ -65,23 +88,24 @@ struct LLVM_Backend {
     Ast_Root *root;
     Source_File *file;
 
-    LLVMModuleRef module;
-    LLVMContextRef context;
-    LLVMBuilderRef builder;
+    llvm::LLVMContext *Ctx;
+    llvm::Module *Module;
+
+    llvm::IRBuilder<> *builder;
 
     Auto_Array<LLVM_Procedure*> global_procedures;
     Auto_Array<LLVM_Struct*> global_structs;
 
     LLVM_Procedure *current_proc;
-    LLVMBasicBlockRef current_block;
+    llvm::BasicBlock *current_block;
 
     LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
     
     void emit();
     
-    LLVMTypeRef emit_type(Ast_Type_Info *type_info);
+    llvm::Type* get_type(Ast_Type_Info *type_info);
     LLVM_Addr emit_addr(Ast_Expr *expr);
-    LLVMValueRef emit_condition(Ast_Expr *expr);
+    llvm::Value* emit_condition(Ast_Expr *expr);
 
     LLVM_Value emit_expr(Ast_Expr *expr);
     LLVM_Value emit_binary_op(Ast_Binary *binop);
@@ -97,8 +121,9 @@ struct LLVM_Backend {
     void emit_for(Ast_For *for_stmt);
     void emit_block(Ast_Block *block);
 
-    LLVMBasicBlockRef llvm_block_new(const char *s);
-    void llvm_emit_block(LLVMBasicBlockRef block);
+    llvm::BasicBlock *llvm_block_new(const char *s);
+
+    void insert_block(llvm::BasicBlock *block);
 
     LLVM_Procedure *lookup_proc(Atom *name);
     LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);

@@ -1,28 +1,124 @@
-global Arena *llvm_arena;
-#define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
-
 //@Todo Fix array indexing and probably pointer dereferncing as well
+global Arena *llvm_arena;
 
+#define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
 internal void *llvm_backend_alloc(u64 size, int alignment) {
     void *result = (void *)arena_alloc(llvm_arena, size, alignment);
     MemoryZero(result, size);
     return result;
 }
 
-LLVMBasicBlockRef LLVM_Backend::llvm_block_new(const char *s) {
-    LLVMBasicBlockRef result = LLVMCreateBasicBlockInContext(context, s);
-    return result;
+
+LLVM_Procedure *LLVM_Backend::emit_procedure(Ast_Proc *proc) {
+    LLVM_Procedure *llvm_proc = llvm_alloc(LLVM_Procedure);
+    llvm_proc->name = proc->name;
+    llvm_proc->proc = proc;
+
+    Ast_Proc_Type_Info *proc_type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+
+    for (int i = 0; i < proc->parameters.count; i++) {
+        Ast_Param *param = proc->parameters[i];
+        if (param->is_vararg) break;
+        Ast_Type_Info *type_info = proc_type_info->parameters[i];
+        llvm::Type* type = get_type(type_info);
+        llvm_proc->parameter_types.push(type);
+    }
+    llvm::Type *return_type = get_type(proc_type_info->return_type);
+    llvm_proc->return_type = return_type;
+
+    llvm::FunctionType *function_type = llvm::FunctionType::get(return_type, llvm::ArrayRef(llvm_proc->parameter_types.data, llvm_proc->parameter_types.count), proc->has_varargs);
+    llvm_proc->type = function_type;
+
+    llvm::Function *fn = llvm::Function::Create(function_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, llvm::Twine((char *)proc->name->data), Module);
+    llvm_proc->fn = fn;
+
+    if (proc->foreign) {
+        fn->setCallingConv(llvm::CallingConv::C);
+    }
+
+    if (proc->has_varargs) {
+        fn->setCallingConv(llvm::CallingConv::C);
+    }
+
+    if (!proc->foreign) {
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, llvm::Twine("entry"));
+        llvm_proc->builder = new llvm::IRBuilder<>(*Ctx);
+        llvm_proc->entry = entry;
+    }
+
+    return llvm_proc;
 }
 
-void LLVM_Backend::llvm_emit_block(LLVMBasicBlockRef block) {
-    LLVMAppendExistingBasicBlock(current_proc->value, block);
-    LLVMPositionBuilderAtEnd(builder, block);
-    current_block = block;
+void LLVM_Backend::emit_procedure_body(LLVM_Procedure *procedure) {
+    Ast_Proc *proc = procedure->proc;
+
+    if (proc->foreign) {
+        return;
+    }
+
+    current_proc = procedure;
+    builder = procedure->builder;
+
+    insert_block(procedure->entry);
+
+    for (int i = 0; i < proc->parameters.count; i++) {
+        Ast_Param *param = proc->parameters[i];
+        llvm::Argument *argument = procedure->fn->getArg(i);
+        LLVM_Var *var = llvm_alloc(LLVM_Var);
+        var->name = param->name;
+        var->decl = param;
+        var->type = procedure->parameter_types[i];
+        var->alloca = builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine((char *)var->name->data));
+        procedure->named_values.push(var);
+        llvm::StoreInst *store_inst = builder->CreateStore(argument, var->alloca);
+    }
+
+    emit_block(proc->block);
+
+    if (procedure->return_type->isVoidTy()) {
+        llvm::BasicBlock *last_block = &procedure->fn->back();
+        llvm::Instruction *last_instruction = &last_block->back();
+
+        bool need_return = false;
+        if (!last_instruction) {
+            need_return = true;
+        } else {
+            unsigned opcode = last_instruction->getOpcode();
+            if (opcode == llvm::Instruction::Ret) {
+                need_return = false;
+            }
+        }
+
+        if (need_return) {
+            llvm::ReturnInst *ret = builder->CreateRetVoid();
+        }
+    }
+}
+
+LLVM_Struct *LLVM_Backend::emit_struct(Ast_Struct *struct_decl) {
+    LLVM_Struct *llvm_struct = llvm_alloc(LLVM_Struct);
+    llvm_struct->name = struct_decl->name;
+
+    llvm::StructType *struct_type = llvm::StructType::create(*Ctx, (char *)llvm_struct->name->data);
+    llvm_struct->type = struct_type;
+
+    llvm_struct->element_types.reserve(struct_decl->fields.count);
+    for (int i = 0; i < struct_decl->fields.count; i++) {
+        Ast_Struct_Field *field = struct_decl->fields[i];
+        llvm::Type* field_type = get_type(field->type_info);
+        llvm_struct->element_types.push(field_type);
+    }
+    struct_type->setBody(llvm::ArrayRef(llvm_struct->element_types.data, llvm_struct->element_types.count), false);
+
+    return llvm_struct;
 }
 
 void LLVM_Backend::emit() {
-    module = LLVMModuleCreateWithName("my_module");
-    context = LLVMGetModuleContext(module);
+    // Ctx = std::make_unique<llvm::LLVMContext>();
+    // Module = std::make_unique<llvm::Module>("Main", *Ctx);
+
+    Ctx = new llvm::LLVMContext();
+    Module = new llvm::Module("Main", *Ctx);
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
@@ -34,13 +130,15 @@ void LLVM_Backend::emit() {
         emit_procedure_body(procedure);
     }
 
-    char *error = NULL;
-    LLVMVerifyModule(module, LLVMPrintMessageAction, &error);
-    LLVMDisposeMessage(error);
-
-    char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
-    if (LLVMWriteBitcodeToFile(module, gen_file_path) != 0) {
-        fprintf(stderr, "error writing bitcode to file %s, skipping\n", gen_file_path);
+    std::error_code EC;
+    llvm::raw_fd_ostream OS("-", EC);
+    bool broken_debug_info;
+    if (llvm::verifyModule(*Module, &OS, &broken_debug_info)) {
+        Module->print(llvm::errs(), nullptr); // dump IR
+    } else {
+        char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
+        llvm::raw_fd_ostream FS(gen_file_path, EC);
+        llvm::WriteBitcodeToFile(*Module, FS);
     }
 }
 
@@ -85,60 +183,51 @@ internal unsigned llvm_get_struct_field_index(Ast_Struct *struct_decl, Atom *nam
     return 0;
 } 
 
-LLVMTypeRef LLVM_Backend::emit_type(Ast_Type_Info *type_info) {
-    LLVMTypeRef result = 0;
-
+llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
     if (type_info->type_flags & TYPE_FLAG_BUILTIN) {
         switch (type_info->builtin_kind) {
+        default:
+            return nullptr;
         case BUILTIN_TYPE_NULL:
             Assert(0); //@Note No expression should still have the null type, needs to have type of "owner"
-            result = LLVMVoidType();
-            break;
+            return llvm::Type::getVoidTy(*Ctx);
         case BUILTIN_TYPE_VOID:
-            result = LLVMVoidType();
-            break;
+            return llvm::Type::getVoidTy(*Ctx);
         case BUILTIN_TYPE_U8:
         case BUILTIN_TYPE_S8:
-            result = LLVMInt8Type();
-            break;
+            return llvm::Type::getInt8Ty(*Ctx);
         case BUILTIN_TYPE_U16:
         case BUILTIN_TYPE_S16:
-            result = LLVMInt16Type();
-            break;
+            return llvm::Type::getInt16Ty(*Ctx);
         case BUILTIN_TYPE_U32:
         case BUILTIN_TYPE_S32:
         case BUILTIN_TYPE_INT:
         case BUILTIN_TYPE_BOOL:
-            result = LLVMInt32Type();
-            break;
+            return llvm::Type::getInt32Ty(*Ctx);
         case BUILTIN_TYPE_U64:
         case BUILTIN_TYPE_S64:
-            result = LLVMInt64Type();
-            break;
+            return llvm::Type::getInt64Ty(*Ctx);
         case BUILTIN_TYPE_F32:
-            result = LLVMFloatType();
-            break;
+            return llvm::Type::getFloatTy(*Ctx);
         case BUILTIN_TYPE_F64:
-            result = LLVMDoubleType();
-            break;
+            return llvm::Type::getDoubleTy(*Ctx);
         }
     } else if (type_info->is_struct_type()) {
         LLVM_Struct *llvm_struct = lookup_struct(type_info->decl->name);
-        result = llvm_struct->type;
+        return llvm_struct->type;
     } else if (type_info->is_array_type()) {
         Ast_Array_Type_Info *array_type_info = static_cast<Ast_Array_Type_Info*>(type_info);
-        LLVMTypeRef element_type = emit_type(array_type_info->base);
-        LLVMTypeRef array_type = LLVMArrayType2(element_type, array_type_info->array_size);
-        result = array_type;
+        llvm::Type* element_type = get_type(array_type_info->base);
+        llvm::ArrayType *array_type = llvm::ArrayType::get(element_type, array_type_info->array_size);
+        return array_type;
     } else if (type_info->is_pointer_type()) {
-        LLVMTypeRef element_type = emit_type(type_info->base);
-        LLVMTypeRef pointer_type = LLVMPointerType(element_type, 0);
-        result = pointer_type;
+        llvm::Type* element_type = get_type(type_info->base);
+        llvm::PointerType* pointer_type = llvm::PointerType::get(element_type, 0);
+        return pointer_type;
+    } else {
+        Assert(0);
+        return nullptr;
     }
-
-    Assert(result);
-
-    return result;
 }
 
 LLVM_Addr LLVM_Backend::emit_addr(Ast_Expr *expr) {
@@ -173,7 +262,7 @@ LLVM_Addr LLVM_Backend::emit_addr(Ast_Expr *expr) {
                 Ast_Struct *struct_node = static_cast<Ast_Struct*>(parent->type_info->decl);
                 LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
                 unsigned idx = llvm_get_struct_field_index(struct_node, name->name);
-                LLVMValueRef field_ptr_value = LLVMBuildStructGEP2(builder, llvm_struct->type, addr.value, idx, "fieldaddr");
+                llvm::Value* field_ptr_value = builder->CreateStructGEP(llvm_struct->type, addr.value, idx);
                 result.value = field_ptr_value;
             } else if (parent->type_info->is_pointer_type() && parent->type_info->base->is_struct_type()) {
                 Ast_Type_Info *struct_type = parent->type_info->base;
@@ -184,11 +273,11 @@ LLVM_Addr LLVM_Backend::emit_addr(Ast_Expr *expr) {
                 unsigned idx = llvm_get_struct_field_index(struct_node, name->name);
 
                 // Deref pointer
-                LLVMTypeRef typeref = emit_type(parent->type_info);
-                LLVMValueRef ptr_value = LLVMBuildLoad2(builder, typeref, addr.value, "fieldptr");
+                llvm::Type* type = get_type(parent->type_info);
+                llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
 
                 // Get element pointer based on deref 
-                LLVMValueRef field_ptr = LLVMBuildStructGEP2(builder, llvm_struct->type, ptr_value, idx, "fieldaddr2");
+                llvm::Value* field_ptr = builder->CreateStructGEP(llvm_struct->type, load, idx);
                 result.value = field_ptr;
             }
         }
@@ -200,8 +289,8 @@ LLVM_Addr LLVM_Backend::emit_addr(Ast_Expr *expr) {
         Ast_Index *index = static_cast<Ast_Index*>(expr);
         LLVM_Addr addr = emit_addr(index->lhs);
         LLVM_Value rhs = emit_expr(index->rhs);
-        LLVMTypeRef type = emit_type(index->type_info);
-        LLVMValueRef ptr = LLVMBuildGEP2(builder, type, addr.value, &rhs.value, 1, "indexgep");
+        llvm::Type *type = get_type(index->type_info);
+        llvm::Value *ptr = builder->CreateGEP(type, addr.value, llvm::ArrayRef(rhs.value));
         result.value = ptr;
         break;
     }
@@ -224,11 +313,11 @@ LLVM_Value LLVM_Backend::emit_binary_op(Ast_Binary *binop) {
             
     } else {
         if (binop->is_constant()) {
-            LLVMTypeRef type = emit_type(binop->type_info);
+            llvm::Type* type = get_type(binop->type_info);
             if (binop->type_info->is_integral_type()) {
-                result.value = LLVMConstInt(type, binop->eval.int_val, binop->type_info->is_signed());
+                result.value = llvm::ConstantInt::get(type, binop->eval.int_val, binop->type_info->is_signed());
             } else if (binop->type_info->is_float_type()) {
-                result.value = LLVMConstReal(type, binop->eval.float_val);
+                result.value = llvm::ConstantFP::get(type, binop->eval.float_val);
             }
         } else {
             LLVM_Value lhs = emit_expr(binop->lhs);
@@ -243,31 +332,33 @@ LLVM_Value LLVM_Backend::emit_binary_op(Ast_Binary *binop) {
                 break;
 
             case TOKEN_PLUS:
-                result.value = LLVMBuildAdd(builder, lhs.value, rhs.value, "addtmp");
+                result.value = builder->CreateAdd(lhs.value, rhs.value);
                 break;
             case TOKEN_MINUS:
-                result.value = LLVMBuildSub(builder, lhs.value, rhs.value, "subtmp");
+                result.value = builder->CreateSub(lhs.value, rhs.value);
                 break;
             case TOKEN_STAR:
-                result.value = (is_float ? LLVMBuildFMul : LLVMBuildMul)(builder, lhs.value, rhs.value, "multmp");
+                if (is_float) result.value = builder->CreateFMul(lhs.value, rhs.value);
+                else          result.value = builder->CreateMul(lhs.value, rhs.value);
                 break;
             case TOKEN_SLASH:
-                result.value = (is_signed ? LLVMBuildSDiv : LLVMBuildUDiv)(builder, lhs.value, rhs.value, "divtmp");
+                if (is_signed) result.value = builder->CreateSDiv(lhs.value, rhs.value);
+                else           result.value = builder->CreateUDiv(lhs.value, rhs.value);
                 break;
             case TOKEN_MOD:
-                result.value = LLVMBuildSRem(builder, lhs.value, rhs.value, "sremtmp");
+                result.value = builder->CreateSRem(lhs.value, rhs.value);
                 break;
             case TOKEN_LSHIFT:
-                result.value = LLVMBuildShl(builder, lhs.value, rhs.value, "shltmp");
+                result.value = builder->CreateShl(lhs.value, rhs.value);
                 break;
             case TOKEN_RSHIFT:
-                result.value = LLVMBuildLShr(builder, lhs.value, rhs.value, "shrtmp");
+                result.value = builder->CreateLShr(lhs.value, rhs.value);
                 break;
             case TOKEN_BAR:
-                result.value = LLVMBuildOr(builder, lhs.value, rhs.value, "ortmp");
+                result.value = builder->CreateOr(lhs.value, rhs.value);
                 break;
             case TOKEN_AMPER:
-                result.value = LLVMBuildAnd(builder, lhs.value, rhs.value, "andtmp");
+                result.value = builder->CreateAnd(lhs.value, rhs.value);
                 break;
             case TOKEN_AND:
                 Assert(0); // unsupported
@@ -276,27 +367,27 @@ LLVM_Value LLVM_Backend::emit_binary_op(Ast_Binary *binop) {
                 Assert(0); // unsupported
                 break;
             case TOKEN_NEQ:
-                result.value = LLVMBuildICmp(builder, LLVMIntNE, lhs.value, rhs.value, "neq");
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_NE, lhs.value, rhs.value);
                 break;
             case TOKEN_EQ2:
-                result.value = LLVMBuildICmp(builder, LLVMIntEQ, lhs.value, rhs.value, "eq2");
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, lhs.value, rhs.value);
                 break;
             case TOKEN_LT:
-                result.value = LLVMBuildICmp(builder, is_signed ? LLVMIntSLT : LLVMIntULT, lhs.value, rhs.value, "lttmp");
+                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT, lhs.value, rhs.value);
                 break;
             case TOKEN_GT:
-                result.value = LLVMBuildICmp(builder, is_signed ? LLVMIntSGT : LLVMIntUGT, lhs.value, rhs.value, "gttmp");
+                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT, lhs.value, rhs.value);
                 break;
             case TOKEN_LTEQ:
-                result.value = LLVMBuildICmp(builder, is_signed ? LLVMIntSLE : LLVMIntULE, lhs.value, rhs.value, "ltetmp");
+                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE, lhs.value, rhs.value);
                 break;
             case TOKEN_GTEQ:
-                result.value = LLVMBuildICmp(builder, is_signed ? LLVMIntSGE : LLVMIntUGE, lhs.value, rhs.value, "gtetmp");
+                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE, lhs.value, rhs.value);
                 break;
             }
         }
     }
-    result.type = emit_type(binop->type_info);
+    result.type = get_type(binop->type_info);
     return result;
 }
 
@@ -308,8 +399,8 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
     case AST_NULL:
     {
         Ast_Null *null = static_cast<Ast_Null*>(expr);
-        LLVMTypeRef type = emit_type(expr->type_info);
-        result.value = LLVMConstNull(type);
+        llvm::Type* type = get_type(expr->type_info);
+        result.value = llvm::Constant::getNullValue(type);
         result.type = type;
         break;
     }
@@ -324,7 +415,7 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
     case AST_LITERAL:
     {
         Ast_Literal *literal = static_cast<Ast_Literal*>(expr);
-        LLVMTypeRef type = emit_type(literal->type_info);
+        llvm::Type* type = get_type(literal->type_info);
 
         bool sign_extend = true;
 
@@ -340,29 +431,27 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         case LITERAL_S16:
         case LITERAL_S32:
         case LITERAL_S64:
-            result.value = LLVMConstInt(type, literal->int_val, sign_extend);
+            result.value = llvm::ConstantInt::get(type, literal->int_val, sign_extend);
             break;
         case LITERAL_FLOAT:
         case LITERAL_F32:
         case LITERAL_F64:
-            result.value = LLVMConstReal(type, literal->float_val);
+            result.value = llvm::ConstantFP::get(type, literal->float_val);
             break;
 
         case LITERAL_STRING:
         {
-            LLVMValueRef value = LLVMConstString((char *)literal->str_val.data, (unsigned)literal->str_val.count, false);
-            type = LLVMArrayType(LLVMInt32Type(), (unsigned)literal->str_val.count);
-
-            // LLVMValueRef var = LLVMAddGlobal(module, type, ".str");
+            llvm::Constant *constant_string = llvm::ConstantDataArray::getString(*Ctx, (char *)literal->str_val.data, false);
+            type = llvm::ArrayType::get(llvm::Type::getInt8Ty(*Ctx), literal->str_val.count);
+            llvm::Value *var = builder->CreateGlobalString((char *)literal->str_val.data);
+            result.value = var;
+            // llvm::Value* var = LLVMAddGlobal(module, type, ".str");
             // // LLVMSetLinkage(var, LLVMPrivateLinkage);
-            // Auto_Array<LLVMValueRef> indices;
+            // Auto_Array<llvm::Value*> indices;
             // indices.push(LLVMConstInt(LLVMInt32Type(), 0, 0));
             // indices.push(LLVMConstInt(LLVMInt32Type(), 0, 0));
             // result.value = LLVMBuildGEP2(builder, type, var, indices.data, (unsigned)indices.count, ".gep_str");
             // result.type = type;
-
-            LLVMValueRef var = LLVMBuildGlobalString(builder, (char *)literal->str_val.data, ".str");
-            result.value = var;
             break;
         }
         }
@@ -385,8 +474,9 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         LLVM_Var *var = llvm_get_named_value(current_proc, ident->name);
         Assert(var);
 
-        result.value = LLVMBuildLoad2(builder, var->type, var->alloca, (char *)var->name->data);
-        result.type = emit_type(ident->type_info);
+        llvm::LoadInst *load = builder->CreateLoad(var->type, var->alloca);
+        result.value = load;
+        result.type = get_type(ident->type_info);
         break;
     }
 
@@ -399,14 +489,15 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
             LLVM_Procedure *procedure = lookup_proc(ident->name);
 
-            Auto_Array<LLVMValueRef> args;
+            Auto_Array<llvm::Value*> args;
             for (int i = 0; i < call->arguments.count; i++) {
                 Ast_Expr *arg = call->arguments[i];
                 LLVM_Value arg_value = emit_expr(arg);
                 args.push(arg_value.value);
             }
 
-            result.value = LLVMBuildCall2(builder, procedure->type, procedure->value, args.data, (unsigned int)args.count, "calltmp");
+            llvm::CallInst *call = builder->CreateCall(procedure->type, procedure->fn, llvm::ArrayRef(args.data, args.count));
+            result.value = call;
             result.type = procedure->return_type;
         } else {
             
@@ -417,13 +508,13 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
     case AST_INDEX:
     {
         Ast_Index *index = static_cast<Ast_Index*>(expr);
-        LLVMTypeRef array_type = emit_type(index->lhs->type_info);
-        LLVMTypeRef type = emit_type(index->type_info);
+        llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(index->lhs->type_info));
+        llvm::Type* type = array_type->getElementType();
         LLVM_Addr addr = emit_addr(index->lhs);
         LLVM_Value rhs = emit_expr(index->rhs);
-        LLVMValueRef pointer = LLVMBuildGEP2(builder, array_type, addr.value, &rhs.value, 1, "indexaddr");
-        LLVMValueRef value = LLVMBuildLoad2(builder, type, pointer, "indextmp");
-        result.value = value;
+        llvm::Value *pointer = builder->CreateGEP(array_type, addr.value, llvm::ArrayRef(rhs.value));
+        llvm::LoadInst *load = builder->CreateLoad(type, pointer);
+        result.value = load;
         result.type = type;
         break;
     }
@@ -435,25 +526,17 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         printf("%s to %s\n", string_from_type(elem->type_info), string_from_type(cast->type_info));
 
         LLVM_Value expr_value = emit_expr(cast->elem);
-        LLVMTypeRef dest_type = emit_type(cast->type_info);
+        llvm::Type* dest_type = get_type(cast->type_info);
 
         if (cast->type_info->is_float_type() && elem->type_info->is_float_type()) {
-            result.value = LLVMBuildFPCast(builder, expr_value.value, dest_type, "fpcast");
+            result.value = builder->CreateFPCast(expr_value.value, dest_type);
         } else if (cast->type_info->is_integral_type() && elem->type_info->is_integral_type()) {
-            if (cast->type_info->bytes < elem->type_info->bytes) {
-                result.value = LLVMBuildTrunc(builder, expr_value.value, dest_type, "trunc");
-            } else {
-                result.value = LLVMBuildIntCast2(builder, expr_value.value, dest_type, cast->type_info->is_signed(), "intcast");
-            }
+            if (cast->type_info->bytes < elem->type_info->bytes) result.value = builder->CreateTrunc(expr_value.value, dest_type);
+            else result.value = builder->CreateIntCast(expr_value.value, dest_type, cast->type_info->is_signed());
         }
         break;
     }
     
-    case AST_ITERATOR:
-    {
-        break;
-    }
-
     case AST_UNARY:
     {
         Ast_Unary *unary = static_cast<Ast_Unary*>(expr);
@@ -462,26 +545,26 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
             
         } else {
             if (unary->is_constant()) {
-                LLVMTypeRef type = emit_type(unary->type_info);
+                llvm::Type* type = get_type(unary->type_info);
                 if (unary->type_info->is_integral_type()) {
-                    result.value = LLVMConstInt(type, unary->eval.int_val, unary->type_info->is_signed());
+                    result.value = llvm::ConstantInt::get(type, unary->eval.int_val, unary->type_info->is_signed());
                 } else if (unary->type_info->is_float_type()) {
-                    result.value = LLVMConstReal(type, unary->eval.float_val);
+                    result.value = llvm::ConstantFP::get(type, unary->eval.float_val);
                 }
             } else {
                 LLVM_Value elem_value = emit_expr(unary->elem);
                 switch (unary->op.kind) {
                 case TOKEN_MINUS:
-                    result.value = LLVMBuildNeg(builder, elem_value.value, "negtmp");
+                    result.value = builder->CreateNeg(elem_value.value);
                     break;
                 case TOKEN_BANG:
-                    result.value = LLVMBuildNot(builder, elem_value.value, "nottmp");
+                    result.value = builder->CreateNot(elem_value.value);
                     break;
                 }
             }
         }
 
-        result.type = emit_type(unary->type_info);
+        result.type = get_type(unary->type_info);
         break;
     }
 
@@ -490,7 +573,7 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         Ast_Address *address = static_cast<Ast_Address*>(expr);
         LLVM_Addr addr = emit_addr(address->elem);
         result.value = addr.value;
-        result.type = emit_type(address->type_info);
+        result.type = get_type(address->type_info);
         break;
     }
 
@@ -498,9 +581,9 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
     {
         Ast_Deref *deref = static_cast<Ast_Deref*>(expr);
         LLVM_Addr addr = emit_addr(deref->elem);
-        LLVMTypeRef type = emit_type(deref->type_info);
-        LLVMValueRef value = LLVMBuildLoad2(builder, type, addr.value, "dereftmp");
-        result.value = value;
+        llvm::Type* type = get_type(deref->type_info);
+        llvm::LoadInst* load = builder->CreateLoad(type, addr.value);
+        result.value = load;
         result.type = type;
         printf("%s\n", string_from_type(deref->type_info));
         break;
@@ -533,38 +616,38 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         case TOKEN_EQ:
             break;
         case TOKEN_PLUS_EQ:
-            rhs.value = LLVMBuildAdd(builder, lhs.value, rhs.value, "addeq");
+            rhs.value = builder->CreateAdd(lhs.value, rhs.value);
             break;
         case TOKEN_MINUS_EQ:
-            rhs.value = LLVMBuildSub(builder, lhs.value, rhs.value, "subeq");
+            rhs.value = builder->CreateSub(lhs.value, rhs.value);
             break;
         case TOKEN_STAR_EQ:
-            rhs.value = LLVMBuildMul(builder, lhs.value, rhs.value, "muleq");
+            rhs.value = builder->CreateMul(lhs.value, rhs.value);
             break;
         case TOKEN_SLASH_EQ:
-            rhs.value = LLVMBuildSDiv(builder, lhs.value, rhs.value, "diveq");
+            rhs.value = builder->CreateSDiv(lhs.value, rhs.value);
             break;
         case TOKEN_MOD_EQ:
-            rhs.value = LLVMBuildSRem(builder, lhs.value, rhs.value, "modeq");
+            rhs.value = builder->CreateSRem(lhs.value, rhs.value);
             break;
         case TOKEN_XOR_EQ:
-            rhs.value = LLVMBuildXor(builder, lhs.value, rhs.value, "xoreq");
+            rhs.value = builder->CreateXor(lhs.value, rhs.value);
             break;
         case TOKEN_BAR_EQ:
-            rhs.value = LLVMBuildOr(builder, lhs.value, rhs.value, "oreq");
+            rhs.value = builder->CreateOr(lhs.value, rhs.value);
             break;
         case TOKEN_AMPER_EQ:
-            rhs.value = LLVMBuildAnd(builder, lhs.value, rhs.value, "andeq");
+            rhs.value = builder->CreateAnd(lhs.value, rhs.value);
             break;
         case TOKEN_LSHIFT_EQ:
-            rhs.value = LLVMBuildShl(builder, lhs.value, rhs.value, "shleq");
+            rhs.value = builder->CreateShl(lhs.value, rhs.value);
             break;
         case TOKEN_RSHIFT_EQ:
-            rhs.value = LLVMBuildAShr(builder, lhs.value, rhs.value, "shreq");
+            rhs.value = builder->CreateLShr(lhs.value, rhs.value);
             break;
         }
 
-        LLVMBuildStore(builder, rhs.value, addr.value);
+        builder->CreateStore(rhs.value, addr.value);
 
         result.value = rhs.value;
 
@@ -577,7 +660,7 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         //         for (int i = 0; i < compound->elements.count; i++) {
         //             Ast_Expr *elem = compound->elements[i];
         //             LLVM_Value value = emit_expr(elem);
-        //             LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, llvm_struct->type, addr.value, (unsigned)i, "fieldaddr_tmp");
+        //             llvm::Value* field_addr = LLVMBuildStructGEP2(builder, llvm_struct->type, addr.value, (unsigned)i, "fieldaddr_tmp");
         //             LLVMBuildStore(builder, value.value, field_addr);
         //         }
         //     } else {
@@ -607,19 +690,19 @@ LLVM_Value LLVM_Backend::emit_expr(Ast_Expr *expr) {
         LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
         unsigned idx = llvm_get_struct_field_index(struct_node, name->name);
 
-        LLVMTypeRef type = emit_type(field->type_info);
+        llvm::Type* type = get_type(field->type_info);
 
         if (parent->type_info->is_pointer_type()) {
             // Deref pointer
-            LLVMTypeRef typeref = emit_type(parent->type_info);
-            LLVMValueRef ptr_value = LLVMBuildLoad2(builder, typeref, addr.value, "fieldptr");
+            llvm::Type* typeref = get_type(parent->type_info);
+            llvm::LoadInst *load = builder->CreateLoad(typeref, addr.value);
             // Get element pointer based on deref
-            LLVMValueRef field_ptr = LLVMBuildStructGEP2(builder, llvm_struct->type, ptr_value, idx, "fieldaddr2");
+            llvm::Value* field_ptr = builder->CreateStructGEP(llvm_struct->type, load, idx);
             result.value = field_ptr;
         } else {
-            LLVMValueRef field_ptr = LLVMBuildStructGEP2(builder, llvm_struct->type, addr.value, idx, "fieldaddr_tmp");
-            LLVMValueRef field_value = LLVMBuildLoad2(builder, type, field_ptr,"fieldload");
-            result.value = field_value;
+            llvm::Value* field_ptr = builder->CreateStructGEP(llvm_struct->type, addr.value, idx);
+            llvm::LoadInst* load = builder->CreateLoad(type, field_ptr);
+            result.value = load;
         }
         result.type = type;
         break;
@@ -640,14 +723,14 @@ void LLVM_Backend::emit_block(Ast_Block *block) {
     }
 }
 
-LLVMValueRef LLVM_Backend::emit_condition(Ast_Expr *expr) {
+llvm::Value* LLVM_Backend::emit_condition(Ast_Expr *expr) {
     LLVM_Value value = emit_expr(expr);
 
-    LLVMValueRef cond = nullptr;
+    llvm::Value* cond = nullptr;
     if (expr->type_info->is_boolean_type()) {
         cond = value.value;
     } else {
-        cond = LLVMBuildICmp(builder, LLVMIntNE, value.value, LLVMConstNull(value.type), "ICmp");
+        cond = builder->CreateICmpNE(value.value, llvm::Constant::getNullValue(value.type));
     }
     return cond;
 }
@@ -675,29 +758,31 @@ void LLVM_Backend::emit_if(Ast_If *if_stmt) {
     // label: if_exit
     Ast_If *else_stmt = if_stmt->if_next;
 
-    LLVMBasicBlockRef exit_block = llvm_block_new("if_exit");
-    LLVMBasicBlockRef then_block = exit_block;
-    LLVMBasicBlockRef else_block = exit_block;
+    llvm::BasicBlock *exit_block = llvm::BasicBlock::Create(*Ctx, "if_exit");
+    llvm::BasicBlock *then_block = exit_block;
+    llvm::BasicBlock *else_block = exit_block;
 
-    then_block = llvm_block_new("if_then");
+    then_block = llvm::BasicBlock::Create(*Ctx, "if_then");
+
     if (else_stmt) {
-        else_block = llvm_block_new("if_else");
+        else_block = llvm::BasicBlock::Create(*Ctx, "if_exit");
     }
 
-    LLVMValueRef cond = emit_condition(if_stmt->cond);
-    LLVMValueRef branch = LLVMBuildCondBr(builder, cond, then_block, exit_block);
+    llvm::Value* cond = emit_condition(if_stmt->cond);
+    llvm::Value* branch = builder->CreateCondBr(cond, then_block, exit_block);
 
-    llvm_emit_block(then_block);
+    insert_block(then_block);
     emit_block(if_stmt->block);
-    LLVMBuildBr(builder, exit_block);
+    builder->CreateBr(exit_block);
 
     if (else_stmt) {
-        llvm_emit_block(else_block);
+        insert_block(else_block);
         emit_stmt(else_stmt);
-        LLVMBuildBr(builder, exit_block);
+
+        builder->CreateBr(exit_block);
     }
 
-    llvm_emit_block(exit_block);
+    insert_block(exit_block);
 }
 
 void LLVM_Backend::emit_while(Ast_While *while_stmt) {
@@ -714,25 +799,25 @@ void LLVM_Backend::emit_while(Ast_While *while_stmt) {
 
     LLVM_Procedure *proc = current_proc;
 
-    LLVMBasicBlockRef head = LLVMCreateBasicBlockInContext(context, "loop_head");
-    LLVMBasicBlockRef body = LLVMCreateBasicBlockInContext(context, "loop_body");
-    LLVMBasicBlockRef tail = LLVMCreateBasicBlockInContext(context, "loop_tail");
+    llvm::BasicBlock *head = llvm::BasicBlock::Create(*Ctx, "loop_head");
+    llvm::BasicBlock *body = llvm::BasicBlock::Create(*Ctx, "loop_body");
+    llvm::BasicBlock *tail = llvm::BasicBlock::Create(*Ctx, "loop_tail");
 
-    LLVMBuildBr(builder, head);
+    builder->CreateBr(head);
 
     // head
-    llvm_emit_block(head);
+    insert_block(head);
 
-    LLVMValueRef condition = emit_condition(while_stmt->cond);
-    LLVMBuildCondBr(builder, condition, body, tail);
+    llvm::Value* condition = emit_condition(while_stmt->cond);
+    builder->CreateCondBr(condition, body, tail);
 
     // body
-    llvm_emit_block(body);
+    insert_block(body);
     emit_block(while_stmt->block);
-    LLVMBuildBr(builder, head);
+    builder->CreateBr(head);
 
     // tail
-    llvm_emit_block(tail);
+    insert_block(tail);
 }
 
 void LLVM_Backend::emit_for(Ast_For *for_stmt) {
@@ -752,32 +837,30 @@ void LLVM_Backend::emit_for(Ast_For *for_stmt) {
 
     if (for_stmt->init) emit_stmt(for_stmt->init);
 
-    LLVMBasicBlockRef head = llvm_block_new("loop_head");
-    LLVMBasicBlockRef body = llvm_block_new("loop_body");
-    LLVMBasicBlockRef tail = llvm_block_new("loop_tail");
+    llvm::BasicBlock *head = llvm::BasicBlock::Create(*Ctx, "loop_head");
+    llvm::BasicBlock *body = llvm::BasicBlock::Create(*Ctx, "loop_body");
+    llvm::BasicBlock *tail = llvm::BasicBlock::Create(*Ctx, "loop_tail");
 
-    LLVMBuildBr(builder, head);
+    builder->CreateBr(head);
 
     // head
-    llvm_emit_block(head);
+    insert_block(head);
 
     if (for_stmt->cond) {
-        LLVMValueRef condition = emit_condition(for_stmt->cond);
-        LLVMBuildCondBr(builder, condition, body, tail);
+        llvm::Value* condition = emit_condition(for_stmt->cond);
+        builder->CreateCondBr(condition, body, tail);
     } else {
-        LLVMBuildBr(builder, body);
+        builder->CreateBr(body);
     }
 
     // body
-    llvm_emit_block(body);
+    insert_block(body);
     emit_block(for_stmt->block);
 
-    if (for_stmt->iterator) emit_expr(for_stmt->iterator);
-
-    LLVMBuildBr(builder, head);
+    builder->CreateBr(head);
 
     // tail
-    llvm_emit_block(tail);
+    insert_block(tail);
 }
 
 void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
@@ -799,15 +882,15 @@ void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
             LLVM_Var *var = llvm_alloc(LLVM_Var);
             var->name = var_node->name;
             var->decl = decl;
-            var->type = emit_type(var_node->type_info);
-            var->alloca = LLVMBuildAlloca(builder, var->type, (char *)var->name->data);
+            var->type = get_type(var_node->type_info);
+            var->alloca = builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine((char *)var->name->data));
             current_proc->named_values.push(var);
 
             // printf("%s %d\n", var->name->data, var_node->type_info->builtin_kind);
 
             if (!var_node->init) {
-                LLVMValueRef null_value = LLVMConstNull(var->type);
-                LLVMBuildStore(builder, null_value, var->alloca);
+                llvm::Constant *null_value = llvm::Constant::getNullValue(var->type);
+                builder->CreateStore(null_value, var->alloca);
             }
 
             if (var_node->init) {
@@ -819,30 +902,26 @@ void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
                         for (int i = 0; i < literal->elements.count; i++) {
                             Ast_Expr *elem = literal->elements[i];
                             LLVM_Value value = emit_expr(elem);
-                            LLVMValueRef field_addr = LLVMBuildStructGEP2(builder, llvm_struct->type, var->alloca, (unsigned)i, "fieldaddr_tmp");
-                            LLVMBuildStore(builder, value.value, field_addr);
+                            llvm::Value* field_addr = builder->CreateStructGEP(llvm_struct->type, var->alloca, (unsigned)i);
+                            builder->CreateStore(value.value, field_addr);
                         }
                     } else if (var_node->type_info->is_array_type()) {
-                        LLVMTypeRef array_type = emit_type(var_node->type_info);
+                        llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(var_node->type_info));
+                        llvm::Type* element_type = array_type->getElementType();
 
-                        Auto_Array<LLVMValueRef> values;
+                        //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
                         for (int i = 0; i < literal->elements.count; i++) {
                             Ast_Expr *elem = literal->elements[i];
                             LLVM_Value value = emit_expr(elem);
-                            values.push(value.value);
+
+                            llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (uint64_t)i);
+                            llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, llvm::ArrayRef(idx));
+                            builder->CreateStore(value.value, ptr);
                         }
-
-                        LLVMTypeRef element_type = LLVMGetElementType(array_type);
-                        LLVMValueRef const_array = LLVMConstArray2(element_type, values.data, (u64)values.count);
-
-                        // LLVMValueRef indices[] = {LLVMConstInt(LLVMInt32Type(), 0, 0)};
-                        // LLVMValueRef ptr = LLVMBuildGEP2(builder, array_type, const_array, indices, 1, "arrayinitptr");
-
-                        LLVMBuildStore(builder, const_array, var->alloca);
                     }
                 } else {
                     LLVM_Value init_value = emit_expr(init);
-                    LLVMBuildStore(builder, init_value.value, var->alloca);
+                    builder->CreateStore(init_value.value, var->alloca);
                 }
             }
         }
@@ -887,9 +966,9 @@ void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         if (return_stmt->expr) {
             LLVM_Value ret = emit_expr(return_stmt->expr);
-            LLVMBuildRet(builder, ret.value);
+            builder->CreateRet(ret.value);
         } else {
-            LLVMBuildRetVoid(builder);
+            builder->CreateRetVoid();
         }
         break;
     }
@@ -903,106 +982,6 @@ void LLVM_Backend::emit_stmt(Ast_Stmt *stmt) {
         break;
     }
     }
-}
-
-LLVM_Procedure *LLVM_Backend::emit_procedure(Ast_Proc *proc) {
-    LLVM_Procedure *llvm_proc = llvm_alloc(LLVM_Procedure);
-    llvm_proc->name = proc->name;
-    llvm_proc->proc = proc;
-
-    Ast_Proc_Type_Info *proc_type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-
-    for (int i = 0; i < proc->parameters.count; i++) {
-        Ast_Param *param = proc->parameters[i];
-        if (param->is_vararg) break;
-
-        Ast_Type_Info *type_info = proc_type_info->parameters[i];
-        LLVMTypeRef type = emit_type(type_info);
-        llvm_proc->parameter_types.push(type);
-    }
-    llvm_proc->return_type = emit_type(proc_type_info->return_type);
-
-    llvm_proc->type = LLVMFunctionType(llvm_proc->return_type, llvm_proc->parameter_types.data, (int)llvm_proc->parameter_types.count, proc->has_varargs);
-
-    llvm_proc->value = LLVMAddFunction(module, (char *)llvm_proc->name->data, llvm_proc->type);
-
-    if (proc->foreign) {
-        LLVMLinkage linkage = LLVMGetLinkage(llvm_proc->value);
-        // LLVMSetLinkage(llvm_proc->value, LLVMExternalLinkage);
-        // LLVMSetFunctionCallConv(llvm_proc->value, LLVMCCallConv);
-    } else {
-        llvm_proc->builder = LLVMCreateBuilder();
-        LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, llvm_proc->value, "entry");
-        llvm_proc->entry = entry;
-        LLVMPositionBuilderAtEnd(llvm_proc->builder, entry);
-    }
-
-    return llvm_proc;
-}
-
-void LLVM_Backend::emit_procedure_body(LLVM_Procedure *procedure) {
-    Ast_Proc *proc = procedure->proc;
-    if (proc->foreign) {
-        return;
-    }
-
-    current_proc = procedure;
-    builder = procedure->builder;
-
-    for (int i = 0; i < proc->parameters.count; i++) {
-        Ast_Param *param = proc->parameters[i];
-        LLVMValueRef param_value = LLVMGetParam(procedure->value, i);
-        LLVMTypeRef param_type = procedure->parameter_types[i];
-
-        LLVM_Var *var = llvm_alloc(LLVM_Var);
-        var->name = param->name;
-        var->decl = param;
-        var->type = emit_type(param->type_info);
-        var->alloca = LLVMBuildAlloca(procedure->builder, param_type, (char *)var->name->data);
-        procedure->named_values.push(var);
-
-        LLVMBuildStore(procedure->builder, param_value, var->alloca);
-    }
-
-    Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(procedure->proc->type_info);
-
-    emit_block(proc->block);
-
-    if (proc_type->return_type == type_void) {
-        LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(procedure->value);
-        LLVMValueRef last_instr = LLVMGetLastInstruction(last_block);
-
-        bool need_return = false;
-        if (!last_instr) {
-            need_return = true;
-        } else {
-            LLVMOpcode opcode = LLVMGetInstructionOpcode(last_instr);
-            if (opcode == LLVMRet) need_return = false;
-        }
-
-        if (need_return) {
-            LLVMBuildRetVoid(builder); 
-        }
-    }
-}
-
-LLVM_Struct *LLVM_Backend::emit_struct(Ast_Struct *struct_decl) {
-    LLVM_Struct *llvm_struct = llvm_alloc(LLVM_Struct);
-    llvm_struct->name = struct_decl->name;
-
-    llvm_struct->type = LLVMStructCreateNamed(LLVMGetGlobalContext(), (char *)llvm_struct->name->data);
-
-    llvm_struct->element_types.reserve(struct_decl->fields.count);
-
-    for (int i = 0; i < struct_decl->fields.count; i++) {
-        Ast_Struct_Field *field = struct_decl->fields[i];
-        LLVMTypeRef field_type = emit_type(field->type_info);
-        llvm_struct->element_types.push(field_type);
-    }
-
-    LLVMStructSetBody(llvm_struct->type, llvm_struct->element_types.data, (unsigned)llvm_struct->element_types.count, false);
-
-    return llvm_struct;
 }
 
 void LLVM_Backend::emit_decl(Ast_Decl *decl) {
@@ -1022,4 +1001,11 @@ void LLVM_Backend::emit_decl(Ast_Decl *decl) {
         break;
     }
     }
+}
+
+void LLVM_Backend::insert_block(llvm::BasicBlock *block) {
+    llvm::Function *fn = current_proc->fn;
+    fn->insert(fn->end(), block);
+    builder->SetInsertPoint(block);
+    current_block = block;
 }
