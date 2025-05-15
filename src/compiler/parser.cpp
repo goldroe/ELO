@@ -1,6 +1,19 @@
 
 Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
+    _lexer->parser = this;
+
+    add_source_file(lexer->source_file);
+}
+
+bool Parser::load_next_source_file() {
+    Source_File *source_file = lexer->source_file->next;
+    if (source_file) {
+        lexer->set_source_file(source_file);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void Parser::expect(Token_Kind token) {
@@ -945,8 +958,6 @@ Ast_Decl *Parser::parse_decl() {
     } else if (lexer->match(TOKEN_OPERATOR)) {
         Ast_Operator_Proc *proc = parse_operator_proc();
         decl = proc;
-    } else {
-        report_parser_error(lexer, "expected declaration, got '%s'.\n", string_from_token(token.kind));
     }
     return decl;
 }
@@ -992,24 +1003,60 @@ ERROR_BLOCK:
     return err;
 }
 
+void Parser::parse_load_directive() {
+    lexer->next_token();
+    if (lexer->match(TOKEN_STRLIT)) {
+        String8 file_path = lexer->current().strlit;
+        lexer->next_token();
+
+        if (path_is_relative(file_path)) {
+            String8 current_dir = path_dir_name(lexer->source_file->path);
+            file_path = path_join(heap_allocator(), current_dir, file_path);
+        }
+
+        Source_File *file = source_file_create(file_path);
+        add_source_file(file);
+    } else {
+        report_parser_error(lexer, "expected filename.\n");
+    }
+
+}
+
 void Parser::parse() {
     root = AST_NEW(Ast_Root);
 
-    while (!lexer->eof()) {
-        Ast_Decl *decl = parse_decl();
-        if (decl) {
-            root->declarations.push(decl);
-        } else {
-            printf("recovering from decl, curr: %s.\n", string_from_token(lexer->peek()));
-            while (!lexer->eof()) {
-                Token token = lexer->current();
-                if (token.kind == TOKEN_RBRACE && token.start.col == 0) {
-                    lexer->next_token();
-                    break;
-                }
-                lexer->next_token();
+    for (;;) {
+        if (lexer->eof()) {
+            if (!load_next_source_file()) {
+                return;
             }
+        }
 
+        switch (lexer->peek()) {
+        default:
+        {
+            Ast_Decl *decl = parse_decl();
+            if (decl) {
+                root->declarations.push(decl);
+            } else {
+                printf("recovering from decl, curr: %s.\n", string_from_token(lexer->peek()));
+                while (!lexer->eof()) {
+                    Token token = lexer->current();
+                    if (token.kind == TOKEN_RBRACE && token.start.col == 0) {
+                        lexer->next_token();
+                        break;
+                    }
+                    lexer->next_token();
+                }
+            }
+            break;
+        }
+
+        case TOKEN_LOAD:
+        {
+            parse_load_directive();
+            break;
+        }
         }
     }
 }

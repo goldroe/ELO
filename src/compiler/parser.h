@@ -9,6 +9,8 @@ struct Parser {
     
     Parser(Lexer *_lexer);
 
+    bool load_next_source_file();
+
     void expect(Token_Kind token);
 
     Ast_Compound_Literal *parse_compound_literal();
@@ -41,6 +43,8 @@ struct Parser {
     Ast_Operator_Proc *parse_operator_proc();
     Ast_Proc *parse_proc(Token name);
     Ast_Decl *parse_decl();
+
+    void parse_load_directive();
 
     void parse();
 };

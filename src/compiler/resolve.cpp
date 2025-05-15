@@ -1020,7 +1020,7 @@ void Resolver::resolve_field_expr(Ast_Field *field_expr) {
                 field_expr->poison();
             }
         } else {
-            report_ast_error(parent, "left .'%s' is not a struct/enum type.\n", (char *)name->name->data);
+            report_ast_error(parent, "left .'%s' is not a struct/enum type.\n", name->name->data);
             field_expr->poison();
         }
     }

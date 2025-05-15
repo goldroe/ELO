@@ -4,7 +4,6 @@ global Token poisoned_token = {TOKEN_ERR};
 global u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];
 
 internal void compiler_error(char *fmt, ...);
-internal void add_source_file(Source_File *file);
 
 u8 Lexer::get_escape_character(u8 c) {
     switch (c) {
@@ -90,19 +89,17 @@ internal bool operator_is_overloadable(Token_Kind op) {
     }
 }
 
+Lexer::Lexer(Source_File *source) {
+    set_source_file(source);
+}
 
-Lexer::Lexer(String8 file_path) {
-    String8 file_text = {};
-    OS_Handle file_handle = os_open_file(file_path, OS_AccessFlag_Read);
-    if (os_valid_handle(file_handle)) {
-        file_text = os_read_file_string(file_handle);
-        os_close_handle(file_handle);
-
-        source_file = new Source_File(file_path, file_text);
-        add_source_file(source_file);
-        stream = source_file->text.data;
-        next_token();
-    }
+void Lexer::set_source_file(Source_File *source) {
+    source_file = source;
+    stream = source->text.data;
+    line_number = 1;
+    column_number = 0;
+    stream_index = 0;
+    next_token();
 }
 
 Token Lexer::current() {

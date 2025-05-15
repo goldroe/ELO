@@ -15,6 +15,7 @@
 
 #include "auto_array.h"
 
+#include "source_file.h"
 #include "lexer.h"
 #include "report.h"
 #include "atom.h"
@@ -24,6 +25,7 @@
 #include "resolve.h"
 #include "llvm_backend.h"
 
+#include "source_file.cpp"
 #include "report.cpp"
 #include "atom.cpp"
 #include "lexer.cpp"
@@ -32,12 +34,6 @@
 #include "parser.cpp"
 #include "resolve.cpp"
 #include "llvm_backend.cpp"
-
-global Auto_Array<Source_File*> g_source_files;
-
-internal void add_source_file(Source_File *file) {
-    g_source_files.push(file);
-}
 
 internal void compiler_error(char *fmt, ...) {
     va_list args;
@@ -108,11 +104,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    Lexer *lexer = new Lexer(file_path);
-
-    if (!lexer->stream) {
+    Source_File *source_file = source_file_create(file_path);
+    add_source_file(source_file);
+    if (!source_file) {
+        compiler_error("Could not read file '%S'\n", file_path);
         return 1;
     }
+
+    Lexer *lexer = new Lexer(source_file);
 
     Parser *parser = new Parser(lexer);
     parser->parse();
@@ -123,9 +122,7 @@ int main(int argc, char **argv) {
     int error_count = 0;
 
     //@Note Print reports
-    for (int file_idx = 0; file_idx < g_source_files.count; file_idx++) {
-        Source_File *file = g_source_files[file_idx];
-
+    for (Source_File *file = source_file_map.first; file; file = file->next) {
         quick_sort(file->reports.data, Report*, file->reports.count, report_sort_compare);
 
         for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
@@ -151,8 +148,8 @@ int main(int argc, char **argv) {
     }
 
     if (error_count == 0) {
-        LLVM_Backend *backend = new LLVM_Backend(g_source_files[0], parser->root);
-        backend->emit();
+        LLVM_Backend *backend = new LLVM_Backend(source_file, parser->root);
+        backend->gen();
     }
 
     compiler_exit();
