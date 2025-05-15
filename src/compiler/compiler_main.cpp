@@ -3,6 +3,7 @@
 #include "base/base_strings.h"
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb_sprintf.h>
+
 #include "os/os.h"
 #include "path/path.h"
 
@@ -30,7 +31,6 @@
 #include "ast.cpp"
 #include "parser.cpp"
 #include "resolve.cpp"
-
 #include "llvm_backend.cpp"
 
 global Auto_Array<Source_File*> g_source_files;

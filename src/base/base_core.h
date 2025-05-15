@@ -13,10 +13,6 @@
 #define ClampBot(v, bottom) (Max(v, bottom))
 #define ClampTop(v, top) (Min(v, top))
 
-#define KB(n) (1024 * (n))
-#define MB(n) (1024 * (KB(n)))
-#define GB(n) (1024 * (MB(n)))
-
 #define IsPow2(x)          ((x)!=0 && ((x)&((x)-1))==0)
 // #define AlignForward(x, a) ((x)+(a)-((x)&((a)-1)))
 #define AlignForward(x,b)     (((x) + (b) - 1)&(~((b) - 1)))
@@ -60,7 +56,6 @@ inline ENUMTYPE &operator ^=(ENUMTYPE &a, ENUMTYPE b) { return (ENUMTYPE &)(((in
 #define SLLStackPush(f,n) ((n)->next = (f),(f)=(n))
 #define SLLStackPop(f)    ((f) = (f)->next)
 
-#define MG_Introspect
 #define ArrayCount(array) (sizeof((array)) / sizeof((array)[0]))
 #define DeferLoop(begin, end) for(int _i_ = ((begin), 0); !_i_; _i_ += 1, (end))
 
