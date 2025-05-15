@@ -28,7 +28,7 @@ internal Atom *atom_lookup(String8 string) {
     Atom *result = NULL;
     for (Atom *atom = bucket->first; atom; atom = atom->next) {
         if ((atom->count == string.count) &&
-            strncmp((char *)atom->data, (char *)string.data, string.count) == 0) {
+            strncmp(atom->data, (char *)string.data, string.count) == 0) {
             result = atom;
             break;
         }
@@ -43,13 +43,13 @@ internal Atom *atom_create(String8 string) {
 
     for (Atom *atom = bucket->first; atom; atom = atom->next) {
         if ((atom->count == string.count) &&
-            strncmp((char *)atom->data, (char *)string.data, string.count) == 0) {
+            strncmp(atom->data, (char *)string.data, string.count) == 0) {
             return atom;
         }
     }
 
-    u64 mem_size = sizeof(Atom) + string.count + 1;
-    Atom *atom = (Atom *)alloc(atom_allocator(), mem_size);
+    Atom *atom = alloc_item(atom_allocator(), Atom);
+    atom->data = array_alloc(atom_allocator(), char, string.count + 1);
     atom->flags = ATOM_FLAG_IDENT;
     atom->count = string.count;
     MemoryCopy(atom->data, string.data, string.count);
@@ -80,7 +80,7 @@ internal void atom_init() {
     MemoryZero(g_atom_table, sizeof(Atom_Table));
     Atom_Table *table = g_atom_table;
     table->bucket_count = 128;
-    table->buckets = (Atom_Bucket *)array_alloc_align(atom_allocator(), Atom_Bucket, table->bucket_count);
+    table->buckets = array_alloc(atom_allocator(), Atom_Bucket, table->bucket_count);
     for (int i = 0; i < table->bucket_count; i++) {
         Atom_Bucket *bucket = &table->buckets[i];
         bucket->first = bucket->last = NULL;

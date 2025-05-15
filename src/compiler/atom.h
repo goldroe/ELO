@@ -11,10 +11,10 @@ EnumDefineFlagOperators(Atom_Flags);
 
 struct Atom {
     Atom *next;
+    char *data;
+    u64 count;
     Atom_Flags flags;
     Token_Kind token;
-    u64 count;
-    u8 data[];
 };
 
 struct Atom_Bucket {

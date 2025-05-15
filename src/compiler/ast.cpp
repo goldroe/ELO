@@ -340,10 +340,10 @@ internal char *string_from_type(Ast_Type_Info *type_info) {
     for (Ast_Type_Info *type = type_info; type; type = type->base) {
         if (type->type_flags & TYPE_FLAG_STRUCT) {
             Ast_Type_Info *struct_type = static_cast<Ast_Type_Info*>(type);
-            string = cstring_append(string, (char *)type->decl->name->data);
+            string = cstring_append(string, type->decl->name->data);
         } else if (type->type_flags & TYPE_FLAG_ENUM) {
             Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(type);
-            string = cstring_append(string, (char *)type->decl->name->data);
+            string = cstring_append(string, type->decl->name->data);
         } else if (type->type_flags & TYPE_FLAG_PROC) {
             Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(type);
             string = cstring_append(string, "(");
@@ -363,7 +363,7 @@ internal char *string_from_type(Ast_Type_Info *type_info) {
         } else if (type->type_flags & TYPE_FLAG_POINTER) {
             string = cstring_append(string, "*");
         } else if (type->type_flags & TYPE_FLAG_BUILTIN) {
-            string = cstring_append(string, (char *)type->name->data);
+            string = cstring_append(string, type->name->data);
         } else {
             Assert(0);
         }
