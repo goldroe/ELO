@@ -1,86 +1,96 @@
-
-printf :: (format: *u8, ..) -> int #foreign
-
-Buzz :: struct {
-    x: s32;
-    y: s32;
-}
-
-Foo :: struct {
-    buzz1: Buzz;
-    buzz2: Buzz;
-}
-
-Cell :: struct {
-    live: bool;
-}
+#load "stdio.elo"
 
 main :: () -> s32 {
     printf("Hello World!\n");
-    printf("%d %d\n", 128, 256);
-    printf("%d\n", sum(100));
  
-    foo: Foo;
-    fp: *Foo = *foo;
-    fp.buzz1.x = 1002;
-    fp.buzz1.y = 0;
-    fp.buzz2.x = fp.buzz2.y = 128;
-
     numbers := .{19,5,17,6,90,52,31,67,79,57};
 
-    // for i := 0; i < 10; i += 1 {
-        // printf("%d ", numbers[i]);
-    // }
-    // printf("\n");
+    for z := 0; z < 10; z += 1 {
+        printf("%d ", numbers[z]);
+    }
+    puts("");
 
-    grid: [64][64]Cell;
+    cells: [32][32]int;
+    cells_copy: [32][32]int;
 
-    grid[10][10].live = false;
+    cells[5][6] = 1;
+    cells[5][7] = 1;
+    cells[5][8] = 1;
+    cells[6][7] = 1;
 
-    map_width := 64;
-    map_height := 64;
+    map_width  := 32;
+    map_height := 32;
 
-    for y := 0; y < map_height; y += 1 {
-        for x := 0; x < map_width; x += 1 {
-            live := 0;
-            cell := *grid[y][x];
+    iterations := 10;
 
-            if y > 0 {
-                live = live + grid[y-1][x].live;
+    for i := 0; i <= iterations; i += 1 {
+        printf("==========IT: %d============\n", i);
+        for a := 0; a < map_height; a += 1 {
+            for b := 0; b < map_width; b += 1 {
+                ch := 0x20;
+                if cells[a][b] {
+                    ch = 0x2A;
+                }
+                putchar(ch);
+            }
+            putchar(0xA);
+        }
+
+        // copy cells
+        for c := 0; c < map_height; c += 1 {
+            for d := 0; d < map_width; d += 1 {
+                cells_copy[c][d] = cells[c][d];
+            }
+        }
+
+        for y := 0; y < map_height; y += 1 {
+            for x := 0; x < map_width; x += 1 {
+                live := 0;
                 if x > 0 {
-                    live = live + grid[y-1][x-1].live;
+                    live += cells_copy[y][x-1];
                 }
                 if x < map_width - 1 {
-                    live = live + grid[y-1][x+1].live;
+                    live += cells_copy[y][x + 1];
                 }
-            }
-
-            if y < map_height - 1 {
-                live = live + grid[y + 1][x].live;
-                if x > 0 {
-                    live = live + grid[y+1][x-1].live;
+                if y > 0 {
+                    live += cells_copy[y-1][x];
+                    if x > 0 {
+                        live += cells_copy[y-1][x-1];
+                    }
+                    if x < map_width - 1 {
+                        live += cells_copy[y-1][x+1];
+                    }
                 }
-                if x < map_width - 1 {
-                    live = live + grid[y+1][x+1].live;
+                if y < map_height - 1 {
+                    live += cells_copy[y + 1][x];
+                    if x > 0 {
+                        live += cells_copy[y+1][x-1];
+                    }
+                    if x < map_width - 1 {
+                        live += cells_copy[y+1][x+1];
+                    }
                 }
-            }
 
-            if x > 0 {
-                live = live + grid[y][x-1].live;
-            }
+                cell := *cells[y][x];
+                alive := cell.*;
 
-            if x < map_width - 1 {
-                live = live + grid[y][x + 1].live;
-            }
+                if alive == 1 {
+                    // under population
+                    if live < 2 {
+                       cell.* = 0;
+                    }
+                    // over population
+                    if live > 3 {
+                       cell.* = 0;
+                    }
+                }
 
-            if live < 2 {
-               cell.live = false;
-            }
-            if live > 3 {
-                cell.live = false;
-            }
-            if live == 2 {
-                cell.live = true;
+                if alive == 0 {
+                    // birth
+                    if live == 3 {
+                        cell.* = 1;
+                    }
+                }
             }
         }
     }
@@ -89,12 +99,3 @@ main :: () -> s32 {
 
     return 0;
 }
-
-sum :: (n: int) -> int {
-    s := 0;
-    for x := 0; x <= n; x += 1 {
-        s += x;
-    }
-    return s;
-}
-
