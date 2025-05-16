@@ -1,6 +1,6 @@
 #load "stdio.elo"
 
-main :: () -> s32 {
+main :: () -> int {
     printf("Hello World!\n");
  
     numbers := .{19,5,17,6,90,52,31,67,79,57};
@@ -23,17 +23,22 @@ main :: () -> s32 {
 
     iterations := 10;
 
+    fp := fopen("gol.out", "w");
+
+    fprintf(fp, "*** GAME OF LIFE ***\n\n");
+    fprintf(fp, "Iterations: %d\n", iterations);
+
     for i := 0; i <= iterations; i += 1 {
-        printf("==========IT: %d============\n", i);
+        fprintf(fp, "========== IT:%d ============\n", i);
         for a := 0; a < map_height; a += 1 {
             for b := 0; b < map_width; b += 1 {
                 ch := 0x20;
                 if cells[a][b] {
                     ch = 0x2A;
                 }
-                putchar(ch);
+                fputc(ch, fp);
             }
-            putchar(0xA);
+            fputc(0xA, fp);
         }
 
         // copy cells
