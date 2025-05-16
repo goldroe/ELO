@@ -355,8 +355,7 @@ LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
                 else          result.value = builder->CreateMul(lhs.value, rhs.value);
                 break;
             case TOKEN_SLASH:
-                if (is_signed) result.value = builder->CreateSDiv(lhs.value, rhs.value);
-                else           result.value = builder->CreateUDiv(lhs.value, rhs.value);
+                result.value = builder->CreateSDiv(lhs.value, rhs.value);
                 break;
             case TOKEN_MOD:
                 result.value = builder->CreateSRem(lhs.value, rhs.value);
@@ -386,16 +385,16 @@ LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
                 result.value = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, lhs.value, rhs.value);
                 break;
             case TOKEN_LT:
-                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT, lhs.value, rhs.value);
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLT, lhs.value, rhs.value);
                 break;
             case TOKEN_GT:
-                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT, lhs.value, rhs.value);
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGT, lhs.value, rhs.value);
                 break;
             case TOKEN_LTEQ:
-                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE, lhs.value, rhs.value);
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, lhs.value, rhs.value);
                 break;
             case TOKEN_GTEQ:
-                result.value = builder->CreateICmp(is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE, lhs.value, rhs.value);
+                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, lhs.value, rhs.value);
                 break;
             }
         }
@@ -523,10 +522,9 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         Ast_Index *index = static_cast<Ast_Index*>(expr);
         llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(index->lhs->type_info));
         llvm::Type* type = array_type->getElementType();
-        LLVM_Addr addr = gen_addr(index->lhs);
+        LLVM_Addr addr = gen_addr(index);
         LLVM_Value rhs = gen_expr(index->rhs);
-        llvm::Value *pointer = builder->CreateGEP(array_type, addr.value, llvm::ArrayRef(rhs.value));
-        llvm::LoadInst *load = builder->CreateLoad(type, pointer);
+        llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
         result.value = load;
         result.type = type;
         break;
@@ -735,7 +733,8 @@ llvm::Value* LLVM_Backend::gen_condition(Ast_Expr *expr) {
     } else {
         cond = builder->CreateICmpNE(value.value, llvm::Constant::getNullValue(value.type));
     }
-    return cond;
+    llvm::Value *result = builder->CreateTrunc(value.value, llvm::Type::getInt1Ty(*Ctx));
+    return result;
 }
 
 void LLVM_Backend::gen_if(Ast_If *if_stmt) {
@@ -918,7 +917,11 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
                             LLVM_Value value = gen_expr(elem);
 
                             llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (uint64_t)i);
-                            llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, llvm::ArrayRef(idx));
+                            llvm::ArrayRef<llvm::Value*> indices = {
+                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                                idx
+                            };
+                            llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, indices);
                             builder->CreateStore(value.value, ptr);
                         }
                     }
