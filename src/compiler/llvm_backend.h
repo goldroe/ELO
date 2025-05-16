@@ -8,11 +8,13 @@
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4310)
 #pragma warning(disable : 4324)
+#pragma warning(disable : 4457)
 #pragma warning(disable : 4458)
 #pragma warning(disable : 4624)
 #pragma warning(disable : 4996)
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/Analysis/ValueTracking.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
@@ -99,6 +101,8 @@ struct LLVM_Backend {
     LLVM_Procedure *current_proc;
     llvm::BasicBlock *current_block;
 
+    llvm::StructType *builtin_string_type;
+
     LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
     
     void gen();
@@ -111,6 +115,8 @@ struct LLVM_Backend {
     LLVM_Value gen_binary_op(Ast_Binary *binop);
 
     void gen_decl(Ast_Decl *decl);
+
+    void set_procedure(LLVM_Procedure *procedure);
     LLVM_Procedure *gen_procedure(Ast_Proc *proc);
     void gen_procedure_body(LLVM_Procedure *procedure);
     LLVM_Struct *gen_struct(Ast_Struct *struct_decl);

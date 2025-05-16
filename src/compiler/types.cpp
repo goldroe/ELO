@@ -4,6 +4,7 @@ global Ast_Type_Info *type_poison;
 global Ast_Type_Info *type_void;
 global Ast_Type_Info *type_null;
 
+global Ast_Type_Info *type_u1;
 global Ast_Type_Info *type_u8;
 global Ast_Type_Info *type_u16;
 global Ast_Type_Info *type_u32;
@@ -90,16 +91,16 @@ internal void register_builtin_types() {
     type_void   = ast_builtin_type(BUILTIN_TYPE_VOID,   str8_lit("void"), 0, TYPE_FLAG_VOID);
     type_null   = ast_builtin_type(BUILTIN_TYPE_NULL,   str8_lit("builtin(null)"), -1, TYPE_FLAG_NULL);
 
+    type_bool = ast_builtin_type(BUILTIN_TYPE_BOOL, str8_lit("bool"), 1, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
     type_u8   = ast_builtin_type(BUILTIN_TYPE_U8,   str8_lit("u8"),   1, TYPE_FLAG_INTEGER);
     type_u16  = ast_builtin_type(BUILTIN_TYPE_U16,  str8_lit("u16"),  2, TYPE_FLAG_INTEGER);
     type_u32  = ast_builtin_type(BUILTIN_TYPE_U32,  str8_lit("u32"),  4, TYPE_FLAG_INTEGER);
     type_u64  = ast_builtin_type(BUILTIN_TYPE_U64,  str8_lit("u64"),  8, TYPE_FLAG_INTEGER);
+    type_int  = ast_builtin_type(BUILTIN_TYPE_INT,  str8_lit("int"),  4, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_s8   = ast_builtin_type(BUILTIN_TYPE_S8,   str8_lit("s8"),   1, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_s16  = ast_builtin_type(BUILTIN_TYPE_S16,  str8_lit("s16"),  2, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_s32  = ast_builtin_type(BUILTIN_TYPE_S32,  str8_lit("s32"),  4, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_s64  = ast_builtin_type(BUILTIN_TYPE_S64,  str8_lit("s64"),  8, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_int  = ast_builtin_type(BUILTIN_TYPE_INT,  str8_lit("int"),  4, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_bool = ast_builtin_type(BUILTIN_TYPE_BOOL, str8_lit("bool"), 4, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
     type_f32  = ast_builtin_type(BUILTIN_TYPE_F32,  str8_lit("f32"),  4, TYPE_FLAG_FLOAT);
     type_f64  = ast_builtin_type(BUILTIN_TYPE_F64,  str8_lit("f64"),  8, TYPE_FLAG_FLOAT);
 
@@ -107,7 +108,7 @@ internal void register_builtin_types() {
         type_string = ast_builtin_type(BUILTIN_TYPE_STRING, str8_lit("string"), 16, TYPE_FLAG_STRING);
         type_string->aggregate.fields = {
             { atom_create(str8_lit("data")), ast_pointer_type_info(type_u8) },
-            { atom_create(str8_lit("count")), type_s64 }
+            { atom_create(str8_lit("count")), type_s32 }
         };
     }
 }

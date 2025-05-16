@@ -1,5 +1,9 @@
 global Arena *llvm_arena;
 
+global LLVM_Procedure *builtin_count__string;
+global LLVM_Procedure *builtin_data__string;
+global LLVM_Procedure *builtin_init__string;
+
 #define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
 internal void *llvm_backend_alloc(u64 size, int alignment) {
     void *result = (void *)arena_alloc(llvm_arena, size, alignment);
@@ -75,6 +79,11 @@ LLVM_Procedure *LLVM_Backend::gen_procedure(Ast_Proc *proc) {
     return llvm_proc;
 }
 
+void LLVM_Backend::set_procedure(LLVM_Procedure *procedure) {
+    current_proc = procedure;
+    builder = procedure->builder;
+}
+
 void LLVM_Backend::gen_procedure_body(LLVM_Procedure *procedure) {
     Ast_Proc *proc = procedure->proc;
 
@@ -82,8 +91,7 @@ void LLVM_Backend::gen_procedure_body(LLVM_Procedure *procedure) {
         return;
     }
 
-    current_proc = procedure;
-    builder = procedure->builder;
+    set_procedure(procedure);
 
     insert_block(procedure->entry);
 
@@ -128,23 +136,128 @@ LLVM_Struct *LLVM_Backend::gen_struct(Ast_Struct *struct_decl) {
     llvm::StructType *struct_type = llvm::StructType::create(*Ctx, llvm_struct->name->data);
     llvm_struct->type = struct_type;
 
-    llvm_struct->element_types.reserve(struct_decl->fields.count);
-    for (int i = 0; i < struct_decl->fields.count; i++) {
-        Ast_Struct_Field *field = struct_decl->fields[i];
-        llvm::Type* field_type = get_type(field->type_info);
-        llvm_struct->element_types.push(field_type);
+    if (struct_decl->fields.count) {
+        llvm_struct->element_types.reserve(struct_decl->fields.count);
+        for (int i = 0; i < struct_decl->fields.count; i++) {
+            Ast_Struct_Field *field = struct_decl->fields[i];
+            llvm::Type* field_type = get_type(field->type_info);
+            llvm_struct->element_types.push(field_type);
+        }
+        struct_type->setBody(llvm::ArrayRef(llvm_struct->element_types.data, llvm_struct->element_types.count), false);
     }
-    struct_type->setBody(llvm::ArrayRef(llvm_struct->element_types.data, llvm_struct->element_types.count), false);
 
     return llvm_struct;
 }
 
 void LLVM_Backend::gen() {
-    // Ctx = std::make_unique<llvm::LLVMContext>();
-    // Module = std::make_unique<llvm::Module>("Main", *Ctx);
-
     Ctx = new llvm::LLVMContext();
     Module = new llvm::Module("Main", *Ctx);
+
+    // build string type and operations
+    {
+        builtin_string_type = llvm::StructType::create(*Ctx, ".builtin.string");
+        llvm::ArrayRef<llvm::Type*> elements = {
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*Ctx), 0), // data
+            llvm::Type::getInt32Ty(*Ctx), // count
+        };
+        builtin_string_type->setBody(elements, false);
+
+        // builtin.string.init
+        {
+            Atom *name = atom_create(str8_lit("string_init"));
+            llvm::ArrayRef<llvm::Type*> param_types = {
+                llvm::PointerType::get(builtin_string_type, 0),
+                llvm::PointerType::get(llvm::Type::getInt8Ty(*Ctx), 0)
+            };
+            llvm::Type *ret_type = llvm::Type::getVoidTy(*Ctx);
+            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_types, false);
+            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
+
+            builtin_init__string = llvm_alloc(LLVM_Procedure);
+            builtin_init__string->name = name;
+            builtin_init__string->proc = NULL;
+            builtin_init__string->return_type = ret_type;
+            builtin_init__string->type = func_type;
+            builtin_init__string->fn = fn;
+
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, "entry");
+            builtin_init__string->builder = new llvm::IRBuilder<>(*Ctx);
+            builtin_init__string->entry = entry;
+            set_procedure(builtin_init__string);
+            insert_block(entry);
+
+            llvm::Argument *string_arg = fn->getArg(0);
+            llvm::Argument *cstr = fn->getArg(1);
+
+            llvm::Value *string_ptr   = builder->CreateGEP(param_types[0], string_arg, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
+            llvm::Value *ptr_to_data  = builder->CreateStructGEP(builtin_string_type, string_ptr, 0);
+            llvm::Value *ptr_to_count = builder->CreateStructGEP(builtin_string_type, string_ptr, 1);
+
+            builder->CreateStore(cstr, ptr_to_data);
+            builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0), ptr_to_count);
+
+            builder->CreateRetVoid();
+        }
+
+        // string.data
+        {
+            Atom *name = atom_create(str8_lit("builtin.string.data"));
+            llvm::Type *param_type = llvm::PointerType::get(builtin_string_type, 0);
+            llvm::Type *ret_type   = builtin_string_type->getElementType(0);
+            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_type, false);
+            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
+
+            builtin_data__string = llvm_alloc(LLVM_Procedure);
+            builtin_data__string->name = name;
+            builtin_data__string->proc = NULL;
+            builtin_data__string->return_type = ret_type;
+            builtin_data__string->type = func_type;
+            builtin_data__string->fn = fn;
+
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, "entry");
+            builtin_data__string->builder = new llvm::IRBuilder<>(*Ctx);
+            builtin_data__string->entry = entry;
+            set_procedure(builtin_data__string);
+            insert_block(entry);
+
+            llvm::Argument *argument = fn->getArg(0);
+
+            llvm::Value *string_ptr = builder->CreateGEP(param_type, argument, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
+            llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, string_ptr, 0);
+            llvm::LoadInst *value = builder->CreateLoad(ret_type, field_ptr);
+            builder->CreateRet(value);
+        }
+
+        // string.count
+        {
+            Atom *name = atom_create(str8_lit("builtin.string.count"));
+            llvm::Type *param_type = llvm::PointerType::get(builtin_string_type, 0);
+            llvm::Type *ret_type   = builtin_string_type->getElementType(1);
+            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_type, false);
+            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
+
+            builtin_count__string = llvm_alloc(LLVM_Procedure);
+            builtin_count__string->name = name;
+            builtin_count__string->proc = NULL;
+            builtin_count__string->return_type = ret_type;
+            builtin_count__string->type = func_type;
+            builtin_count__string->fn = fn;
+
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, "entry");
+            builtin_count__string->builder = new llvm::IRBuilder<>(*Ctx);
+            builtin_count__string->entry = entry;
+            set_procedure(builtin_count__string);
+            insert_block(entry);
+
+            llvm::Argument *argument = fn->getArg(0);
+
+            llvm::Value *string_ptr = builder->CreateGEP(param_type, argument, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
+            llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, string_ptr, 1);
+            llvm::LoadInst *value = builder->CreateLoad(ret_type, field_ptr);
+            builder->CreateRet(value);
+        }
+        
+    }
 
     for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
         Ast_Decl *decl = root->declarations[decl_idx];
@@ -202,6 +315,7 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
     if (type_info->type_flags & TYPE_FLAG_BUILTIN) {
         switch (type_info->builtin_kind) {
         default:
+            Assert(0);
             return nullptr;
         case BUILTIN_TYPE_NULL:
             Assert(0); //@Note No expression should still have the null type, needs to have type of "owner"
@@ -209,6 +323,7 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
         case BUILTIN_TYPE_VOID:
             return llvm::Type::getVoidTy(*Ctx);
         case BUILTIN_TYPE_U8:
+        case BUILTIN_TYPE_BOOL:
         case BUILTIN_TYPE_S8:
             return llvm::Type::getInt8Ty(*Ctx);
         case BUILTIN_TYPE_U16:
@@ -217,7 +332,6 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
         case BUILTIN_TYPE_U32:
         case BUILTIN_TYPE_S32:
         case BUILTIN_TYPE_INT:
-        case BUILTIN_TYPE_BOOL:
             return llvm::Type::getInt32Ty(*Ctx);
         case BUILTIN_TYPE_U64:
         case BUILTIN_TYPE_S64:
@@ -226,6 +340,8 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
             return llvm::Type::getFloatTy(*Ctx);
         case BUILTIN_TYPE_F64:
             return llvm::Type::getDoubleTy(*Ctx);
+        case BUILTIN_TYPE_STRING:
+            return builtin_string_type;
         }
     } else if (type_info->is_struct_type()) {
         LLVM_Struct *llvm_struct = lookup_struct(type_info->decl->name);
@@ -281,6 +397,15 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
             } else if (parent->type_info->is_pointer_type()) {
                 llvm::Value *field_ptr = get_ptr_from_struct_ptr(field, addr);
                 result.value = field_ptr;
+            } else if (parent->type_info->type_flags & TYPE_FLAG_STRING) {
+                Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+                if (atoms_match(name->name, atom_create(str_lit("data")))) {
+                    llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, addr.value, 0);
+                    result.value = field_ptr;
+                } else if (atoms_match(name->name, atom_create(str_lit("count")))) {
+                    llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, addr.value, 1);
+                    result.value = field_ptr;
+                }
             }
         }
         break;
@@ -501,6 +626,10 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
             LLVM_Procedure *procedure = lookup_proc(ident->name);
 
+            if (atoms_match(ident->name, atom_create(str8_lit("string_init")))) {
+                procedure = builtin_init__string;
+            }
+
             Auto_Array<llvm::Value*> args;
             for (int i = 0; i < call->arguments.count; i++) {
                 Ast_Expr *arg = call->arguments[i];
@@ -687,24 +816,40 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         Ast_Field *parent = field->field_parent;
         Ast_Field *child = field->field_child;
 
-        LLVM_Addr addr = gen_addr(field);
+        llvm::Type* type = nullptr; 
+        llvm::Value *value = nullptr;
 
-        Ast_Type_Info *struct_type = parent->type_info;
-        if (struct_type->is_pointer_type()) {
-            struct_type = struct_type->base;
+        if (parent->type_info->is_struct_type() || parent->type_info->is_pointer_type()) {
+            LLVM_Addr addr = gen_addr(field);
+
+            Ast_Type_Info *struct_type = parent->type_info;
+            if (struct_type->is_pointer_type()) {
+                struct_type = struct_type->base;
+            }
+
+            Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+            Ast_Struct *struct_node = static_cast<Ast_Struct*>(struct_type->decl);
+            LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
+            unsigned idx = llvm_get_struct_field_index(struct_node, name->name);
+
+            type = get_type(field->type_info);
+            llvm::Value *field_ptr = addr.value;
+            llvm::LoadInst* load = builder->CreateLoad(type, field_ptr);
+            value = load;
+        } else if (parent->type_info->type_flags & TYPE_FLAG_STRING) {
+            LLVM_Addr addr = gen_addr(field);
+            Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
+            if (atoms_match(name->name, atom_create(str_lit("data")))) {
+                type = builtin_string_type->getElementType(0);
+                llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
+                value = load;
+            } else if (atoms_match(name->name, atom_create(str_lit("count")))) {
+                type = builtin_string_type->getElementType(1);
+                llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
+                value = load;
+            }
         }
-
-        Ast_Ident *name = static_cast<Ast_Ident*>(field->elem);
-        Ast_Struct *struct_node = static_cast<Ast_Struct*>(struct_type->decl);
-        LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
-        unsigned idx = llvm_get_struct_field_index(struct_node, name->name);
-
-        llvm::Type* type = get_type(field->type_info);
-
-        llvm::Value *field_ptr = addr.value;
-
-        llvm::LoadInst* load = builder->CreateLoad(type, field_ptr);
-        result.value = load;
+        result.value = value;
         result.type = type;
         break;
     }
@@ -733,7 +878,7 @@ llvm::Value* LLVM_Backend::gen_condition(Ast_Expr *expr) {
     } else {
         cond = builder->CreateICmpNE(value.value, llvm::Constant::getNullValue(value.type));
     }
-    llvm::Value *result = builder->CreateTrunc(value.value, llvm::Type::getInt1Ty(*Ctx));
+    llvm::Value *result = builder->CreateTrunc(cond, llvm::Type::getInt1Ty(*Ctx));
     return result;
 }
 
