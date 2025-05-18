@@ -95,15 +95,22 @@ void LLVM_Backend::gen_procedure_body(LLVM_Procedure *procedure) {
 
     insert_block(procedure->entry);
 
-    for (int i = 0; i < proc->parameters.count; i++) {
-        Ast_Param *param = proc->parameters[i];
-        llvm::Argument *argument = procedure->fn->getArg(i);
+    for (int i = 0; i < proc->local_vars.count; i++) {
+        Ast_Decl *node = proc->local_vars[i];
         LLVM_Var *var = llvm_alloc(LLVM_Var);
-        var->name = param->name;
-        var->decl = param;
-        var->type = procedure->parameter_types[i];
-        var->alloca = builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine(var->name->data));
+        var->name = node->name;
+        var->decl = node;
+        var->type = get_type(node->type_info);
+        var->alloca = builder->CreateAlloca(var->type, 0, nullptr);
         procedure->named_values.push(var);
+        node->backend_var = (void *)var;
+    }
+
+    // Store value of arg to alloca
+    for (int i = 0; i < proc->parameters.count; i++) {
+        LLVM_Var *var = procedure->named_values[i];
+        Assert(var->decl->kind == AST_PARAM);
+        llvm::Argument *argument = procedure->fn->getArg(i);
         llvm::StoreInst *store_inst = builder->CreateStore(argument, var->alloca);
     }
 
@@ -291,16 +298,6 @@ LLVM_Procedure *LLVM_Backend::lookup_proc(Atom *name) {
     return NULL;
 }
 
-internal LLVM_Var *llvm_get_named_value(LLVM_Procedure *proc, Atom *name) {
-    for (int i = 0; i < proc->named_values.count; i++) {
-        LLVM_Var *var = proc->named_values[i];
-        if (atoms_match(var->name, name)) {
-            return var;
-        }
-    }
-    return NULL;
-}
-
 LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name) {
     for (int i = 0; i < global_structs.count; i++) {
         LLVM_Struct *s = global_structs[i];
@@ -372,7 +369,7 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
     case AST_IDENT:
     {
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
-        LLVM_Var *var = llvm_get_named_value(current_proc, ident->name);
+        LLVM_Var *var = (LLVM_Var *)ident->decl->backend_var;
         Assert(var);
         result.value = var->alloca;
         break;
@@ -607,8 +604,8 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     case AST_IDENT:
     {
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
-        Assert(ident->reference);
-        LLVM_Var *var = llvm_get_named_value(current_proc, ident->name);
+        Assert(ident->decl);
+        LLVM_Var *var = (LLVM_Var *)ident->decl->backend_var;
         Assert(var);
 
         llvm::LoadInst *load = builder->CreateLoad(var->type, var->alloca);
@@ -720,8 +717,7 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         Ast_Deref *deref = static_cast<Ast_Deref*>(expr);
         LLVM_Addr addr = gen_addr(deref);
         llvm::Type* type = get_type(deref->type_info);
-        llvm::Type *pointer_type = get_type(deref->elem->type_info);
-        llvm::LoadInst *load = builder->CreateLoad(pointer_type, addr.value);
+        llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
         result.value = load;
         result.type = type;
         break;
@@ -1012,6 +1008,58 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
     insert_block(tail);
 }
 
+void LLVM_Backend::gen_var(Ast_Var *var_node) {
+    LLVM_Var *var = (LLVM_Var *)var_node->backend_var;
+    Assert(var);
+
+    // var->name = var_node->name;
+    // var->decl = var_node;
+    // var->type = get_type(var_node->type_info);
+    // var->alloca = builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine(var->name->data));
+    // current_proc->named_values.push(var);
+
+    if (!var_node->init) {
+        llvm::Constant *null_value = llvm::Constant::getNullValue(var->type);
+        builder->CreateStore(null_value, var->alloca);
+    }
+
+    if (var_node->init) {
+        Ast_Expr *init = var_node->init;
+        if (init->kind == AST_COMPOUND_LITERAL) {
+            Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(init);
+            if (var_node->type_info->is_struct_type()) {
+                LLVM_Struct *llvm_struct = lookup_struct(var_node->type_info->decl->name);
+                for (int i = 0; i < literal->elements.count; i++) {
+                    Ast_Expr *elem = literal->elements[i];
+                    LLVM_Value value = gen_expr(elem);
+                    llvm::Value* field_addr = builder->CreateStructGEP(llvm_struct->type, var->alloca, (unsigned)i);
+                    builder->CreateStore(value.value, field_addr);
+                }
+            } else if (var_node->type_info->is_array_type()) {
+                llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(var_node->type_info));
+                llvm::Type* element_type = array_type->getElementType();
+
+                //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
+                for (int i = 0; i < literal->elements.count; i++) {
+                    Ast_Expr *elem = literal->elements[i];
+                    LLVM_Value value = gen_expr(elem);
+
+                    llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (uint64_t)i);
+                    llvm::ArrayRef<llvm::Value*> indices = {
+                        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                        idx
+                    };
+                    llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, indices);
+                    builder->CreateStore(value.value, ptr);
+                }
+            }
+        } else {
+            LLVM_Value init_value = gen_expr(init);
+            builder->CreateStore(init_value.value, var->alloca);
+        }
+    }
+}
+
 void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
     switch (stmt->kind) {
     case AST_EXPR_STMT:
@@ -1028,53 +1076,7 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
         Ast_Decl *decl = decl_stmt->decl;
         if (decl->kind == AST_VAR) {
             Ast_Var *var_node = static_cast<Ast_Var*>(decl);
-            LLVM_Var *var = llvm_alloc(LLVM_Var);
-            var->name = var_node->name;
-            var->decl = decl;
-            var->type = get_type(var_node->type_info);
-            var->alloca = builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine(var->name->data));
-            current_proc->named_values.push(var);
-
-            if (!var_node->init) {
-                llvm::Constant *null_value = llvm::Constant::getNullValue(var->type);
-                builder->CreateStore(null_value, var->alloca);
-            }
-
-            if (var_node->init) {
-                Ast_Expr *init = var_node->init;
-                if (init->kind == AST_COMPOUND_LITERAL) {
-                    Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(init);
-                    if (var_node->type_info->is_struct_type()) {
-                        LLVM_Struct *llvm_struct = lookup_struct(var_node->type_info->decl->name);
-                        for (int i = 0; i < literal->elements.count; i++) {
-                            Ast_Expr *elem = literal->elements[i];
-                            LLVM_Value value = gen_expr(elem);
-                            llvm::Value* field_addr = builder->CreateStructGEP(llvm_struct->type, var->alloca, (unsigned)i);
-                            builder->CreateStore(value.value, field_addr);
-                        }
-                    } else if (var_node->type_info->is_array_type()) {
-                        llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(var_node->type_info));
-                        llvm::Type* element_type = array_type->getElementType();
-
-                        //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
-                        for (int i = 0; i < literal->elements.count; i++) {
-                            Ast_Expr *elem = literal->elements[i];
-                            LLVM_Value value = gen_expr(elem);
-
-                            llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (uint64_t)i);
-                            llvm::ArrayRef<llvm::Value*> indices = {
-                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
-                                idx
-                            };
-                            llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, indices);
-                            builder->CreateStore(value.value, ptr);
-                        }
-                    }
-                } else {
-                    LLVM_Value init_value = gen_expr(init);
-                    builder->CreateStore(init_value.value, var->alloca);
-                }
-            }
+            gen_var(var_node);
         }
         break;
     }

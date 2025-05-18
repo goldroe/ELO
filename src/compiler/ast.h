@@ -15,9 +15,8 @@ struct Ast_Operator_Proc;
 enum Ast_Kind {
     AST_NIL,
 
-    AST_NAME_SCOPE,
-    AST_SCOPE,
     AST_ROOT,
+    AST_SCOPE,
 
     AST_TYPE_DEFN,
     AST_TYPE_INFO,
@@ -75,7 +74,6 @@ enum Ast_Kind {
 };
 
 struct Ast {
-    Ast *parent = NULL;
     Ast_Kind kind = AST_NIL;
 
     Source_File *file = NULL;
@@ -197,7 +195,7 @@ struct Ast_Call : Ast_Expr {
 struct Ast_Ident : Ast_Expr {
     Ast_Ident() { kind = AST_IDENT; }
     Atom *name;
-    Ast_Decl *reference;
+    Ast_Decl *decl;
 };
 
 struct Ast_Unary : Ast_Expr {
@@ -255,8 +253,9 @@ struct Ast_Decl : Ast {
     Ast_Decl() { kind = AST_DECL; }
     Atom *name;
     Decl_Flags decl_flags;
-    Ast_Type_Info *type_info;
     Resolve_State resolve_state = RESOLVE_UNSTARTED;
+    Ast_Type_Info *type_info;
+    void *backend_var;
 };
 
 struct Ast_Type_Decl : Ast_Decl {
@@ -273,7 +272,6 @@ struct Ast_Var : Ast_Decl {
     Ast_Var() { kind = AST_VAR; }
     Ast_Type_Defn *type_defn;
     Ast_Expr *init;
-    int stack_offset;
 };
 
 struct Ast_Struct_Field : Ast {
@@ -305,6 +303,9 @@ struct Ast_Proc : Ast_Decl {
     Ast_Type_Defn *return_type_defn = NULL;
     Scope *scope = NULL;
     Ast_Block *block = NULL;
+
+    Auto_Array<Ast_Decl*> local_vars;
+
     b32 foreign;
     b32 has_varargs;
     b32 returns;
@@ -337,12 +338,6 @@ struct Ast_While : Ast_Stmt {
     Ast_Expr *cond;
     Ast_Block *block;
 };
-
-// struct Ast_Iterator : Ast_Expr {
-//     Ast_Iterator() { kind = AST_ITERATOR; }
-//     Ast_Ident *ident;
-//     Ast_Expr *range;
-// };
 
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }

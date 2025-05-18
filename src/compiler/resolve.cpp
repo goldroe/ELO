@@ -704,6 +704,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     for (int i = 0; i < literal->elements.count; i++) {
         Ast_Expr *elem = literal->elements[i];
         resolve_expr(elem);
+
     }
 
     if (specified_type->is_struct_type()) {
@@ -736,6 +737,17 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
                 literal->poison();
             }
         }
+    }
+
+    bool is_constant = true;
+    for (int i = 0; i < literal->elements.count; i++) {
+        Ast_Expr *elem = literal->elements[i];
+        if (!elem->is_constant()) {
+            is_constant = false;
+        }
+    }
+    if (is_constant) {
+        literal->expr_flags |= EXPR_FLAG_CONSTANT;
     }
 }
 
@@ -855,7 +867,7 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
             ident->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
-        ident->reference = found;
+        ident->decl = found;
 
         if (found->invalid()) ident->poison();
     } else {
@@ -879,7 +891,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
         if (decl) {
             resolve_decl(decl);
-            name->reference = decl;
+            name->decl = decl;
             elem_type = decl->type_info;
         } else {
             if (overloaded) {
@@ -1418,6 +1430,10 @@ void Resolver::resolve_var(Ast_Var *var) {
         }
     }
 
+    if (current_proc) {
+        current_proc->local_vars.push(var);
+    }
+
     return;
 
 ERROR_BLOCK:
@@ -1425,6 +1441,7 @@ ERROR_BLOCK:
 }
 
 void Resolver::resolve_param(Ast_Param *param) {
+    current_proc->local_vars.push(param);
     if (!param->is_vararg) {
         Ast_Type_Info *type_info = resolve_type(param->type_defn);
         param->type_info = type_info;

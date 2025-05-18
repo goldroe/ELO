@@ -115,6 +115,8 @@ struct LLVM_Backend {
     LLVM_Value gen_binary_op(Ast_Binary *binop);
 
     void gen_decl(Ast_Decl *decl);
+    void gen_param(Ast_Param *param);
+    void gen_var(Ast_Var *var_node);
 
     void set_procedure(LLVM_Procedure *procedure);
     LLVM_Procedure *gen_procedure(Ast_Proc *proc);

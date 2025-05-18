@@ -1,15 +1,6 @@
 #load "stdio.elo"
 
 main :: () -> int {
-    printf("Hello World!\n");
- 
-    numbers := .{19,5,17,6,90,52,31,67,79,57};
-
-    for z := 0; z < 10; z += 1 {
-        printf("%d ", numbers[z]);
-    }
-    puts("");
-
     cells: [32][32]int;
     cells_copy: [32][32]int;
 
@@ -21,7 +12,7 @@ main :: () -> int {
     map_width  := 32;
     map_height := 32;
 
-    iterations := 10;
+    iterations := 100;
 
     fp := fopen("gol.out", "w");
 
@@ -30,10 +21,10 @@ main :: () -> int {
 
     for i := 0; i <= iterations; i += 1 {
         fprintf(fp, "========== IT:%d ============\n", i);
-        for a := 0; a < map_height; a += 1 {
-            for b := 0; b < map_width; b += 1 {
+        for y := 0; y < map_height; y += 1 {
+            for x := 0; x < map_width; x += 1 {
                 ch := 0x20;
-                if cells[a][b] {
+                if cells[y][x] {
                     ch = 0x2A;
                 }
                 fputc(ch, fp);
@@ -42,9 +33,9 @@ main :: () -> int {
         }
 
         // copy cells
-        for c := 0; c < map_height; c += 1 {
-            for d := 0; d < map_width; d += 1 {
-                cells_copy[c][d] = cells[c][d];
+        for y := 0; y < map_height; y += 1 {
+            for x := 0; x < map_width; x += 1 {
+                cells_copy[y][x] = cells[y][x];
             }
         }
 
@@ -99,8 +90,6 @@ main :: () -> int {
             }
         }
     }
-
-    printf("Goodbye World!\n");
 
     return 0;
 }
