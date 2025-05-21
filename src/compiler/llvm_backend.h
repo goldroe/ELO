@@ -125,6 +125,7 @@ struct LLVM_Backend {
     
     void gen_stmt(Ast_Stmt *stmt);
     void gen_if(Ast_If *if_stmt);
+    void gen_ifcase(Ast_Ifcase *ifcase);
     void gen_while(Ast_While *while_stmt);
     void gen_for(Ast_For *for_stmt);
     void gen_block(Ast_Block *block);

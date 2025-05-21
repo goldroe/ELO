@@ -59,7 +59,7 @@ LLVM_Procedure *LLVM_Backend::gen_procedure(Ast_Proc *proc) {
     llvm::FunctionType *function_type = llvm::FunctionType::get(return_type, llvm::ArrayRef(llvm_proc->parameter_types.data, llvm_proc->parameter_types.count), proc->has_varargs);
     llvm_proc->type = function_type;
 
-    llvm::Function *fn = llvm::Function::Create(function_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, llvm::Twine(proc->name->data), Module);
+    llvm::Function *fn = llvm::Function::Create(function_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, proc->name->data, Module);
     llvm_proc->fn = fn;
 
     if (proc->foreign) {
@@ -71,7 +71,7 @@ LLVM_Procedure *LLVM_Backend::gen_procedure(Ast_Proc *proc) {
     }
 
     if (!proc->foreign) {
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, llvm::Twine("entry"));
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*Ctx, "entry");
         llvm_proc->builder = new llvm::IRBuilder<>(*Ctx);
         llvm_proc->entry = entry;
     }
@@ -279,6 +279,7 @@ void LLVM_Backend::gen() {
     std::error_code EC;
     llvm::raw_fd_ostream OS("-", EC);
     bool broken_debug_info;
+    // Module->print(llvm::errs(), nullptr); // dump IR
     if (llvm::verifyModule(*Module, &OS, &broken_debug_info)) {
         Module->print(llvm::errs(), nullptr); // dump IR
     } else {
@@ -899,33 +900,244 @@ void LLVM_Backend::gen_if(Ast_If *if_stmt) {
     // br if_exit
 
     // label: if_exit
-    Ast_If *else_stmt = if_stmt->if_next;
 
-    llvm::BasicBlock *exit_block = llvm::BasicBlock::Create(*Ctx, "if_exit");
-    llvm::BasicBlock *then_block = exit_block;
-    llvm::BasicBlock *else_block = exit_block;
+    llvm::BasicBlock *exit_block = llvm::BasicBlock::Create(*Ctx, "if.exit");
 
-    then_block = llvm::BasicBlock::Create(*Ctx, "if_then");
+    for (Ast_If *current = if_stmt; current; current = current->if_next) {
+        Ast_If *else_stmt = current->if_next;
 
-    if (else_stmt) {
-        else_block = llvm::BasicBlock::Create(*Ctx, "if_exit");
-    }
+        llvm::BasicBlock *then_block = llvm::BasicBlock::Create(*Ctx, "if.then");
+        llvm::BasicBlock *else_block = exit_block;
 
-    llvm::Value* cond = gen_condition(if_stmt->cond);
-    llvm::Value* branch = builder->CreateCondBr(cond, then_block, exit_block);
+        if (else_stmt) {
+            else_block = llvm::BasicBlock::Create(*Ctx, "if.else");
+        }
 
-    insert_block(then_block);
-    gen_block(if_stmt->block);
-    builder->CreateBr(exit_block);
+        if (current->is_else) {
+            llvm::Value *branch = builder->CreateBr(then_block);
+        } else {
+            llvm::Value *cond = gen_condition(current->cond);
+            llvm::Value *branch = builder->CreateCondBr(cond, then_block, else_block);
+        }
 
-    if (else_stmt) {
-        insert_block(else_block);
-        gen_stmt(else_stmt);
-
+        insert_block(then_block);
+        gen_block(current->block);
         builder->CreateBr(exit_block);
+
+        insert_block(else_block);
+    }
+}
+
+void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
+    bool use_jumptable = ifcase->is_constant && ifcase->cond->type_info->is_integral_type();
+
+    struct Case_Unit {
+        Case_Unit *next = nullptr;
+        llvm::BasicBlock *basic_block = nullptr;
+        Auto_Array<Ast_Case_Label*> labels;
+        bool is_default = false;
+        Ast_Case_Label *default_label = nullptr;
+    };
+
+    Case_Unit *root_unit = NULL;
+    Case_Unit *default_unit = NULL;
+
+    Case_Unit *current_unit = NULL;
+    for (Ast_Case_Label *label = ifcase->cases[0]; label; label = label->next_label) {
+        bool new_unit = true;
+        if (label->prev_label && (label->prev_label->fallthrough && label->prev_label->statements.count == 0)) {
+            new_unit = false;
+            if (label->is_default) {
+                new_unit = true;
+            } else if (label->prev_label->is_default) {
+                new_unit = true;
+            }
+        }
+
+        if (new_unit) {
+            Case_Unit *unit = new Case_Unit();
+            unit->basic_block = llvm::BasicBlock::Create(*Ctx);
+            if (current_unit) {
+                current_unit->next = unit;
+            } else {
+                root_unit = unit;
+            }
+            current_unit = unit;
+        }
+
+        current_unit->labels.push(label);
+        label->backend_block = (void *)current_unit->basic_block;
+
+        if (label->is_default) {
+            default_unit = current_unit;
+            current_unit->is_default = true;
+            current_unit->default_label = label;
+        }
     }
 
-    insert_block(exit_block);
+    LLVM_Value condition = gen_expr(ifcase->cond);
+
+    if (use_jumptable) {
+        llvm::BasicBlock *switch_exit = llvm::BasicBlock::Create(*Ctx, "switch.exit");
+        llvm::BasicBlock *default_block = switch_exit;
+        if (ifcase->default_case) {
+            Assert(default_unit);
+            default_block = default_unit->basic_block;
+        }
+
+        u64 cases_count = ifcase->cases.count;
+        llvm::SwitchInst *switch_inst = llvm::SwitchInst::Create(condition.value, default_block, (unsigned)cases_count);
+
+        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+            if (unit->is_default) continue;
+            for (Ast_Case_Label *label : unit->labels) {
+                if (label->cond->kind == AST_RANGE) {
+                    Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+                    llvm::Type *type = get_type(range->type_info);
+                    u64 r0 = 0, r1 = 0;
+                    if (range->lhs->kind == AST_LITERAL) {
+                        r0 = static_cast<Ast_Literal*>(range->lhs)->int_val;
+                    }
+                    if (range->rhs->kind == AST_LITERAL) {
+                        r1 = static_cast<Ast_Literal*>(range->rhs)->int_val;
+                    }
+                    for (u64 p = r0; p <= r1; p++) {
+                        llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, p, false));
+                        switch_inst->addCase(case_constant, unit->basic_block);
+                    }
+                } else {
+                    LLVM_Value case_cond = gen_expr(label->cond);
+                    llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(case_cond.value);
+                    switch_inst->addCase(case_constant, unit->basic_block);
+                }
+            }
+        }
+
+        builder->Insert(switch_inst);
+
+        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+            if (unit->is_default) continue;
+
+            llvm::BasicBlock *basic_block = unit->basic_block;
+            insert_block(basic_block);
+
+            for (Ast_Case_Label *label : unit->labels) {
+                for (Ast_Stmt *stmt : label->statements) {
+                    gen_stmt(stmt);
+                }
+            }
+
+            Ast_Case_Label *last_label = unit->labels.back();
+            llvm::BasicBlock *jump = switch_exit;
+            if (last_label->fallthrough && unit->next) {
+                jump = unit->next->basic_block;
+            }
+            llvm::Value *branch = builder->CreateBr(jump);
+        }
+
+        if (ifcase->default_case) {
+            Assert(default_unit);
+            insert_block(default_block);
+            for (Ast_Stmt *stmt : default_unit->labels[0]->statements) {
+                gen_stmt(stmt);
+            }
+
+            llvm::BasicBlock *jump = switch_exit;
+            if (ifcase->default_case->fallthrough && default_unit->next) {
+                jump = default_unit->next->basic_block;
+            }
+            llvm::Value *branch = builder->CreateBr(jump);
+        }
+
+        insert_block(switch_exit);
+    } else {
+        llvm::BasicBlock *jump_exit = llvm::BasicBlock::Create(*Ctx);
+        llvm::BasicBlock *switch_exit = llvm::BasicBlock::Create(*Ctx);
+
+        llvm::BasicBlock *default_block = switch_exit;
+        if (ifcase->default_case) {
+            default_block = default_unit->basic_block;
+        }
+
+        //@Note Artificial jump table
+        for (Ast_Case_Label *label : ifcase->cases) {
+            // Skip default to ensure it is only checked at the end
+            if (label->is_default) continue;
+            Ast_Case_Label *else_label = label->next_label;
+            if (else_label && else_label->is_default) {
+                else_label = else_label->next_label;
+            }
+
+            llvm::BasicBlock *else_block = jump_exit;
+            if (else_label) {
+                else_block = llvm::BasicBlock::Create(*Ctx);
+            }
+
+            llvm::Value *compare;
+            if (label->cond->kind == AST_RANGE) {
+                //@Note Check if condition is within range
+                Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+                LLVM_Value lhs = gen_expr(range->lhs);
+                LLVM_Value rhs = gen_expr(range->rhs);
+
+                llvm::Value *gte = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, condition.value, lhs.value);
+                llvm::Value *lte = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, condition.value, rhs.value);
+                compare = builder->CreateAnd(gte, lte);
+            } else {
+                LLVM_Value label_cond = gen_expr(label->cond);
+                compare = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, condition.value, label_cond.value);
+            }
+            builder->CreateCondBr(compare, (llvm::BasicBlock *)label->backend_block, else_block);
+
+            insert_block(else_block);
+        }
+        //@Note End of jump table
+        insert_block(jump_exit);
+        builder->CreateBr(default_block);
+
+        //@Note Actual ifcase units
+        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+            if (unit->is_default) continue;
+
+            llvm::BasicBlock *basic_block = unit->basic_block;
+            insert_block(basic_block);
+
+            for (Ast_Case_Label *label : unit->labels) {
+                for (Ast_Stmt *stmt : label->statements) {
+                    gen_stmt(stmt);
+                }
+            }
+
+            Ast_Case_Label *last_label = unit->labels.back();
+            llvm::BasicBlock *jump = switch_exit;
+            if (last_label->fallthrough && unit->next) {
+                jump = unit->next->basic_block;
+            }
+            llvm::Value *branch = builder->CreateBr(jump);
+        }
+
+        if (ifcase->default_case) {
+            insert_block(default_unit->basic_block);
+            for (Ast_Stmt *stmt : default_unit->labels[0]->statements) {
+                gen_stmt(stmt);
+            }
+
+            llvm::BasicBlock *jump = switch_exit;
+            if (ifcase->default_case->fallthrough && default_unit->next) {
+                jump = default_unit->next->basic_block;
+            }
+            llvm::Value *branch = builder->CreateBr(jump);
+        }
+
+        insert_block(switch_exit);
+    }
+
+    for (Case_Unit *unit = root_unit; unit; ) {
+        Case_Unit *temp = unit;
+        unit = unit->next;
+        delete temp;
+    }
+    
 }
 
 void LLVM_Backend::gen_while(Ast_While *while_stmt) {
@@ -1088,8 +1300,10 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
         break;
     }
 
-    case AST_SWITCH:
+    case AST_IFCASE:
     {
+        Ast_Ifcase *ifcase = static_cast<Ast_Ifcase*>(stmt);
+        gen_ifcase(ifcase);;
         break;
     }
 

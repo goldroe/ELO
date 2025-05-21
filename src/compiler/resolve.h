@@ -55,6 +55,7 @@ struct Resolver {
     void resolve_while_stmt(Ast_While *while_stmt);
     void resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt);
     void resolve_if_stmt(Ast_If *if_stmt);
+    void resolve_ifcase_stmt(Ast_Ifcase *ifcase);
     void resolve_return_stmt(Ast_Return *return_stmt);
     void resolve_stmt(Ast_Stmt *stmt);
 

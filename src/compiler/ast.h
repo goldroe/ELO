@@ -60,7 +60,8 @@ enum Ast_Kind {
     AST_EXPR_STMT,
     AST_DECL_STMT,
     AST_IF,
-    AST_SWITCH,
+    AST_IFCASE,
+    AST_CASE_LABEL,
     AST_WHILE,
     AST_FOR,
     AST_BLOCK,
@@ -69,6 +70,7 @@ enum Ast_Kind {
     AST_BREAK,
     AST_GOTO,
     AST_DEFER,
+    AST_FALLTHROUGH,
 
     AST_COUNT
 };
@@ -331,6 +333,30 @@ struct Ast_If : Ast_Stmt {
     Ast_Block *block;
     Ast_If *if_next = NULL;
     Ast_If *if_prev = NULL;
+    b32 is_else;
+};
+
+struct Ast_Case_Label : Ast_Stmt {
+    Ast_Case_Label() { kind = AST_CASE_LABEL; }
+    Scope *scope;
+    Ast_Expr *cond;
+    Auto_Array<Ast_Stmt*> statements;
+
+    b32 is_default;
+    b32 fallthrough;
+
+    Ast_Case_Label *prev_label;
+    Ast_Case_Label *next_label;
+
+    void *backend_block;
+};
+
+struct Ast_Ifcase : Ast_Stmt {
+    Ast_Ifcase() { kind = AST_IFCASE; }
+    Ast_Expr *cond;
+    Ast_Case_Label *default_case;
+    Auto_Array<Ast_Case_Label*> cases;
+    b32 is_constant;
 };
 
 struct Ast_While : Ast_Stmt {
@@ -383,6 +409,9 @@ struct Ast_Continue : Ast_Stmt {
     Ast_Continue() { kind = AST_CONTINUE; }
 };
 
+struct Ast_Fallthrough : Ast_Stmt {
+    Ast_Fallthrough() { kind = AST_FALLTHROUGH; }
+};
 
 #define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
 

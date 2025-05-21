@@ -93,11 +93,12 @@ internal void atom_init() {
     atom_keyword(TOKEN_TRUE,     str8_lit("true"));
     atom_keyword(TOKEN_FALSE,    str8_lit("false"));
     atom_keyword(TOKEN_IF,       str8_lit("if"));
+    atom_keyword(TOKEN_ELSE,     str8_lit("else"));
+    atom_keyword(TOKEN_CASE,     str8_lit("case"));
     atom_keyword(TOKEN_WHILE,    str8_lit("while"));
     atom_keyword(TOKEN_FOR,      str8_lit("for"));
     atom_keyword(TOKEN_BREAK,    str8_lit("break"));
     atom_keyword(TOKEN_CONTINUE, str8_lit("continue"));
-    atom_keyword(TOKEN_ELSE,     str8_lit("else"));
     atom_keyword(TOKEN_RETURN,   str8_lit("return"));
     atom_keyword(TOKEN_CAST,     str8_lit("cast"));
     atom_keyword(TOKEN_OPERATOR, str8_lit("operator"));
@@ -105,6 +106,7 @@ internal void atom_init() {
 
     atom_directive(TOKEN_LOAD,   str8_lit("#load"));
     atom_directive(TOKEN_IMPORT, str8_lit("#import"));
+    atom_directive(TOKEN_THROUGH, str8_lit("#through"));
     atom_directive(TOKEN_FOREIGN, str8_lit("#foreign"));
 }
 

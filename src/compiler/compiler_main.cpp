@@ -128,18 +128,15 @@ int main(int argc, char **argv) {
         for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
             Report *report = file->reports[report_idx];
 
-#if !defined(_DEBUG)
-            print_report(report, file);
-#endif
-
             if (report->kind == REPORT_PARSER_ERROR || report->kind == REPORT_AST_ERROR) error_count++;
 
+#if !defined(BUILD_DEBUG)
+            print_report(report, file);
             for (int i = 0; i < report->children.count; i++) {
                 Report *child = report->children[i];
-#if !defined(_DEBUG)
                 print_report(child, file);
-#endif
             }
+#endif
         }
     }
 
@@ -156,6 +153,5 @@ int main(int argc, char **argv) {
 
     printf("done.\n");
 
-    return 0;
-    // return error_count == 0 ? 0 : 1;
+    return error_count;
 }

@@ -265,6 +265,60 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     exit_scope();
 }
 
+void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
+    ifcase->is_constant = true;
+
+    resolve_expr(ifcase->cond);
+
+    if (ifcase->cases.count == 0) {
+        report_ast_error(ifcase, "case statement contains no cases.\n");
+    }
+
+    for (Ast_Case_Label *case_label : ifcase->cases) {
+        case_label->scope = new_scope(SCOPE_BLOCK);
+
+        if (case_label->cond) {
+            resolve_expr(case_label->cond);
+
+            if (!case_label->cond->is_constant()) {
+                ifcase->is_constant = false;
+            }
+
+            if (!typecheck(ifcase->cond->type_info, case_label->cond->type_info)) {
+                report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type_info));
+            }
+        } else {
+            if (ifcase->default_case) {
+                report_ast_error(case_label, "multiple defaults in case statement.\n");
+            } else {
+                ifcase->default_case = case_label;
+            }
+        }
+
+        for (Ast_Stmt *s : case_label->statements) {
+            resolve_stmt(s);
+        }
+        exit_scope();
+    }
+
+    if (ifcase->default_case) {
+        ifcase->default_case->is_default = true;
+        //@Note Move default to the end
+        // int shift_idx = 0;
+        // for (int i = 0; i < ifcase->cases.count; i++) {
+        //     Ast_Case_Label *case_label = ifcase->cases[i];
+        //     if (case_label == ifcase->default_case) {
+        //         shift_idx = i;
+        //         break;
+        //     }
+        // }
+        // for (int i = shift_idx; i < ifcase->cases.count - 1; i++) {
+        //     ifcase->cases[i] = ifcase->cases[i + 1];
+        // }
+        // ifcase->cases[ifcase->cases.count - 1] = ifcase->default_case;
+    }
+}
+
 void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     if (stmt == NULL) return;
 
@@ -281,6 +335,14 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
         resolve_decl_stmt(decl_stmt);
         break;
     }
+
+    case AST_IFCASE:
+    {
+        Ast_Ifcase *ifcase = static_cast<Ast_Ifcase*>(stmt);
+        resolve_ifcase_stmt(ifcase);
+        break;
+    }
+
     case AST_IF:
     {
         Ast_If *if_stmt = static_cast<Ast_If*>(stmt);
@@ -289,10 +351,7 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
         }
         break;
     }
-    case AST_SWITCH:
-    {
-        break;
-    }
+
     case AST_WHILE:
     {
         Ast_While *while_stmt = static_cast<Ast_While*>(stmt);
@@ -711,7 +770,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         Ast_Type_Info *struct_type = specified_type;
         if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
-            report_note(struct_type->decl->start, "see declaration of '%s'.\n", struct_type->decl->name->data);
+            // report_note(struct_type->decl->start, literal->file, "see declaration of '%s'.\n", struct_type->decl->name->data);
             literal->poison();
         }
 
@@ -913,7 +972,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
             call->type_info = proc_type->return_type;
             if (!proc->has_varargs && (call->arguments.count != proc_type->parameters.count)) {
                 report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
-                report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
+                // report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
                 call->poison();
                 return;
             }
@@ -933,7 +992,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
             }
 
             if (bad_arg) {
-                report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
+                // report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
             }
         } else {
             report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
@@ -1063,6 +1122,8 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
             report_ast_error(range, "mismatched types in range expression ('%s' and '%s').\n", string_from_type(range->lhs->type_info), string_from_type(range->rhs->type_info));
         }
     }
+
+    if (range->lhs->is_constant() && range->rhs->is_constant()) range->expr_flags |= EXPR_FLAG_CONSTANT;
 
     range->type_info = range->lhs->type_info;
 }
@@ -1277,6 +1338,7 @@ void Resolver::resolve_proc(Ast_Proc *proc) {
         for (int i = 0; i < proc->parameters.count; i++) {
             Ast_Param *param = proc->parameters[i];
             add_entry(param);
+            proc->local_vars.push(param);
         }
         resolve_block(proc->block);
         exit_scope();
@@ -1441,7 +1503,6 @@ ERROR_BLOCK:
 }
 
 void Resolver::resolve_param(Ast_Param *param) {
-    current_proc->local_vars.push(param);
     if (!param->is_vararg) {
         Ast_Type_Info *type_info = resolve_type(param->type_defn);
         param->type_info = type_info;

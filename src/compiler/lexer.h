@@ -8,10 +8,10 @@ struct Report;
 struct Parser;
 
 struct Source_Pos {
-    u64 col;
-    u64 line;
-    u64 index;
     Source_File *file;
+    u64 line;
+    u64 col;
+    u64 index;
 };
 
 enum Token_Kind {
@@ -97,6 +97,7 @@ enum Token_Kind {
     TOKEN_FALSE,
     TOKEN_IF,
     TOKEN_ELSE,
+    TOKEN_CASE,
     TOKEN_WHILE,
     TOKEN_FOR,
     TOKEN_BREAK,
@@ -112,6 +113,7 @@ enum Token_Kind {
     TOKEN_LOAD,
     TOKEN_IMPORT,
     TOKEN_FOREIGN,
+    TOKEN_THROUGH,
     TOKEN_DIRECTIVE_END,
 
     TOKEN_COUNT
@@ -189,5 +191,8 @@ struct Lexer {
     void eat_line();
     void next_token();
 };
+
+
+internal Source_Pos make_source_pos(Source_File *file, u64 line, u64 col, u64 index);
 
 #endif // LEXER_H

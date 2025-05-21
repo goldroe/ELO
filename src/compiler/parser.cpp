@@ -320,6 +320,9 @@ internal int get_operator_precedence(Token_Kind op) {
     case TOKEN_LSHIFT:
     case TOKEN_RSHIFT:
         return 2000;
+
+    case TOKEN_ELLIPSIS:
+        return 1000; 
     }
 }
 
@@ -336,7 +339,12 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
 
         Ast_Expr *rhs = parse_unary_expr();
         if (rhs == NULL) {
-            report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
+            //@Todo Temporary, allows the case statement expr condition
+            if (op.kind == TOKEN_EQ2) {
+                lexer->rewind(op);
+            } else {
+                report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
+            }
             return lhs;
         }
 
@@ -458,12 +466,47 @@ Ast_If *Parser::parse_if_stmt() {
     expect(TOKEN_IF);
 
     Ast_Expr *cond = parse_expr();
+    if (!cond) {
+        report_parser_error(lexer, "missing condition for if statement.\n");
+        stmt->poison();
+    }
+
     Ast_Block *block = parse_block();
-    Source_Pos end = block->end;
     stmt = ast_if_stmt(cond, block);
 
-    stmt->mark_range(start, end);
+    stmt->mark_range(start, block->end);
     return stmt;
+}
+
+Ast_If *Parser::parse_if_stmt_head(Ast_Expr *cond) {
+    Ast_Block *block = parse_block();
+    Ast_If *head = ast_if_stmt(cond, block);
+    head->mark_end(block->end);
+
+    Ast_If *tail = head;
+    while (lexer->eat(TOKEN_ELSE) && !lexer->eof()) {
+        Ast_If *elif = NULL;
+        if (lexer->match(TOKEN_IF)) {
+            elif = parse_if_stmt();
+            elif->if_prev = tail;
+            tail->if_next = elif;
+        } else {
+            Ast_Block *block = parse_block();
+            elif = ast_if_stmt(NULL, block);
+            elif->is_else = true;
+            tail->if_next = elif;
+            elif->if_prev = tail;
+            tail = elif;
+            break;
+        }
+
+        if (elif == NULL) break;
+        elif->if_prev = tail;
+        tail->if_next = elif;
+        tail = elif;
+    }
+
+    return head;
 }
 
 Ast_While *Parser::parse_while_stmt() {
@@ -484,23 +527,6 @@ Ast_While *Parser::parse_while_stmt() {
     Ast_While *stmt = ast_while_stmt(cond, block);
     stmt->mark_range(start, end);
     return stmt;
-}
-
-Ast_Expr *Parser::parse_range_expr() {
-    Source_Pos start = lexer->current().start;
-    Ast_Expr *lhs = parse_expr();
-    Ast_Expr *rhs = NULL;
-    if (lexer->eat(TOKEN_ELLIPSIS)) {
-        rhs = parse_expr();
-        Ast_Range *range = ast_range_expr(lhs, rhs);
-        Source_Pos end = rhs->end;
-        range->mark_range(start, end);
-        return range;
-    }
-
-    Source_Pos end = lexer->current().end;
-    lhs->mark_range(start, end);
-    return lhs;
 }
 
 //@Todo Change loop syntax from c-like syntax to something better
@@ -526,6 +552,83 @@ Ast_For *Parser::parse_for_stmt() {
     return stmt;
 }
 
+Ast_Case_Label *Parser::parse_case_label() {
+    Source_Pos start = lexer->current().start;
+    Source_Pos end = start;
+
+    expect(TOKEN_CASE);
+    Ast_Expr *cond = parse_expr();
+    expect(TOKEN_COLON);
+
+    Ast_Case_Label *label = AST_NEW(Ast_Case_Label);
+    label->cond = cond;
+
+    Auto_Array<Ast_Stmt*> fallthrough_statements;
+
+    while (!lexer->eof()) {
+        if (lexer->match(TOKEN_CASE)) break;
+        Ast_Stmt *stmt = parse_stmt();
+        if (!stmt) break;
+
+        if (stmt->kind == AST_FALLTHROUGH) {
+            label->fallthrough = true;
+        } else {
+            label->statements.push(stmt);
+        }
+        fallthrough_statements.push(stmt);
+    }
+
+    if (fallthrough_statements.count) {
+        for (Ast_Stmt *stmt : fallthrough_statements) {
+            if (stmt->kind == AST_FALLTHROUGH && stmt != fallthrough_statements.back()) {
+                report_parser_error(stmt, "illegal #fallthrough, must be placed at end of case block.\n");
+            }
+        }
+        end = fallthrough_statements.back()->end;
+        fallthrough_statements.clear();
+    }
+
+    label->mark_range(start, end);
+
+    return label;
+}
+
+Ast_Ifcase *Parser::parse_ifcase_stmt() {
+    Ast_Ifcase *ifcase = AST_NEW(Ast_Ifcase);
+    expect(TOKEN_LBRACE);
+
+    Ast_Case_Label *last_label = nullptr;
+
+    while (!lexer->eof()) {
+        if (lexer->match(TOKEN_RBRACE)) break;
+
+        Ast_Stmt *stmt = parse_stmt();
+        if (!stmt) break;
+
+        if (stmt->kind == AST_CASE_LABEL) {
+            Ast_Case_Label *label = static_cast<Ast_Case_Label*>(stmt);
+
+            if (last_label) {
+                last_label->next_label = label;
+            }
+            label->prev_label = last_label;
+            last_label = label;
+
+            ifcase->cases.push(label);
+        } else {
+            report_parser_error(lexer, "illegal statement in case statement, not under a case label.\n");
+            ifcase->poison();
+        }
+    }
+
+    Source_Pos end = lexer->current().end;
+    expect(TOKEN_RBRACE);
+
+    ifcase->mark_end(end);
+
+    return ifcase;
+}
+
 Ast_Stmt *Parser::parse_stmt() {
     Ast_Stmt *stmt = NULL;
     bool stmt_error = false;
@@ -539,10 +642,22 @@ Ast_Stmt *Parser::parse_stmt() {
                 report_parser_error(lexer, "expected ';', got '%s'.\n", string_from_token(lexer->peek()));
                 stmt_error = true;
             }
-        } else {
-            report_parser_error(lexer, "expected statement, got '%s'.\n", string_from_token(lexer->peek()));
-            stmt_error = true;
         }
+
+        //@Todo This doesn't need to be reported?
+        // else {
+        //     report_parser_error(lexer, "expected statement, got '%s'.\n", string_from_token(lexer->peek()));
+        //     stmt_error = true;
+        // }
+        break;
+    }
+
+    case TOKEN_THROUGH:
+    {
+        Token token = lexer->current();
+        lexer->next_token();
+        stmt = AST_NEW(Ast_Fallthrough);
+        stmt->mark_range(token.start, token.end);
         break;
     }
 
@@ -561,31 +676,31 @@ Ast_Stmt *Parser::parse_stmt() {
         break;
     }
 
+    case TOKEN_CASE:
+    {
+        Ast_Case_Label *case_label = parse_case_label();
+        stmt = case_label;
+        break;
+    }
+
     case TOKEN_IF:
     {
-        Ast_If *if_stmt = parse_if_stmt();
-        Ast_If *last_if = if_stmt;
-        while (lexer->eat(TOKEN_ELSE) && !lexer->eof())  {
-            Ast_If *elif = NULL;
-            if (lexer->match(TOKEN_IF)) {
-                elif = parse_if_stmt();
-                elif->if_prev = last_if;
-                last_if->if_next = elif;
-            } else {
-                Ast_Block *block = parse_block();
-                elif = ast_if_stmt(NULL, block);
-                last_if->if_next = elif;
-                elif->if_prev = last_if;
-                last_if = elif;
-                break;
-            }
+        Token token = lexer->current();
+        lexer->next_token();
 
-            if (elif == NULL) break;
-            elif->if_prev = last_if;
-            last_if->if_next = elif;
-            last_if = elif;
+        Ast_Expr *cond = parse_expr();
+
+        if (lexer->eat(TOKEN_EQ2)) {
+            Ast_Ifcase *ifcase = parse_ifcase_stmt();
+            ifcase->cond = cond;
+            ifcase->mark_start(token.start);
+            stmt = ifcase;
+        } else {
+            Ast_If *if_stmt = parse_if_stmt_head(cond);
+            if_stmt->mark_start(token.start);
+            stmt = if_stmt;
         }
-        stmt = if_stmt;
+
         break;
     }
     case TOKEN_ELSE:
