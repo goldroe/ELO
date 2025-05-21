@@ -10,14 +10,14 @@ set PROJECT=ELO
 if not exist build mkdir build
 set WARNING_FLAGS=/W4 /wd4100 /wd4101 /wd4189 /wd4200 /wd4201 /wd4456 /wd4505 /wd4706
 set INCLUDES=/Isrc\ /Iext\
-set COMMON_COMPILER_FLAGS=/nologo /FC /EHsc /Fdbuild\ /Fobuild\ %WARNING_FLAGS% %INCLUDES% /std:c++17 /MD
+set COMMON_COMPILER_FLAGS=/nologo /FC /EHsc /Fdbuild\ /Fobuild\ %WARNING_FLAGS% %INCLUDES% /std:c++17
 set COMMON_LINKER_FLAGS=/INCREMENTAL:NO /OPT:REF
 
 set COMPILER_FLAGS=%COMMON_COMPILER_FLAGS%
 if %MODE%==release (
-  set COMPILER_FLAGS=/O2 /D %COMPILER_FLAGS%
+  set COMPILER_FLAGS=/O2 /MD /Z7 %COMPILER_FLAGS%
 ) else if %mode%==debug (
-  set COMPILER_FLAGS=/Zi /Od %COMPILER_FLAGS%
+  set COMPILER_FLAGS=/Od /MD /Zi /DBUILD_DEBUG %COMPILER_FLAGS%
 ) else (
   echo Unkown build mode
   exit /B 2
