@@ -13,18 +13,19 @@ u8 Lexer::get_escape_character(u8 c) {
         break;
     case '\\': return '\\';
     case '0':  return 0;
-    case 't':  return 0x9;
-    case 'n':  return 0xA;
-    case 'r':  return 0xD;
+    case 't':  return '\t';
+    case 'n':  return '\n';
+    case 'r':  return '\r';
+    case '\'': return '\'';
     }
 }
 
-internal Source_Pos source_pos(u64 line, u64 col, u64 index, Source_File *file) {
+internal Source_Pos make_source_pos(Source_File *file, u64 line, u64 col, u64 index) {
     Source_Pos result;
+    result.file = file;
     result.line = line;
     result.col = col;
     result.index = index;
-    result.file = file;
     return result;
 }
 
@@ -325,7 +326,7 @@ lex_start:
     u8 *begin = (u8 *)stream;
 
     Token token = {};
-    token.start = source_pos(line_number, column_number, stream_index, source_file);
+    token.start = make_source_pos(source_file, line_number, column_number, stream_index);
     
     switch (*stream) {
     default:
@@ -652,6 +653,26 @@ lex_start:
         break; 
     }
 
+    case '\'':
+    {
+        eat_char();
+        u8 c = 0;
+        if (peek_character() == '\\') {
+            eat_char();
+            c = get_escape_character(peek_character());
+            eat_char();
+        } else {
+            c = *stream;
+            eat_char();
+        }
+        eat_char();
+
+        token.kind = TOKEN_INTLIT;
+        token.intlit = c;
+        token.literal_flags = LITERAL_U8;
+        break;
+    }
+
     case ',':
     {
         token.kind = TOKEN_COMMA;
@@ -679,7 +700,7 @@ lex_start:
     }
     }
 
-    token.end = source_pos(line_number, column_number, stream_index, source_file);
+    token.end = make_source_pos(source_file, line_number, column_number, stream_index);
 
     current_token = token;
 }
