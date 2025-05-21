@@ -23,13 +23,13 @@ main :: () -> int {
         fprintf(fp, "========== IT:%d ============\n", i);
         for y := 0; y < map_height; y += 1 {
             for x := 0; x < map_width; x += 1 {
-                ch := 0x20;
                 if cells[y][x] {
-                    ch = 0x2A;
+                    fputc(cast(int)'*', fp);
+                } else {
+                    fputc(cast(int)' ', fp);
                 }
-                fputc(ch, fp);
             }
-            fputc(0xA, fp);
+            fputc(cast(int)'\n', fp);
         }
 
         // copy cells
@@ -68,24 +68,17 @@ main :: () -> int {
                 }
 
                 cell := *cells[y][x];
-                alive := cell.*;
 
-                if alive == 1 {
-                    // under population
+                if cell.* {
                     if live < 2 {
-                       cell.* = 0;
+                        // under population
+                        cell.* = 0;
+                    } else if live > 3 {
+                        // over population
+                        cell.* = 0;
                     }
-                    // over population
-                    if live > 3 {
-                       cell.* = 0;
-                    }
-                }
-
-                if alive == 0 {
-                    // birth
-                    if live == 3 {
-                        cell.* = 1;
-                    }
+                } else if live == 3 {
+                    cell.* = 1;
                 }
             }
         }
