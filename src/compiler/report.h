@@ -20,7 +20,7 @@ struct Report {
 };
 
 internal void print_report(Report *report, Source_File *file);
-internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos, Ast *node = nullptr);
+internal Report *submit_report(Source_File *file, Source_File *owner, Report_Kind kind, String8 message, Source_Pos pos, Ast *node = nullptr);
 internal void report_parser_error(Lexer *lexer, const char *fmt, ...);
 internal void report_ast_error(Ast *node, const char *fmt, ...);
 

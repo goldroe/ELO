@@ -8,7 +8,7 @@ void report_redeclaration(Ast_Decl *decl) {
     report_ast_error(decl, "redeclaration of '%s'.\n", decl->name->data);
 }
 
-internal Report *submit_report(Source_File *file, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
+internal Report *submit_report(Source_File *file, Source_File *owner, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
     Report *result = alloc_item(heap_allocator(), Report);
     result->kind = kind;
     result->message = message;
@@ -16,28 +16,26 @@ internal Report *submit_report(Source_File *file, Report_Kind kind, String8 mess
     result->node = node;
 
     if (kind == REPORT_NOTE) {
-        Assert(file->reports.count > 0);
-        Report *parent = file->reports.back();
+        Assert(owner->reports.count > 0);
+        Report *parent = owner->reports.back();
         parent->children.push(result);
     } else {
-        file->reports.push(result);
+        owner->reports.push(result);
     }
 
-#ifdef _DEBUG
+#if defined(BUILD_DEBUG)
     print_report(result, file);
 #endif
 
     return result;
 } 
 
-internal void report_note(Source_Pos pos, const char *fmt, ...) {
+internal void report_note(Source_Pos pos, Source_File *file, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
-
-    Source_File *file = pos.file;
-    Report *report = submit_report(file, REPORT_NOTE, message, pos);
+    Report *report = submit_report(pos.file, file, REPORT_NOTE, message, pos);
 }
 
 internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
@@ -46,10 +44,18 @@ internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
 
-    Source_Pos pos = { lexer->column_number, lexer->line_number, lexer->stream_index, lexer->source_file };
+    Source_Pos pos = make_source_pos(lexer->source_file, lexer->line_number, lexer->column_number, lexer->stream_index);
     Source_File *file = lexer->source_file;
 
-    Report *report = submit_report(file, REPORT_PARSER_ERROR, message, pos);
+    Report *report = submit_report(file, file, REPORT_PARSER_ERROR, message, pos);
+}
+
+internal void report_parser_error(Ast *node, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    String8 message = str8_pushfv(heap_allocator(), fmt, args);
+    va_end(args);
+    Report *report = submit_report(node->file, node->file, REPORT_PARSER_ERROR, message, node->start, node);
 }
 
 internal void report_ast_error(Ast *node, const char *fmt, ...) {
@@ -57,7 +63,7 @@ internal void report_ast_error(Ast *node, const char *fmt, ...) {
     va_start(args, fmt);
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
-    Report *report = submit_report(node->file, REPORT_AST_ERROR, message, node->start, node);
+    Report *report = submit_report(node->file, node->file, REPORT_AST_ERROR, message, node->start, node);
 }
 
 internal int report_sort_compare(const void *a, const void *b) {
