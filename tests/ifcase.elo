@@ -5,7 +5,7 @@ ifcase_nonconst :: () {
     y := 10;
     z := 20;
 
-    if x == {
+    ifcase x {
     case y:
          puts("(:");
          #through
@@ -20,11 +20,25 @@ ifcase_nonconst :: () {
     return;
 }
 
-ifcase :: () {
+ifcase_empty :: () {
+    x := 2000;
+    y := x;
+    z := 1;
+    ifcase {
+    case x > 100:
+         puts("x > 100");
+         #through
+    case y < x:
+         puts("y < x");
+    case z:
+         puts("z");
+    }
+    return;
+}
+
+ifcase_test :: () {
     x := 3;
-    if x == {
-    case 9:
-         puts("999");
+    ifcase x {
     case 0: #through case 1: #through
     case 2:
         puts("FOO");
@@ -35,13 +49,14 @@ ifcase :: () {
     case 4:
         puts("BIZZ");
     case 5:
-        puts("LLL");
     case:
         puts("AAAA");
+    case 9..100:
+         puts("FDSFASF");
     }
 
     ch := 'A';
-    if ch == {
+    ifcase ch {
     case:
         printf("def\n");
 
@@ -58,7 +73,7 @@ ifcase :: () {
 
 ifcase_range :: () {
     ch := '0';
-    if ch == {
+    ifcase ch {
     case:
         printf("def\n");
 
@@ -74,15 +89,15 @@ ifcase_range :: () {
 }
 
 main :: () -> int {
-    printf("ifcase_nonconst\n");
+    ifcase_empty();
+    puts("");
+    
     ifcase_nonconst();
     puts("");
 
-    printf("ifcase\n");
-    ifcase();
+    ifcase_test();
     puts("");
 
-    printf("ifcase_range\n");
     ifcase_range();
     puts("");
 
