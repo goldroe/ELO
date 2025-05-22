@@ -542,24 +542,20 @@ Ast_While *Parser::parse_while_stmt() {
     return stmt;
 }
 
-//@Todo Change loop syntax from c-like syntax to something better
 Ast_For *Parser::parse_for_stmt() {
     Source_Pos start = lexer->current().start;
     expect(TOKEN_FOR);
 
-    Ast_Stmt *init = parse_simple_stmt();
+    Atom *name = lexer->current().name;
+    expect(TOKEN_IDENT);
 
-    expect(TOKEN_SEMI);
+    expect(TOKEN_IN);
 
-    Ast_Expr *cond = parse_expr();
-
-    expect(TOKEN_SEMI);
-
-    Ast_Expr *iterator = parse_expr();
+    Ast_Expr *iterator = parse_range_expr();
 
     Ast_Block *block = parse_block();
 
-    Ast_For *stmt = ast_for_stmt(init, cond, iterator, block);
+    Ast_For *stmt = ast_for_stmt(name, iterator, block);
     Source_Pos end = block->end;
     stmt->mark_range(start, end);
     return stmt;

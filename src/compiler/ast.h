@@ -366,8 +366,7 @@ struct Ast_While : Ast_Stmt {
 
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }
-    Ast_Stmt *init;
-    Ast_Expr *cond;
+    Ast_Var *var;
     Ast_Expr *iterator;
     Ast_Block *block;
 };
@@ -384,12 +383,6 @@ struct Ast_Decl_Stmt : Ast_Stmt {
 
 struct Ast_Block : Ast_Stmt {
     Ast_Block() { kind = AST_BLOCK; }
-    Ast_Block *block_parent = NULL;
-    Ast_Block *block_next = NULL;
-    Ast_Block *block_prev = NULL;
-    Ast_Block *block_first = NULL;
-    Ast_Block *block_last = NULL;
-
     Auto_Array<Ast_Stmt*> statements;
     Scope *scope = NULL;
     b32 returns;

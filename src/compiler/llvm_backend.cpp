@@ -1140,7 +1140,23 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
     // br loop_head
     // label loop_tail:
 
-    if (for_stmt->init) gen_stmt(for_stmt->init);
+
+    // for it in iterator {
+    // ...
+    // }
+
+    Assert(for_stmt->iterator->kind == AST_RANGE);
+    Assert(for_stmt->var->backend_var);
+
+    LLVM_Var *var = (LLVM_Var *)for_stmt->var->backend_var;
+
+    Ast_Range *range = static_cast<Ast_Range*>(for_stmt->iterator);
+
+    llvm::Type *it_type = get_type(range->lhs->type_info);
+
+    LLVM_Value range_max = gen_expr(range->rhs);
+
+    gen_var(for_stmt->var);
 
     llvm::BasicBlock *head = llvm_block_new("loop_head");
     llvm::BasicBlock *body = llvm_block_new("loop_body");
@@ -1148,21 +1164,17 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
 
     builder->CreateBr(head);
 
-    // head
     emit_block(head);
+    llvm::Value *it_value = builder->CreateLoad(var->type, var->alloca);
+    llvm::Value *condition = builder->CreateICmp(llvm::CmpInst::ICMP_SLT, it_value, range_max.value);
+    builder->CreateCondBr(condition, body, tail);
 
-    if (for_stmt->cond) {
-        llvm::Value* condition = gen_condition(for_stmt->cond);
-        builder->CreateCondBr(condition, body, tail);
-    } else {
-        builder->CreateBr(body);
-    }
-
-    // body
     emit_block(body);
     gen_block(for_stmt->block);
 
-    gen_expr(for_stmt->iterator);
+    // it += 1
+    llvm::Value *iterate = builder->CreateAdd(it_value, llvm::ConstantInt::get(it_type, 1, false));
+    builder->CreateStore(iterate, var->alloca);
 
     builder->CreateBr(head);
 
@@ -1215,6 +1227,10 @@ void LLVM_Backend::gen_var(Ast_Var *var_node) {
                     builder->CreateStore(value.value, ptr);
                 }
             }
+        } else if (init->kind == AST_RANGE) {
+            Ast_Range *range = static_cast<Ast_Range*>(init);
+            LLVM_Value init_value = gen_expr(range->lhs);
+            builder->CreateStore(init_value.value, var->alloca);
         } else {
             LLVM_Value init_value = gen_expr(init);
             builder->CreateStore(init_value.value, var->alloca);

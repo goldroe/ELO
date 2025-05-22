@@ -255,9 +255,8 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     Scope *scope = new_scope(SCOPE_BLOCK);
 
-    resolve_stmt(for_stmt->init);
-
-    resolve_expr(for_stmt->cond);
+    add_entry(for_stmt->var);
+    resolve_var(for_stmt->var);
 
     resolve_expr(for_stmt->iterator);
 
@@ -1334,20 +1333,6 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
     }
 }
 
-void Resolver::resolve_control_path_flow(Ast_Proc *proc) {
-    Ast_Block *block = proc->block;
-    for (int i = 0; i < block->statements.count; i++) {
-        Ast_Stmt *stmt = block->statements[i];
-        if (stmt->kind == AST_IF) {
-            Ast_If *if_stmt = static_cast<Ast_If*>(stmt);
-            if_stmt->block->block_parent = block;
-            for (Ast_If *node = if_stmt; node; node = node->if_next) {
-                DLLPushBack(block->block_first, block->block_last, if_stmt->block, block_next, block_prev);
-            }
-        }
-    }
-}
-
 void Resolver::resolve_proc(Ast_Proc *proc) {
     resolve_proc_header(proc);
     if (in_global_scope() && proc->block) {
@@ -1363,7 +1348,6 @@ void Resolver::resolve_proc(Ast_Proc *proc) {
         resolve_block(proc->block);
         exit_scope();
     }
-    // resolve_control_path_flow(proc);
 }
 
 void Resolver::resolve_struct(Ast_Struct *struct_decl) {

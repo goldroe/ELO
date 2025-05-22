@@ -32,19 +32,6 @@ Ast_Decl *Scope::lookup(Atom *name) {
     return NULL;
 }
 
-Auto_Array<Ast_Decl*> Scope::lookup_proc(Atom *name) {
-    Auto_Array<Ast_Decl*> found;
-    for (Scope *scope = this; scope; scope = scope->parent) {
-        for (int i = 0; i < scope->declarations.count; i++) {
-            Ast_Decl *decl = scope->declarations[i];
-            if (atoms_match(decl->name, name)) {
-                found.push(decl);
-            }
-        }
-    }
-    return found;
-}
-
 internal Scope *make_scope(Scope_Flags flags) {
     Scope *result = (Scope*)ast_alloc(sizeof(Scope), alignof(Scope));
     result->scope_flags = flags;
@@ -319,10 +306,10 @@ internal Ast_While *ast_while_stmt(Ast_Expr *cond, Ast_Block *block) {
     return result;
 }
 
-internal Ast_For *ast_for_stmt(Ast_Stmt *init, Ast_Expr *cond, Ast_Expr *iterator, Ast_Block *block) {
+internal Ast_For *ast_for_stmt(Atom *name, Ast_Expr *iterator, Ast_Block *block) {
     Ast_For *result = AST_NEW(Ast_For);
-    result->init = init;
-    result->cond = cond;
+    Ast_Var *var = ast_var(name, iterator, NULL);
+    result->var = var;
     result->iterator = iterator;
     result->block = block;
     return result;
