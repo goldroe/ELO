@@ -19,10 +19,10 @@ main :: () -> int {
     fprintf(fp, "*** GAME OF LIFE ***\n\n");
     fprintf(fp, "Iterations: %d\n", iterations);
 
-    for i := 0; i <= iterations; i += 1 {
+    for i in 0..iterations {
         fprintf(fp, "========== IT:%d ============\n", i);
-        for y := 0; y < map_height; y += 1 {
-            for x := 0; x < map_width; x += 1 {
+        for y in 0..map_height {
+            for x in 0..map_width {
                 if cells[y][x] {
                     fputc(cast(int)'*', fp);
                 } else {
@@ -33,14 +33,14 @@ main :: () -> int {
         }
 
         // copy cells
-        for y := 0; y < map_height; y += 1 {
-            for x := 0; x < map_width; x += 1 {
+        for y in 0..map_height {
+            for x in 0..map_width {
                 cells_copy[y][x] = cells[y][x];
             }
         }
 
-        for y := 0; y < map_height; y += 1 {
-            for x := 0; x < map_width; x += 1 {
+        for y in 0..map_height {
+            for x in 0..map_width {
                 live := 0;
                 if x > 0 {
                     live += cells_copy[y][x-1];
