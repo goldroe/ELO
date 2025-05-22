@@ -181,3 +181,10 @@ internal bool typecheck_castable(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     return true;
 }
 
+bool Ast_Type_Info::is_struct_access() {
+    if (this->is_struct_type() ||
+        (is_pointer_type() && this->base->is_struct_type())) {
+        return true;
+    }
+    return false;
+}

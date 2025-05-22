@@ -131,14 +131,12 @@ struct LLVM_Backend {
     void gen_block(Ast_Block *block);
 
     llvm::BasicBlock *llvm_block_new(const char *s);
+    llvm::BasicBlock *llvm_block_new();
 
-    void insert_block(llvm::BasicBlock *block);
+    void emit_block(llvm::BasicBlock *block);
 
     LLVM_Procedure *lookup_proc(Atom *name);
     LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
-
-
-    llvm::Value *get_ptr_from_struct_ptr(Ast_Field *field, LLVM_Addr addr);
 };
 
 #endif // LLVM_BACKEND_H

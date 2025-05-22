@@ -74,13 +74,13 @@ struct Resolver {
 
     void resolve_ident(Ast_Ident *ident);
     void resolve_range_expr(Ast_Range *range);
-    void resolve_field_expr(Ast_Field *field);
+    void resolve_access_expr(Ast_Access *access);
     void resolve_address_expr(Ast_Address *address);
     void resolve_deref_expr(Ast_Deref *deref);
     void resolve_call_expr(Ast_Call *call);
     void resolve_literal(Ast_Literal *literal);
     void resolve_cast_expr(Ast_Cast *cast);
-    void resolve_index_expr(Ast_Index *index);
+    void resolve_subscript_expr(Ast_Subscript *subscript);
     void resolve_compound_literal(Ast_Compound_Literal *literal);
     void resolve_expr(Ast_Expr *expr);
 

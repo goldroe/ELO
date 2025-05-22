@@ -62,6 +62,8 @@ struct Ast_Type_Info : Ast {
         Auto_Array<Struct_Field_Info> fields;
     } aggregate;
 
+
+    bool is_struct_access();
     inline bool is_boolean_type() { return (type_flags & TYPE_FLAG_BOOLEAN); }
     inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
     inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }

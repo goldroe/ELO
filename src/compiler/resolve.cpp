@@ -1,3 +1,4 @@
+#include <unordered_set>
 
 Resolver::Resolver(Parser *_parser) {
     arena = arena_create();
@@ -266,12 +267,21 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
 }
 
 void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
-    ifcase->is_constant = true;
-
     resolve_expr(ifcase->cond);
+
+    ifcase->switch_jumptable = true;
+
+    if (ifcase->cond) {
+        if (!ifcase->cond->type_info->is_integral_type()) {
+            ifcase->switch_jumptable = false;
+        }
+    } else {
+        ifcase->switch_jumptable = false;
+    }
 
     if (ifcase->cases.count == 0) {
         report_ast_error(ifcase, "case statement contains no cases.\n");
+        ifcase->poison();
     }
 
     for (Ast_Case_Label *case_label : ifcase->cases) {
@@ -279,19 +289,30 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
 
         if (case_label->cond) {
             resolve_expr(case_label->cond);
-
             if (!case_label->cond->is_constant()) {
-                ifcase->is_constant = false;
-            }
-
-            if (!typecheck(ifcase->cond->type_info, case_label->cond->type_info)) {
-                report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type_info));
+                ifcase->switch_jumptable = false;
             }
         } else {
+            case_label->is_default = true;
             if (ifcase->default_case) {
                 report_ast_error(case_label, "multiple defaults in case statement.\n");
             } else {
                 ifcase->default_case = case_label;
+            }
+        }
+            
+        if (ifcase->cond) {
+            if (case_label->cond) {
+                if (!typecheck(ifcase->cond->type_info, case_label->cond->type_info)) {
+                    report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type_info));
+                    ifcase->poison();
+                }
+            }
+        } else {
+            if (case_label->cond->kind == AST_RANGE) {
+                //@Todo report crashes
+                report_ast_error(case_label, "illegal range condition in an ifcase without an initial condition to compare.\n");
+                ifcase->poison();
             }
         }
 
@@ -301,21 +322,37 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         exit_scope();
     }
 
-    if (ifcase->default_case) {
-        ifcase->default_case->is_default = true;
-        //@Note Move default to the end
-        // int shift_idx = 0;
-        // for (int i = 0; i < ifcase->cases.count; i++) {
-        //     Ast_Case_Label *case_label = ifcase->cases[i];
-        //     if (case_label == ifcase->default_case) {
-        //         shift_idx = i;
-        //         break;
-        //     }
-        // }
-        // for (int i = shift_idx; i < ifcase->cases.count - 1; i++) {
-        //     ifcase->cases[i] = ifcase->cases[i + 1];
-        // }
-        // ifcase->cases[ifcase->cases.count - 1] = ifcase->default_case;
+    if (ifcase->switch_jumptable) {
+        std::unordered_set<u64> switch_constants;
+
+        for (Ast_Case_Label *label : ifcase->cases) {
+            if (label->cond) {
+                if (label->cond->kind == AST_RANGE) {
+                    Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+                    u64 min = range->lhs->eval.int_val;
+                    u64 max = range->rhs->eval.int_val;
+                    for (u64 c = min; c <= max; c++) {
+                        auto find = switch_constants.find(c);
+                        if (find != switch_constants.end()) {
+                            ifcase->poison();
+                            report_ast_error(label, "case value '%llu' in range '%s' already used.\n", c, string_from_expr(label->cond));
+                            break;
+                        } else {
+                            switch_constants.insert(c);
+                        }
+                    }
+                } else {
+                    u64 c = label->cond->eval.int_val;
+                    auto find = switch_constants.find(c);
+                    if (find != switch_constants.end()) {
+                        report_ast_error(label, "case value '%llu' already used.\n", c);
+                        ifcase->poison();
+                    } else {
+                        switch_constants.insert(c);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -730,28 +767,28 @@ void Resolver::resolve_cast_expr(Ast_Cast *cast) {
     }
 }
 
-void Resolver::resolve_index_expr(Ast_Index *index) {
-    resolve_expr(index->lhs);
-    resolve_expr(index->rhs);
+void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
+    resolve_expr(subscript->expr);
+    resolve_expr(subscript->index);
 
-    if (index->lhs->valid()) {
-        if (index->lhs->type_info->is_indirection_type()) {
-            index->type_info = index->lhs->type_info->deref();
+    if (subscript->expr->valid()) {
+        if (subscript->expr->type_info->is_indirection_type()) {
+            subscript->type_info = subscript->expr->type_info->deref();
         } else {
-            report_ast_error(index->lhs, "'%s' is not a pointer or array type.\n", string_from_expr(index->lhs));
-            index->poison();
+            report_ast_error(subscript->expr, "'%s' is not a pointer or array type.\n", string_from_expr(subscript->expr));
+            subscript->poison();
         }
     } else {
-        index->poison();
+        subscript->poison();
     }
 
-    if (index->rhs->valid()) {
-        if (!index->rhs->type_info->is_integral_type()) {
-            report_ast_error(index->rhs, "array subscript is not of integral type.\n");
-            index->poison();
+    if (subscript->index->valid()) {
+        if (!subscript->index->type_info->is_integral_type()) {
+            report_ast_error(subscript->index, "array subscript is not of integral type.\n");
+            subscript->poison();
         }
     } else {
-        index->poison();
+        subscript->poison();
     }
 }
 
@@ -1011,89 +1048,72 @@ void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     }
 }
 
-void Resolver::resolve_field_expr(Ast_Field *field_expr) {
-    Ast_Field *parent = field_expr->field_parent;
-    if (parent) {
-        resolve_expr(parent);  
-        if (parent->invalid()) {
-            field_expr->poison();
-            return;
-        }
+void Resolver::resolve_access_expr(Ast_Access *access) {
+    resolve_expr(access->parent);
+    if (access->parent->invalid()) {
+        access->poison();
+        return;
     }
 
-    //@Note This is the base field so just assign its element's type info
-    if (!parent) {
-        Ast_Expr *elem = field_expr->elem;
-        resolve_expr(elem);
+    if (access->parent->type_info->is_struct_access()) {
+        access->expr_flags |= EXPR_FLAG_LVALUE;
 
-        if (elem->type_info->is_struct_type()) {
-            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
+        Ast_Type_Info *struct_type = access->parent->type_info;
+        if (access->parent->type_info->is_pointer_type()) {
+            struct_type = access->parent->type_info->base;
         }
 
-        if (!elem->type_info->is_struct_type() && !elem->type_info->is_enum_type() && !elem->type_info->is_array_type() && !(elem->type_info->type_flags & TYPE_FLAG_STRING) && !(elem->type_info->is_pointer_type() && elem->type_info->base->is_struct_type())) {
-            report_ast_error(field_expr, "'%s' is not a struct, enum or struct pointer type.\n", string_from_expr(field_expr));
-            field_expr->poison();
+        Struct_Field_Info *struct_field = struct_lookup(struct_type, access->name->name);
+        if (!struct_field) {
+            report_ast_error(access->parent, "'%s' is not a member of '%s'.\n", access->name->name->data, struct_type->decl->name->data);
+            access->poison();
+            return;
+        }
+        access->type_info = struct_field->type_info;
+    } else if (access->parent->type_info->is_enum_type()) {
+        if (access->parent->kind == AST_ACCESS) {
+            Ast_Access *parent_access = static_cast<Ast_Access*>(access->parent);
+            if (parent_access->parent->type_info->is_struct_type()) {
+                report_ast_error(access, "cannot access expression of enum inside struct.\n");
+                access->poison();
+                return;
+            }
         }
 
-        field_expr->type_info = elem->type_info;
+        Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(access->parent->type_info);
+        Ast_Enum_Field *enum_field = enum_lookup((Ast_Enum *)enum_type->decl, access->name->name);
+        if (!enum_field) {
+            report_ast_error(access->parent, "'%s' is not a member of '%s'.\n", access->name->name->data, enum_type->decl->name->data);
+            access->poison();
+            return;
+        }
+        access->type_info = type_s32;
+    } else if (access->parent->type_info->is_array_type()) {
+        access->expr_flags |= EXPR_FLAG_LVALUE;
+
+        Ast_Type_Info *type = access->parent->type_info;
+        Struct_Field_Info *struct_field = struct_lookup(type, access->name->name);
+        if (!struct_field) {
+            report_ast_error(access->parent, "'%s' is not a member of array type.\n", access->name->name->data);
+            access->poison();
+            return;
+        }
+        access->type_info = struct_field->type_info;
+    } else if (access->parent->type_info->type_flags & TYPE_FLAG_STRING) {
+        access->expr_flags |= EXPR_FLAG_LVALUE;
+
+        Ast_Type_Info *type = access->parent->type_info;
+        Struct_Field_Info *struct_field = struct_lookup(type, access->name->name);
+        if (!struct_field) {
+            report_ast_error(access->parent, "'%s' is not a member of string type.\n", access->name->name->data);
+            access->poison();
+            return;
+        }
+        access->type_info = struct_field->type_info;
     } else {
-        Assert(field_expr->elem->kind == AST_IDENT);
-
-        Ast_Ident *name = static_cast<Ast_Ident*>(field_expr->elem);
-
-        if (parent->type_info->is_struct_type() || (parent->type_info->is_pointer_type() && parent->type_info->base->is_struct_type())) {
-            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
-            Ast_Type_Info *struct_type = parent->type_info;
-            if (parent->type_info->is_pointer_type()) {
-                struct_type = parent->type_info->base;
-            }
-            Struct_Field_Info *struct_field = struct_lookup(struct_type, name->name);
-            if (struct_field) {
-                field_expr->type_info = struct_field->type_info;
-            } else {
-                report_ast_error(parent, "'%s' is not a member of '%s'.\n", name->name->data, struct_type->decl->name->data);
-                field_expr->poison();
-            }
-        } else if (parent->type_info->is_enum_type()) {
-            if (parent->field_parent && parent->field_parent->type_info->is_struct_type()) {
-                report_ast_error(field_expr, "cannot field expression of enum inside struct.\n");
-                field_expr->poison();
-            }
-
-            Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(parent->type_info);
-            Ast_Enum_Field *enum_field = enum_lookup((Ast_Enum *)enum_type->decl, name->name);
-            if (enum_field) {
-                field_expr->type_info = type_s32;
-            } else {
-                report_ast_error(parent, "'%s' is not a member of '%s'.\n", name->name->data, enum_type->decl->name->data);
-                field_expr->poison();
-            }
-        } else if (parent->type_info->is_array_type()) {
-            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
-
-            Ast_Type_Info *type = parent->type_info;
-            Struct_Field_Info *struct_field = struct_lookup(type, name->name);
-            if (struct_field) {
-                field_expr->type_info = struct_field->type_info;
-            } else {
-                report_ast_error(parent, "'%s' is not a member of array type.\n", name->name->data);
-                field_expr->poison();
-            }
-        } else if (parent->type_info->type_flags & TYPE_FLAG_STRING) {
-            field_expr->expr_flags |= EXPR_FLAG_LVALUE;
-
-            Ast_Type_Info *type = parent->type_info;
-            Struct_Field_Info *struct_field = struct_lookup(type, name->name);
-            if (struct_field) {
-                field_expr->type_info = struct_field->type_info;
-            } else {
-                report_ast_error(parent, "'%s' is not a member of string type.\n", name->name->data);
-                field_expr->poison();
-            }
-        } else {
-            report_ast_error(parent, "left .'%s' is not a struct/enum type.\n", name->name->data);
-            field_expr->poison();
-        }
+        report_ast_error(access->parent, "cannot access left of .'%s', illegal type '%s'.\n", access->name->name->data, string_from_type(access->parent->type_info));
+        access->poison();
+        return;
     }
 }
 
@@ -1205,10 +1225,10 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         break;
     }
 
-    case AST_INDEX:
+    case AST_SUBSCRIPT:
     {
-        Ast_Index *index = static_cast<Ast_Index *>(expr);
-        resolve_index_expr(index);
+        Ast_Subscript *subscript = static_cast<Ast_Subscript *>(expr);
+        resolve_subscript_expr(subscript);
         break;
     }
 
@@ -1254,10 +1274,10 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         break;
     }
 
-    case AST_FIELD:
+    case AST_ACCESS:
     {
-        Ast_Field *field = static_cast<Ast_Field*>(expr);
-        resolve_field_expr(field);
+        Ast_Access *access = static_cast<Ast_Access*>(expr);
+        resolve_access_expr(access);
         break;
     }
 
