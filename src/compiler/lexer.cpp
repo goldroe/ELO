@@ -647,7 +647,7 @@ lex_start:
             token.kind = TOKEN_ELLIPSIS;
             eat_char();
         } else if (*stream == '*') {
-            token.kind = TOKEN_POSTFIX_DEREF;
+            token.kind = TOKEN_DOT_STAR;
             eat_char();
         }
         break; 
@@ -799,7 +799,7 @@ internal char *string_from_token(Token_Kind token) {
     case TOKEN_XOR:
         return "^";
 
-    case TOKEN_POSTFIX_DEREF:
+    case TOKEN_DOT_STAR:
         return ".*";
 
     case TOKEN_LSHIFT:
@@ -826,6 +826,10 @@ internal char *string_from_token(Token_Kind token) {
         return "if";
     case TOKEN_ELSE:
         return "else";
+    case TOKEN_IFCASE:
+        return "ifcase";
+    case TOKEN_CASE:
+        return "case";
     case TOKEN_WHILE:
         return "while";
     case TOKEN_FOR:

@@ -137,6 +137,59 @@ Ast_Expr *Parser::parse_primary_expr() {
     return expr;
 }
 
+Ast_Access *Parser::parse_access_expr(Ast_Expr *base) {
+    Token op = lexer->current();
+    expect(TOKEN_DOT);
+
+    Token name = lexer->current();
+    if (!lexer->eat(TOKEN_IDENT)) {
+        report_parser_error(lexer, "missing name after '.'\n");
+    }
+
+    Ast_Access *access = ast_access_expr(base, ast_ident(name));
+    access->mark_range(op.start, name.end);
+    return access;
+}
+
+Ast_Subscript *Parser::parse_subscript_expr(Ast_Expr *base) {
+    Token op = lexer->current();
+    expect(TOKEN_LBRACKET);
+    
+    Ast_Expr *index = parse_expr();
+    if (index == NULL) {
+        report_parser_error(lexer, "missing subscript expression.\n");
+    }
+
+    Source_Pos end = lexer->current().end;
+    expect(TOKEN_RBRACKET);
+
+    Ast_Subscript *subscript_expr = ast_subscript_expr(op, base, index);
+    subscript_expr->mark_range(base->start, end);
+    return subscript_expr;
+}
+
+Ast_Call *Parser::parse_call_expr(Ast_Expr *expr) {
+    Token op = lexer->current();
+    expect(TOKEN_LPAREN);
+
+    Auto_Array<Ast_Expr*> arguments;
+    do {
+        if (lexer->eof() || lexer->match(TOKEN_RPAREN)){
+            break;   
+        }
+        Ast_Expr *arg = parse_expr();
+        if (arg == NULL) break;
+        arguments.push(arg);
+    } while (lexer->eat(TOKEN_COMMA));
+
+    Source_Pos end = lexer->current().end;
+    expect(TOKEN_RPAREN);
+
+    Ast_Call *call_expr = ast_call_expr(op, expr, arguments);
+    call_expr->mark_range(op.start, end);
+    return call_expr;
+}
+
 Ast_Expr *Parser::parse_postfix_expr() {
     Ast_Expr *expr = parse_primary_expr();
 
@@ -150,29 +203,12 @@ Ast_Expr *Parser::parse_postfix_expr() {
 
         case TOKEN_DOT:
         {
-            Ast_Field *field_expr = ast_field_expr(NULL, expr);
-            field_expr->mark_range(expr->start, expr->end);
-
-            while (lexer->eat(TOKEN_DOT)) {
-                Token name = lexer->current();
-                if (!lexer->eat(TOKEN_IDENT)) {
-                    report_parser_error(lexer, "missing name after '.'\n");
-                    terminate = true;
-                    break;
-                }
-
-                Ast_Field *field = ast_field_expr(field_expr, ast_ident(name));
-                field->mark_range(name.start, name.end);
-                field->field_parent = field_expr;
-                field->field_child = NULL;
-                field_expr->field_child = field;
-                field_expr = field;
-            }
-            expr = field_expr;
+            Ast_Access *access_expr = parse_access_expr(expr);
+            expr = access_expr;
             break;
         }
 
-        case TOKEN_POSTFIX_DEREF:
+        case TOKEN_DOT_STAR:
         {
             lexer->next_token();
             Ast_Deref *deref_expr = ast_deref_expr(op, expr);
@@ -182,38 +218,14 @@ Ast_Expr *Parser::parse_postfix_expr() {
 
         case TOKEN_LBRACKET:
         {
-            lexer->next_token();
-            Ast_Expr *index = parse_expr();
-            if (index == NULL) {
-                report_parser_error(lexer, "missing subscript expression.\n");
-            }
-
-            Source_Pos end = lexer->current().end;
-            expect(TOKEN_RBRACKET);
-            Ast_Index *index_expr = ast_index_expr(op, expr, index);
-            index_expr->mark_range(expr->start, end);
-            expr = index_expr;
+            Ast_Subscript *subscript_expr = parse_subscript_expr(expr);
+            expr = subscript_expr;
             break;
         }
 
         case TOKEN_LPAREN:
         {
-            lexer->next_token();
-            Auto_Array<Ast_Expr*> arguments;
-            do {
-                if (lexer->eof() || lexer->match(TOKEN_RPAREN)){
-                    break;   
-                }
-                Ast_Expr *arg = parse_expr();
-                if (arg == NULL) break;
-                arguments.push(arg);
-            } while (lexer->eat(TOKEN_COMMA));
-
-            Source_Pos end = lexer->current().end;
-            expect(TOKEN_RPAREN);
-
-            Ast_Call *call_expr = ast_call_expr(op, expr, arguments);
-            call_expr->mark_range(op.start, end);
+            Ast_Call *call_expr = parse_call_expr(expr);
             expr = call_expr;
             break;
         }
@@ -320,9 +332,6 @@ internal int get_operator_precedence(Token_Kind op) {
     case TOKEN_LSHIFT:
     case TOKEN_RSHIFT:
         return 2000;
-
-    case TOKEN_ELLIPSIS:
-        return 1000; 
     }
 }
 
@@ -339,12 +348,7 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
 
         Ast_Expr *rhs = parse_unary_expr();
         if (rhs == NULL) {
-            //@Todo Temporary, allows the case statement expr condition
-            if (op.kind == TOKEN_EQ2) {
-                lexer->rewind(op);
-            } else {
-                report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
-            }
+            report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
             return lhs;
         }
 
@@ -366,10 +370,6 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
         // default:
             // error(op.l0, "invalid operator '%s'.\n", string_from_token(op.kind));
             // break;
-
-        case TOKEN_ELLIPSIS:
-            lhs = ast_range_expr(op, lhs, rhs);
-            break;
 
         case TOKEN_PLUS:
         case TOKEN_MINUS:
@@ -416,6 +416,25 @@ Ast_Expr *Parser::parse_assignment_expr() {
     return expr;
 }
 
+Ast_Expr *Parser::parse_range_expr() {
+    Ast_Expr *lhs = parse_expr();
+
+    if (lexer->eat(TOKEN_ELLIPSIS)) {
+        Ast_Expr *rhs = parse_expr();
+        Ast_Range *range_expr = ast_range_expr(lhs, rhs);
+        range_expr->mark_start(lhs->start);
+        range_expr->mark_end(lexer->current().start);
+        if (rhs) {
+            range_expr->mark_end(rhs->end);
+        } else {
+            report_parser_error(lexer, "missing expression after '..'");
+        }
+        return range_expr;
+    } else {
+        return lhs;
+    }
+}
+
 Ast_Expr *Parser::parse_expr() {
     Ast_Expr *expr = parse_assignment_expr();
     if (expr) {
@@ -460,7 +479,7 @@ Ast_Stmt *Parser::parse_simple_stmt() {
 }
 
 Ast_If *Parser::parse_if_stmt() {
-    Ast_If *stmt = NULL;
+    Ast_If *if_stmt = NULL;
     Source_Pos start = lexer->current().start;
 
     expect(TOKEN_IF);
@@ -468,20 +487,13 @@ Ast_If *Parser::parse_if_stmt() {
     Ast_Expr *cond = parse_expr();
     if (!cond) {
         report_parser_error(lexer, "missing condition for if statement.\n");
-        stmt->poison();
+        if_stmt->poison();
     }
 
     Ast_Block *block = parse_block();
-    stmt = ast_if_stmt(cond, block);
+    if_stmt = ast_if_stmt(cond, block);
 
-    stmt->mark_range(start, block->end);
-    return stmt;
-}
-
-Ast_If *Parser::parse_if_stmt_head(Ast_Expr *cond) {
-    Ast_Block *block = parse_block();
-    Ast_If *head = ast_if_stmt(cond, block);
-    head->mark_end(block->end);
+    Ast_If *head = if_stmt;
 
     Ast_If *tail = head;
     while (lexer->eat(TOKEN_ELSE) && !lexer->eof()) {
@@ -506,6 +518,7 @@ Ast_If *Parser::parse_if_stmt_head(Ast_Expr *cond) {
         tail = elif;
     }
 
+    head->mark_range(start, block->end);
     return head;
 }
 
@@ -554,10 +567,11 @@ Ast_For *Parser::parse_for_stmt() {
 
 Ast_Case_Label *Parser::parse_case_label() {
     Source_Pos start = lexer->current().start;
-    Source_Pos end = start;
 
     expect(TOKEN_CASE);
-    Ast_Expr *cond = parse_expr();
+    Ast_Expr *cond = parse_range_expr();
+
+    Source_Pos end = lexer->current().end;
     expect(TOKEN_COLON);
 
     Ast_Case_Label *label = AST_NEW(Ast_Case_Label);
@@ -584,7 +598,7 @@ Ast_Case_Label *Parser::parse_case_label() {
                 report_parser_error(stmt, "illegal #fallthrough, must be placed at end of case block.\n");
             }
         }
-        end = fallthrough_statements.back()->end;
+        // end = fallthrough_statements.back()->end;
         fallthrough_statements.clear();
     }
 
@@ -594,7 +608,14 @@ Ast_Case_Label *Parser::parse_case_label() {
 }
 
 Ast_Ifcase *Parser::parse_ifcase_stmt() {
+    Token token = lexer->current();
+    expect(TOKEN_IFCASE);
+
     Ast_Ifcase *ifcase = AST_NEW(Ast_Ifcase);
+
+    Ast_Expr *cond = parse_expr();
+    ifcase->cond = cond;
+
     expect(TOKEN_LBRACE);
 
     Ast_Case_Label *last_label = nullptr;
@@ -624,8 +645,7 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
     Source_Pos end = lexer->current().end;
     expect(TOKEN_RBRACE);
 
-    ifcase->mark_end(end);
-
+    ifcase->mark_range(token.start, end);
     return ifcase;
 }
 
@@ -643,12 +663,6 @@ Ast_Stmt *Parser::parse_stmt() {
                 stmt_error = true;
             }
         }
-
-        //@Todo This doesn't need to be reported?
-        // else {
-        //     report_parser_error(lexer, "expected statement, got '%s'.\n", string_from_token(lexer->peek()));
-        //     stmt_error = true;
-        // }
         break;
     }
 
@@ -683,24 +697,17 @@ Ast_Stmt *Parser::parse_stmt() {
         break;
     }
 
+    case TOKEN_IFCASE:
+    {
+        Ast_Ifcase *ifcase = parse_ifcase_stmt();
+        stmt = ifcase;
+        break;
+    }
+
     case TOKEN_IF:
     {
-        Token token = lexer->current();
-        lexer->next_token();
-
-        Ast_Expr *cond = parse_expr();
-
-        if (lexer->eat(TOKEN_EQ2)) {
-            Ast_Ifcase *ifcase = parse_ifcase_stmt();
-            ifcase->cond = cond;
-            ifcase->mark_start(token.start);
-            stmt = ifcase;
-        } else {
-            Ast_If *if_stmt = parse_if_stmt_head(cond);
-            if_stmt->mark_start(token.start);
-            stmt = if_stmt;
-        }
-
+        Ast_If *if_stmt = parse_if_stmt();
+        stmt = if_stmt;
         break;
     }
     case TOKEN_ELSE:

@@ -79,7 +79,7 @@ enum Token_Kind {
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
 
-    TOKEN_POSTFIX_DEREF,
+    TOKEN_DOT_STAR,
 
     TOKEN_OPERATOR_END,
 
@@ -97,6 +97,7 @@ enum Token_Kind {
     TOKEN_FALSE,
     TOKEN_IF,
     TOKEN_ELSE,
+    TOKEN_IFCASE,
     TOKEN_CASE,
     TOKEN_WHILE,
     TOKEN_FOR,

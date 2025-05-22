@@ -94,6 +94,7 @@ internal void atom_init() {
     atom_keyword(TOKEN_FALSE,    str8_lit("false"));
     atom_keyword(TOKEN_IF,       str8_lit("if"));
     atom_keyword(TOKEN_ELSE,     str8_lit("else"));
+    atom_keyword(TOKEN_IFCASE,   str8_lit("ifcase"));
     atom_keyword(TOKEN_CASE,     str8_lit("case"));
     atom_keyword(TOKEN_WHILE,    str8_lit("while"));
     atom_keyword(TOKEN_FOR,      str8_lit("for"));

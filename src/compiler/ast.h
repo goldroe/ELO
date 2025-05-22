@@ -31,7 +31,7 @@ enum Ast_Kind {
     AST_COMPOUND_LITERAL,
     AST_IDENT,
     AST_CALL,
-    AST_INDEX,
+    AST_SUBSCRIPT,
     AST_CAST,
     AST_ITERATOR,
 
@@ -40,7 +40,7 @@ enum Ast_Kind {
     AST_DEREF,
     AST_BINARY,
     AST_ASSIGNMENT,
-    AST_FIELD,
+    AST_ACCESS,
     AST_RANGE,
     AST_TERNARY,
 
@@ -153,17 +153,16 @@ struct Ast_Paren : Ast_Expr {
     Ast_Expr *elem;
 };
 
-struct Ast_Index : Ast_Expr {
-    Ast_Index() { kind = AST_INDEX; }
-    Ast_Expr *lhs;
-    Ast_Expr *rhs;
+struct Ast_Subscript : Ast_Expr {
+    Ast_Subscript() { kind = AST_SUBSCRIPT; }
+    Ast_Expr *expr;
+    Ast_Expr *index;
 };
 
-struct Ast_Field : Ast_Expr {
-    Ast_Field() { kind = AST_FIELD; }
-    Ast_Field *field_parent;
-    Ast_Field *field_child;
-    Ast_Expr *elem;
+struct Ast_Access : Ast_Expr {
+    Ast_Access() { kind = AST_ACCESS; }
+    Ast_Expr *parent;
+    Ast_Ident *name;
 };
 
 struct Ast_Range : Ast_Expr {
@@ -356,7 +355,7 @@ struct Ast_Ifcase : Ast_Stmt {
     Ast_Expr *cond;
     Ast_Case_Label *default_case;
     Auto_Array<Ast_Case_Label*> cases;
-    b32 is_constant;
+    b32 switch_jumptable;
 };
 
 struct Ast_While : Ast_Stmt {

@@ -223,10 +223,10 @@ internal Ast_Call *ast_call_expr(Token op, Ast_Expr *elem, Auto_Array<Ast_Expr*>
     return result;
 }
 
-internal Ast_Field *ast_field_expr(Ast_Field *parent, Ast_Expr *elem) {
-    Ast_Field *result = AST_NEW(Ast_Field);
-    result->elem = elem;
-    result->field_parent = parent;
+internal Ast_Access *ast_access_expr(Ast_Expr *parent, Ast_Ident *name) {
+    Ast_Access *result = AST_NEW(Ast_Access);
+    result->parent = parent;
+    result->name = name;
     return result;
 }
 
@@ -275,11 +275,11 @@ internal Ast_Binary *ast_comparison_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs)
     return result;
 }
 
-internal Ast_Index *ast_index_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Index *result = AST_NEW(Ast_Index);
+internal Ast_Subscript *ast_subscript_expr(Token op, Ast_Expr *base, Ast_Expr *index) {
+    Ast_Subscript *result = AST_NEW(Ast_Subscript);
     // result->loc = op.l0;
-    result->lhs = lhs;
-    result->rhs = rhs;
+    result->expr = base;
+    result->index = index;
     result->expr_flags |= EXPR_FLAG_LVALUE;
     return result;
 }
@@ -421,12 +421,12 @@ internal char *string_from_expr(Ast_Expr *expr) {
         result = str;
         break;
     }
-    case AST_INDEX:
+    case AST_SUBSCRIPT:
     {
-        Ast_Index *index = (Ast_Index *)expr;
-        cstring str = string_from_expr(index->lhs);
+        Ast_Subscript *subscript = (Ast_Subscript *)expr;
+        cstring str = string_from_expr(subscript->expr);
         str = cstring_append(str, "[");
-        str = cstring_append(str, string_from_expr(index->rhs));
+        str = cstring_append(str, string_from_expr(subscript->index));
         str = cstring_append(str, "]");
         result = str;
         break;
@@ -464,15 +464,20 @@ internal char *string_from_expr(Ast_Expr *expr) {
         result = str;
         break;
     }
-    case AST_FIELD:
+    case AST_RANGE:
     {
-        Ast_Field *field = (Ast_Field *)expr;
+        Ast_Range *range = static_cast<Ast_Range*>(expr);
+        cstring str = cstring_fmt("%s..%s", string_from_expr(range->lhs), string_from_expr(range->rhs));
+        result = str;
+        break;
+    }
+    case AST_ACCESS:
+    {
+        Ast_Access *access = (Ast_Access *)expr;
         cstring str = NULL;
-        if (field->field_parent) {
-            str = string_from_expr(field->field_parent);
-            str = cstring_append(str, ".");
-        }
-        str = cstring_append(str, string_from_expr(field->elem));
+        str = string_from_expr(access->parent);
+        str = cstring_append(str, ".");
+        str = cstring_append(str, string_from_expr(access->name));
         result = str;
         break;
     }
