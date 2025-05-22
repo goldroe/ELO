@@ -19,10 +19,10 @@ struct Scope {
 
     int level = 0;
     Auto_Array<Ast_Decl*> declarations;
+    // String_Map<Ast_Decl*> decl_map;
     Ast_Block *block;
 
     Ast_Decl *lookup(Atom *name);
-    Auto_Array<Ast_Decl*> lookup_proc(Atom *name);
 };
 
 struct Resolver {

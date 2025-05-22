@@ -1,10 +1,11 @@
 #ifndef BASE_STRINGS_H
 #define BASE_STRINGS_H
 
-struct String8 {
+struct String {
     u8 *data;
     u64 count;
 };
+typedef String String8;
 
 typedef char *cstring;
 struct cstring_header {

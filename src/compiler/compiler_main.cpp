@@ -4,6 +4,8 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb_sprintf.h>
 
+#include "string_map.cpp"
+
 #include "os/os.h"
 #include "path/path.h"
 
