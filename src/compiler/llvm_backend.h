@@ -37,6 +37,7 @@
 #pragma warning(pop)
 
 struct LLVM_Decl;
+struct Case_Unit;
 
 struct LLVM_Value {
     llvm::Value *value;
@@ -84,10 +85,13 @@ struct LLVM_Procedure : LLVM_Decl {
     llvm::BasicBlock *entry;
 
     Auto_Array<LLVM_Var*> named_values;
+
+    llvm::AllocaInst *return_value;
+    llvm::BasicBlock *exit_block;
 };
 
 struct LLVM_Backend {
-    Ast_Root *root;
+    Ast_Root *ast_root;
     Source_File *file;
 
     llvm::LLVMContext *Ctx;
@@ -98,12 +102,12 @@ struct LLVM_Backend {
     Auto_Array<LLVM_Procedure*> global_procedures;
     Auto_Array<LLVM_Struct*> global_structs;
 
-    LLVM_Procedure *current_proc;
-    llvm::BasicBlock *current_block;
+    LLVM_Procedure *current_proc = nullptr;
+    llvm::BasicBlock *current_block = nullptr;
 
     llvm::StructType *builtin_string_type;
 
-    LLVM_Backend(Source_File *file, Ast_Root *root) : root(root), file(file) {}
+    LLVM_Backend(Source_File *file, Ast_Root *root) : ast_root(root), file(file) {}
     
     void gen();
     
@@ -125,18 +129,34 @@ struct LLVM_Backend {
     
     void gen_stmt(Ast_Stmt *stmt);
     void gen_if(Ast_If *if_stmt);
-    void gen_ifcase(Ast_Ifcase *ifcase);
     void gen_while(Ast_While *while_stmt);
     void gen_for(Ast_For *for_stmt);
     void gen_block(Ast_Block *block);
+    void gen_statement_list(Auto_Array<Ast_Stmt*> statement_list);
 
-    llvm::BasicBlock *llvm_block_new(const char *s);
-    llvm::BasicBlock *llvm_block_new();
-
-    void emit_block(llvm::BasicBlock *block);
+    llvm::BasicBlock *llvm_block_new(const char *s = "");
+    void llvm_store(llvm::Value *value, llvm::Value *address);
 
     LLVM_Procedure *lookup_proc(Atom *name);
     LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
+
+    void get_lazy_expressions(Ast_Binary *root, Token_Kind op, Auto_Array<Ast_Expr*> *expr_list);
+    void lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block);
+
+    bool emit_block_check_branch();
+    void emit_block(llvm::BasicBlock *block);
+    void emit_jump(llvm::BasicBlock *target);
+
+    void gen_break(Ast_Break *break_stmt);
+    void gen_return(Ast_Return *return_stmt);
+    void gen_continue(Ast_Continue *continue_stmt);
+
+    void gen_branch(llvm::BasicBlock *target_block);
+    void gen_branch_condition(llvm::Value *condition, llvm::BasicBlock *true_block, llvm::BasicBlock *false_block);
+
+    void gen_ifcase(Ast_Ifcase *ifcase);
+    void gen_ifcase_switch_table(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit);
+    void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit);
 };
 
 #endif // LLVM_BACKEND_H

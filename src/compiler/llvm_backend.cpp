@@ -1,9 +1,5 @@
 global Arena *llvm_arena;
 
-global LLVM_Procedure *builtin_count__string;
-global LLVM_Procedure *builtin_data__string;
-global LLVM_Procedure *builtin_init__string;
-
 #define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
 internal void *llvm_backend_alloc(u64 size, int alignment) {
     void *result = (void *)arena_alloc(llvm_arena, size, alignment);
@@ -21,6 +17,50 @@ internal unsigned llvm_get_struct_field_index(Ast_Struct *struct_decl, Atom *nam
     Assert(0);
     return 0;
 } 
+
+llvm::BasicBlock *LLVM_Backend::llvm_block_new(const char *s) {
+    llvm::BasicBlock *basic_block = llvm::BasicBlock::Create(*Ctx, s);
+    return basic_block;
+}
+
+void LLVM_Backend::emit_block(llvm::BasicBlock *block) {
+    Assert(current_block == NULL);
+    llvm::Function *fn = current_proc->fn;
+    fn->insert(fn->end(), block);
+    builder->SetInsertPoint(block);
+    current_block = block;
+}
+
+bool LLVM_Backend::emit_block_check_branch() {
+    if (!current_block) {
+        return false;
+    }
+
+    // remove blocks that do not have any predecessors
+    if (current_block != current_proc->entry &&
+        current_block->use_begin() == current_block->use_end()) {
+        current_block->eraseFromParent();
+        current_block = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void LLVM_Backend::gen_branch_condition(llvm::Value *condition, llvm::BasicBlock *true_block, llvm::BasicBlock *false_block) {
+    if (!emit_block_check_branch()) {
+        return;
+    }
+    current_block = nullptr;
+    builder->CreateCondBr(condition, true_block, false_block);
+}
+
+void LLVM_Backend::gen_branch(llvm::BasicBlock *target_block) {
+    if (!emit_block_check_branch()) {
+        return;
+    }
+    current_block = nullptr;
+    builder->CreateBr(target_block);
+}
 
 LLVM_Procedure *LLVM_Backend::gen_procedure(Ast_Proc *proc) {
     LLVM_Procedure *llvm_proc = llvm_alloc(LLVM_Procedure);
@@ -54,9 +94,12 @@ LLVM_Procedure *LLVM_Backend::gen_procedure(Ast_Proc *proc) {
     }
 
     if (!proc->foreign) {
-        llvm::BasicBlock *entry = llvm_block_new("entry");
+        llvm::BasicBlock *entry = llvm_block_new();
         llvm_proc->builder = new llvm::IRBuilder<>(*Ctx);
         llvm_proc->entry = entry;
+
+        llvm::BasicBlock *exit_block = llvm_block_new();
+        llvm_proc->exit_block = exit_block;
     }
 
     return llvm_proc;
@@ -78,6 +121,10 @@ void LLVM_Backend::gen_procedure_body(LLVM_Procedure *procedure) {
 
     emit_block(procedure->entry);
 
+    if (!procedure->return_type->isVoidTy()) {
+        procedure->return_value = builder->CreateAlloca(procedure->return_type, 0, nullptr);
+    }
+
     for (int i = 0; i < proc->local_vars.count; i++) {
         Ast_Decl *node = proc->local_vars[i];
         LLVM_Var *var = llvm_alloc(LLVM_Var);
@@ -94,29 +141,25 @@ void LLVM_Backend::gen_procedure_body(LLVM_Procedure *procedure) {
         LLVM_Var *var = procedure->named_values[i];
         Assert(var->decl->kind == AST_PARAM);
         llvm::Argument *argument = procedure->fn->getArg(i);
-        llvm::StoreInst *store_inst = builder->CreateStore(argument, var->alloca);
+        llvm_store(argument, var->alloca);
     }
 
     gen_block(proc->block);
 
+    //@Note Do not branch to exit block if already branch to exit block
+    // if (!llvm_get_last_instruction(procedure->fn)->isTerminator()) {
+        gen_branch(procedure->exit_block);
+    // }
+
+    emit_block(procedure->exit_block);
     if (procedure->return_type->isVoidTy()) {
-        llvm::BasicBlock *last_block = &procedure->fn->back();
-        llvm::Instruction *last_instruction = &last_block->back();
-
-        bool need_return = false;
-        if (!last_instruction) {
-            need_return = true;
-        } else {
-            unsigned opcode = last_instruction->getOpcode();
-            if (opcode == llvm::Instruction::Ret) {
-                need_return = false;
-            }
-        }
-
-        if (need_return) {
-            llvm::ReturnInst *ret = builder->CreateRetVoid();
-        }
+        llvm::ReturnInst *ret = builder->CreateRetVoid();
+    } else {
+        llvm::Value *value = builder->CreateLoad(procedure->return_type, procedure->return_value);
+        llvm::ReturnInst *ret = builder->CreateRet(value);
     }
+
+    current_block = nullptr;
 }
 
 LLVM_Struct *LLVM_Backend::gen_struct(Ast_Struct *struct_decl) {
@@ -143,114 +186,8 @@ void LLVM_Backend::gen() {
     Ctx = new llvm::LLVMContext();
     Module = new llvm::Module("Main", *Ctx);
 
-    // build string type and operations
-    {
-        builtin_string_type = llvm::StructType::create(*Ctx, ".builtin.string");
-        llvm::ArrayRef<llvm::Type*> elements = {
-            llvm::PointerType::get(llvm::Type::getInt8Ty(*Ctx), 0), // data
-            llvm::Type::getInt32Ty(*Ctx), // count
-        };
-        builtin_string_type->setBody(elements, false);
-
-        // builtin.string.init
-        {
-            Atom *name = atom_create(str8_lit("string_init"));
-            llvm::ArrayRef<llvm::Type*> param_types = {
-                llvm::PointerType::get(builtin_string_type, 0),
-                llvm::PointerType::get(llvm::Type::getInt8Ty(*Ctx), 0)
-            };
-            llvm::Type *ret_type = llvm::Type::getVoidTy(*Ctx);
-            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_types, false);
-            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
-
-            builtin_init__string = llvm_alloc(LLVM_Procedure);
-            builtin_init__string->name = name;
-            builtin_init__string->proc = NULL;
-            builtin_init__string->return_type = ret_type;
-            builtin_init__string->type = func_type;
-            builtin_init__string->fn = fn;
-
-            llvm::BasicBlock *entry = llvm_block_new("entry");
-            builtin_init__string->builder = new llvm::IRBuilder<>(*Ctx);
-            builtin_init__string->entry = entry;
-            set_procedure(builtin_init__string);
-            emit_block(entry);
-
-            llvm::Argument *string_arg = fn->getArg(0);
-            llvm::Argument *cstr = fn->getArg(1);
-
-            llvm::Value *string_ptr   = builder->CreateGEP(param_types[0], string_arg, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
-            llvm::Value *ptr_to_data  = builder->CreateStructGEP(builtin_string_type, string_ptr, 0);
-            llvm::Value *ptr_to_count = builder->CreateStructGEP(builtin_string_type, string_ptr, 1);
-
-            builder->CreateStore(cstr, ptr_to_data);
-            builder->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0), ptr_to_count);
-
-            builder->CreateRetVoid();
-        }
-
-        // string.data
-        {
-            Atom *name = atom_create(str8_lit("builtin.string.data"));
-            llvm::Type *param_type = llvm::PointerType::get(builtin_string_type, 0);
-            llvm::Type *ret_type   = builtin_string_type->getElementType(0);
-            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_type, false);
-            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
-
-            builtin_data__string = llvm_alloc(LLVM_Procedure);
-            builtin_data__string->name = name;
-            builtin_data__string->proc = NULL;
-            builtin_data__string->return_type = ret_type;
-            builtin_data__string->type = func_type;
-            builtin_data__string->fn = fn;
-
-            llvm::BasicBlock *entry = llvm_block_new("entry");
-            builtin_data__string->builder = new llvm::IRBuilder<>(*Ctx);
-            builtin_data__string->entry = entry;
-            set_procedure(builtin_data__string);
-            emit_block(entry);
-
-            llvm::Argument *argument = fn->getArg(0);
-
-            llvm::Value *string_ptr = builder->CreateGEP(param_type, argument, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
-            llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, string_ptr, 0);
-            llvm::LoadInst *value = builder->CreateLoad(ret_type, field_ptr);
-            builder->CreateRet(value);
-        }
-
-        // string.count
-        {
-            Atom *name = atom_create(str8_lit("builtin.string.count"));
-            llvm::Type *param_type = llvm::PointerType::get(builtin_string_type, 0);
-            llvm::Type *ret_type   = builtin_string_type->getElementType(1);
-            llvm::FunctionType *func_type = llvm::FunctionType::get(ret_type, param_type, false);
-            llvm::Function *fn = llvm::Function::Create(func_type, llvm::GlobalValue::LinkageTypes::ExternalLinkage, 0, name->data, Module);
-
-            builtin_count__string = llvm_alloc(LLVM_Procedure);
-            builtin_count__string->name = name;
-            builtin_count__string->proc = NULL;
-            builtin_count__string->return_type = ret_type;
-            builtin_count__string->type = func_type;
-            builtin_count__string->fn = fn;
-
-            llvm::BasicBlock *entry = llvm_block_new("entry");
-            builtin_count__string->builder = new llvm::IRBuilder<>(*Ctx);
-            builtin_count__string->entry = entry;
-            set_procedure(builtin_count__string);
-            emit_block(entry);
-
-            llvm::Argument *argument = fn->getArg(0);
-
-            llvm::Value *string_ptr = builder->CreateGEP(param_type, argument, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
-            llvm::Value *field_ptr = builder->CreateStructGEP(builtin_string_type, string_ptr, 1);
-            llvm::LoadInst *value = builder->CreateLoad(ret_type, field_ptr);
-            builder->CreateRet(value);
-        }
-        
-    }
-
-    for (int decl_idx = 0; decl_idx < root->declarations.count; decl_idx++) {
-        Ast_Decl *decl = root->declarations[decl_idx];
+    for (int decl_idx = 0; decl_idx < ast_root->declarations.count; decl_idx++) {
+        Ast_Decl *decl = ast_root->declarations[decl_idx];
         gen_decl(decl);
     }
 
@@ -305,17 +242,19 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
             return llvm::Type::getVoidTy(*Ctx);
         case BUILTIN_TYPE_U8:
         case BUILTIN_TYPE_BOOL:
-        case BUILTIN_TYPE_S8:
+        case BUILTIN_TYPE_I8:
             return llvm::Type::getInt8Ty(*Ctx);
         case BUILTIN_TYPE_U16:
-        case BUILTIN_TYPE_S16:
+        case BUILTIN_TYPE_I16:
             return llvm::Type::getInt16Ty(*Ctx);
         case BUILTIN_TYPE_U32:
-        case BUILTIN_TYPE_S32:
+        case BUILTIN_TYPE_I32:
         case BUILTIN_TYPE_INT:
             return llvm::Type::getInt32Ty(*Ctx);
         case BUILTIN_TYPE_U64:
-        case BUILTIN_TYPE_S64:
+        case BUILTIN_TYPE_ISIZE:
+        case BUILTIN_TYPE_USIZE:
+        case BUILTIN_TYPE_I64:
             return llvm::Type::getInt64Ty(*Ctx);
         case BUILTIN_TYPE_F32:
             return llvm::Type::getFloatTy(*Ctx);
@@ -324,6 +263,9 @@ llvm::Type* LLVM_Backend::get_type(Ast_Type_Info *type_info) {
         case BUILTIN_TYPE_STRING:
             return builtin_string_type;
         }
+    } else if (type_info->is_enum_type()) {
+        llvm::Type *type = get_type(type_info->base);
+        return type;
     } else if (type_info->is_struct_type()) {
         LLVM_Struct *llvm_struct = lookup_struct(type_info->decl->name);
         return llvm_struct->type;
@@ -363,15 +305,15 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
     {
         Ast_Access *access = static_cast<Ast_Access*>(expr);
 
-        LLVM_Addr addr = gen_addr(access->parent);
-
         if (access->parent->type_info->is_struct_type()) {
+            LLVM_Addr addr = gen_addr(access->parent);
             Ast_Struct *struct_node = static_cast<Ast_Struct*>(access->parent->type_info->decl);
             LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
             unsigned idx = llvm_get_struct_field_index(struct_node, access->name->name);
             llvm::Value* access_ptr_value = builder->CreateStructGEP(llvm_struct->type, addr.value, idx);
             result.value = access_ptr_value;
         } else if (access->parent->type_info->is_pointer_type()) {
+            LLVM_Addr addr = gen_addr(access->parent);
             Ast_Type_Info *struct_type = access->parent->type_info->base;
             Ast_Struct *struct_node = static_cast<Ast_Struct*>(struct_type->decl);
             LLVM_Struct *llvm_struct = lookup_struct(struct_node->name);
@@ -381,7 +323,12 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
             llvm::Value *struct_ptr = builder->CreateGEP(ptr_type, addr.value, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
             llvm::Value *access_ptr = builder->CreateStructGEP(llvm_struct->type, struct_ptr, field_idx);
             result.value = access_ptr;
+        } else if (access->parent->type_info->is_enum_type()) {
+            printf("%lld\n", access->eval.int_val);
+            llvm::Constant *constant = llvm::ConstantInt::get(get_type(access->parent->type_info->base), access->eval.int_val);
+            result.value = constant;
         } else if (access->parent->type_info->type_flags & TYPE_FLAG_STRING) {
+            LLVM_Addr addr = gen_addr(access->parent);
             if (atoms_match(access->name->name, atom_create(str_lit("data")))) {
                 llvm::Value *access_ptr = builder->CreateStructGEP(builtin_string_type, addr.value, 0);
                 result.value = access_ptr;
@@ -400,14 +347,22 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
         Ast_Subscript *subscript = static_cast<Ast_Subscript*>(expr);
         LLVM_Addr addr = gen_addr(subscript->expr);
         LLVM_Value rhs = gen_expr(subscript->index);
-        llvm::Type *array_type = get_type(subscript->expr->type_info);
 
-        llvm::ArrayRef<llvm::Value*> indices = {
-            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),  // ptr
-            rhs.value  // subscript
-        };
-        llvm::Value *ptr = builder->CreateGEP(array_type, addr.value, indices);
-        result.value = ptr;
+        if (subscript->expr->type_info->is_array_type()) {
+            llvm::Type *array_type = get_type(subscript->expr->type_info);
+            llvm::ArrayRef<llvm::Value*> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),  // ptr
+                rhs.value  // subscript
+            };
+            llvm::Value *ptr = builder->CreateGEP(array_type, addr.value, indices);
+            result.value = ptr;
+        } else if (subscript->expr->type_info->is_pointer_type()) {
+            llvm::Type *pointer_type = get_type(subscript->expr->type_info);
+            llvm::PointerType* load_type = llvm::PointerType::get(pointer_type, 0);
+            llvm::LoadInst *load = builder->CreateLoad(load_type, addr.value);
+            llvm::Value *ptr = builder->CreateGEP(pointer_type, load, rhs.value);
+            result.value = ptr;
+        }
         break;
     }
 
@@ -425,8 +380,59 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
     return result;
 }
 
+void LLVM_Backend::get_lazy_expressions(Ast_Binary *root, Token_Kind op, Auto_Array<Ast_Expr*> *expr_list) {
+    if (root->lhs->is_binop(op)) {
+        Ast_Binary *child = static_cast<Ast_Binary*>(root->lhs);
+        get_lazy_expressions(child, op, expr_list);
+        expr_list->push(root);
+    } else {
+        expr_list->push(root->lhs);
+        expr_list->push(root->rhs);
+    }
+}
+
+void LLVM_Backend::lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block) {
+    Token_Kind op = root->op.kind;
+    Auto_Array<Ast_Expr*> lazy_hierarchy;
+    get_lazy_expressions(root, op, &lazy_hierarchy);
+
+    llvm::Value *lazy_constant;
+    if (op == TOKEN_AND) lazy_constant = llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(*Ctx));
+    else lazy_constant = llvm::ConstantInt::getTrue(llvm::Type::getInt1Ty(*Ctx));
+
+    for (Ast_Expr *expr : lazy_hierarchy) {
+        bool is_tail = expr == lazy_hierarchy.back();
+
+        llvm::Value *value = NULL;
+        if (expr->is_binop(op)) {
+            Ast_Binary *binary = static_cast<Ast_Binary*>(expr);
+            value = gen_condition(binary->rhs);
+        } else {
+            value = gen_condition(expr);
+        }
+
+        llvm::BasicBlock *phi_block = current_block;
+        if (is_tail) {
+            gen_branch(exit_block);
+            phi_node->addIncoming(value, phi_block);
+            emit_block(exit_block);
+        } else {
+            llvm::BasicBlock *next_block = llvm_block_new();
+            if (op == TOKEN_OR) {
+                gen_branch_condition(value, exit_block, next_block);
+            } else {
+                gen_branch_condition(value, next_block, exit_block);
+            }
+            phi_node->addIncoming(lazy_constant, phi_block);
+            emit_block(next_block);
+        }
+    }
+}
+
 LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
     LLVM_Value result = {};
+    result.type = get_type(binop->type_info);
+
     if (binop->expr_flags & EXPR_FLAG_OP_CALL) {
             
     } else {
@@ -438,77 +444,79 @@ LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
                 result.value = llvm::ConstantFP::get(type, binop->eval.float_val);
             }
         } else {
-            LLVM_Value lhs = gen_expr(binop->lhs);
-            LLVM_Value rhs = gen_expr(binop->rhs);
+            if (binop->op.kind == TOKEN_AND || binop->op.kind == TOKEN_OR) {
+                llvm::BasicBlock *lazy_exit = llvm_block_new("lazy.exit");
+                llvm::PHINode *phi_node = llvm::PHINode::Create(llvm::Type::getInt1Ty(*Ctx), 0);
+                lazy_eval(binop, phi_node, lazy_exit);
+                llvm::Value *phi_value = builder->Insert(phi_node);
+                result.value = phi_value;
+            } else {
+                LLVM_Value lhs = gen_expr(binop->lhs);
+                LLVM_Value rhs = gen_expr(binop->rhs);
 
-            bool is_float = binop->type_info->is_float_type();
-            bool is_signed = binop->type_info->is_signed();
+                bool is_float = binop->type_info->is_float_type();
+                bool is_signed = binop->type_info->is_signed();
 
-            switch (binop->op.kind) {
-            default:
-                Assert(0);
-                break;
+                switch (binop->op.kind) {
+                default:
+                    Assert(0);
+                    break;
 
-            case TOKEN_PLUS:
-                if (binop->type_info->is_integral_type()) {
-                    result.value = builder->CreateAdd(lhs.value, rhs.value);
-                } else if (binop->type_info->is_float_type()) {
-                    result.value = builder->CreateFAdd(lhs.value, rhs.value);
+                case TOKEN_PLUS:
+                    if (binop->type_info->is_integral_type()) {
+                        result.value = builder->CreateAdd(lhs.value, rhs.value);
+                    } else if (binop->type_info->is_float_type()) {
+                        result.value = builder->CreateFAdd(lhs.value, rhs.value);
+                    }
+                    break;
+                case TOKEN_MINUS:
+                    result.value = builder->CreateSub(lhs.value, rhs.value);
+                    break;
+                case TOKEN_STAR:
+                    if (is_float) result.value = builder->CreateFMul(lhs.value, rhs.value);
+                    else          result.value = builder->CreateMul(lhs.value, rhs.value);
+                    break;
+                case TOKEN_SLASH:
+                    result.value = builder->CreateSDiv(lhs.value, rhs.value);
+                    break;
+                case TOKEN_MOD:
+                    result.value = builder->CreateSRem(lhs.value, rhs.value);
+                    break;
+                case TOKEN_LSHIFT:
+                    result.value = builder->CreateShl(lhs.value, rhs.value);
+                    break;
+                case TOKEN_RSHIFT:
+                    result.value = builder->CreateLShr(lhs.value, rhs.value);
+                    break;
+                case TOKEN_BAR:
+                case TOKEN_OR:
+                    result.value = builder->CreateOr(lhs.value, rhs.value);
+                    break;
+                case TOKEN_AMPER:
+                    result.value = builder->CreateAnd(lhs.value, rhs.value);
+                    break;
+                case TOKEN_NEQ:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_NE, lhs.value, rhs.value);
+                    break;
+                case TOKEN_EQ2:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, lhs.value, rhs.value);
+                    break;
+                case TOKEN_LT:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLT, lhs.value, rhs.value);
+                    break;
+                case TOKEN_GT:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGT, lhs.value, rhs.value);
+                    break;
+                case TOKEN_LTEQ:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, lhs.value, rhs.value);
+                    break;
+                case TOKEN_GTEQ:
+                    result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, lhs.value, rhs.value);
+                    break;
                 }
-                break;
-            case TOKEN_MINUS:
-                result.value = builder->CreateSub(lhs.value, rhs.value);
-                break;
-            case TOKEN_STAR:
-                if (is_float) result.value = builder->CreateFMul(lhs.value, rhs.value);
-                else          result.value = builder->CreateMul(lhs.value, rhs.value);
-                break;
-            case TOKEN_SLASH:
-                result.value = builder->CreateSDiv(lhs.value, rhs.value);
-                break;
-            case TOKEN_MOD:
-                result.value = builder->CreateSRem(lhs.value, rhs.value);
-                break;
-            case TOKEN_LSHIFT:
-                result.value = builder->CreateShl(lhs.value, rhs.value);
-                break;
-            case TOKEN_RSHIFT:
-                result.value = builder->CreateLShr(lhs.value, rhs.value);
-                break;
-            case TOKEN_BAR:
-                result.value = builder->CreateOr(lhs.value, rhs.value);
-                break;
-            case TOKEN_AMPER:
-                result.value = builder->CreateAnd(lhs.value, rhs.value);
-                break;
-            case TOKEN_AND:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_OR:
-                Assert(0); // unsupported
-                break;
-            case TOKEN_NEQ:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_NE, lhs.value, rhs.value);
-                break;
-            case TOKEN_EQ2:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, lhs.value, rhs.value);
-                break;
-            case TOKEN_LT:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLT, lhs.value, rhs.value);
-                break;
-            case TOKEN_GT:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGT, lhs.value, rhs.value);
-                break;
-            case TOKEN_LTEQ:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, lhs.value, rhs.value);
-                break;
-            case TOKEN_GTEQ:
-                result.value = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, lhs.value, rhs.value);
-                break;
             }
         }
     }
-    result.type = get_type(binop->type_info);
     return result;
 }
 
@@ -548,10 +556,10 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         case LITERAL_BOOLEAN:
             sign_extend = false;
         case LITERAL_INT:
-        case LITERAL_S8:
-        case LITERAL_S16:
-        case LITERAL_S32:
-        case LITERAL_S64:
+        case LITERAL_I8:
+        case LITERAL_I16:
+        case LITERAL_I32:
+        case LITERAL_I64:
             result.value = llvm::ConstantInt::get(type, literal->int_val, sign_extend);
             break;
         case LITERAL_FLOAT:
@@ -594,10 +602,13 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         Assert(ident->decl);
         LLVM_Var *var = (LLVM_Var *)ident->decl->backend_var;
         Assert(var);
-
-        llvm::LoadInst *load = builder->CreateLoad(var->type, var->alloca);
-        result.value = load;
-        result.type = get_type(ident->type_info);
+        if (ident->type_info->is_array_type()) {
+            result.value = var->alloca;
+        } else {
+            llvm::LoadInst *load = builder->CreateLoad(var->type, var->alloca);
+            result.value = load;
+        }
+        result.type = var->type;
         break;
     }
 
@@ -609,10 +620,6 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         if (call->elem->kind == AST_IDENT) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
             LLVM_Procedure *procedure = lookup_proc(ident->name);
-
-            if (atoms_match(ident->name, atom_create(str8_lit("string_init")))) {
-                procedure = builtin_init__string;
-            }
 
             Auto_Array<llvm::Value*> args;
             for (int i = 0; i < call->arguments.count; i++) {
@@ -633,8 +640,7 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     case AST_SUBSCRIPT:
     {
         Ast_Subscript *subscript = static_cast<Ast_Subscript*>(expr);
-        llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(subscript->expr->type_info));
-        llvm::Type* type = array_type->getElementType();
+        llvm::Type *type = get_type(subscript->type_info);
         LLVM_Addr addr = gen_addr(subscript);
         LLVM_Value rhs = gen_expr(subscript->index);
         llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
@@ -649,12 +655,19 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         Ast_Expr *elem = cast->elem;
         LLVM_Value expr_value = gen_expr(cast->elem);
         llvm::Type* dest_type = get_type(cast->type_info);
+        result.type = dest_type;
 
         if (cast->type_info->is_float_type() && elem->type_info->is_float_type()) {
             result.value = builder->CreateFPCast(expr_value.value, dest_type);
         } else if (cast->type_info->is_integral_type() && elem->type_info->is_integral_type()) {
+            result.value = builder->CreateZExtOrTrunc(expr_value.value, dest_type);
             if (cast->type_info->bytes < elem->type_info->bytes) result.value = builder->CreateTrunc(expr_value.value, dest_type);
             else result.value = builder->CreateIntCast(expr_value.value, dest_type, cast->type_info->is_signed());
+        } else if (cast->type_info->is_pointer_type() && elem->type_info->is_pointer_type()) {
+            result.value = builder->CreatePointerCast(expr_value.value, dest_type);
+        } else {
+            // Assert(0);
+            result.value = expr_value.value;
         }
         break;
     }
@@ -721,6 +734,8 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     {
         Ast_Assignment *assignment = static_cast<Ast_Assignment*>(expr);
 
+        llvm::Type *dest_type = get_type(assignment->type_info);
+
         LLVM_Addr addr = gen_addr(assignment->lhs);
 
         LLVM_Value lhs = {};
@@ -730,9 +745,8 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         }
 
         LLVM_Value rhs = gen_expr(assignment->rhs);
-        if (assignment->rhs->kind == AST_NULL) {
-        }
 
+        //@Todo Cast between operands??
         switch (assignment->op.kind) {
         case TOKEN_EQ:
             break;
@@ -768,9 +782,24 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
             break;
         }
 
-        builder->CreateStore(rhs.value, addr.value);
+        llvm::Value *value = rhs.value;
 
-        result.value = rhs.value;
+        if (rhs.type->isIntegerTy()) {
+            value = builder->CreateZExtOrTrunc(value, dest_type);
+        } else if (rhs.type->isArrayTy()) {
+            llvm::ArrayRef<llvm::Value*> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0)
+            };
+            llvm::Value *base_ptr = builder->CreatePointerCast(rhs.value, dest_type);
+            llvm::Value *ptr = builder->CreateGEP(rhs.type, base_ptr, indices);
+            value = ptr;
+        }
+
+        builder->CreateStore(value, addr.value);
+
+        result.value = value;
+        result.type = dest_type;
 
         // if (assignment->lhs->type_info->is_struct_type()) {
         //     LLVM_Addr addr = gen_addr(assignment->lhs);
@@ -795,10 +824,15 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     case AST_ACCESS:
     {
         Ast_Access *access = static_cast<Ast_Access*>(expr);
-        LLVM_Addr addr = gen_addr(access);
         llvm::Type *type = get_type(access->type_info);
-        llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
-        result.value = load;
+
+        if (access->type_info->is_enum_type()) {
+            result.value = llvm::ConstantInt::get(type, access->eval.int_val);
+        } else {
+            LLVM_Addr addr = gen_addr(access);
+            llvm::LoadInst *load = builder->CreateLoad(type, addr.value);
+            result.value = load;
+        }
         result.type = type;
         break;
     }
@@ -806,11 +840,14 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     return result;
 }
 
-void LLVM_Backend::gen_block(Ast_Block *block) {
-    for (int i = 0; i < block->statements.count; i++) {
-        Ast_Stmt *stmt = block->statements[i];
+void LLVM_Backend::gen_statement_list(Auto_Array<Ast_Stmt*> statement_list) {
+    for (Ast_Stmt *stmt : statement_list) {
         gen_stmt(stmt);
     }
+}
+
+void LLVM_Backend::gen_block(Ast_Block *block) {
+    gen_statement_list(block->statements);
 }
 
 llvm::Value* LLVM_Backend::gen_condition(Ast_Expr *expr) {
@@ -861,34 +898,195 @@ void LLVM_Backend::gen_if(Ast_If *if_stmt) {
         }
 
         if (current->is_else) {
-            llvm::Value *branch = builder->CreateBr(then_block);
+            gen_branch(then_block);
         } else {
             llvm::Value *cond = gen_condition(current->cond);
-            llvm::Value *branch = builder->CreateCondBr(cond, then_block, else_block);
+            gen_branch_condition(cond, then_block, else_block);
         }
 
         emit_block(then_block);
         gen_block(current->block);
-        builder->CreateBr(exit_block);
+
+        gen_branch(exit_block);
 
         emit_block(else_block);
     }
 }
 
-void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
-    struct Case_Unit {
-        Case_Unit *next = nullptr;
-        llvm::BasicBlock *basic_block = nullptr;
-        Auto_Array<Ast_Case_Label*> labels;
-        bool is_default = false;
-        Ast_Case_Label *default_label = nullptr;
-    };
+struct Case_Unit {
+    Case_Unit *next = nullptr;
+    llvm::BasicBlock *basic_block = nullptr;
+    Auto_Array<Ast_Case_Label*> labels;
+    bool is_default = false;
+    Ast_Case_Label *default_label = nullptr;
+};
 
+void LLVM_Backend::gen_ifcase_switch_table(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit) {
+    Assert(ifcase->cond);
+    Assert(ifcase->cond->type_info->is_integral_type());
+    LLVM_Value condition = gen_expr(ifcase->cond);
+
+    llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
+
+    llvm::BasicBlock *default_block = (llvm::BasicBlock *)ifcase->exit_block;
+    if (ifcase->default_case) {
+        Assert(default_unit);
+        default_block = default_unit->basic_block;
+    }
+
+    u64 cases_count = ifcase->cases.count;
+    llvm::SwitchInst *switch_inst = llvm::SwitchInst::Create(condition.value, default_block, (unsigned)cases_count);
+
+    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+        if (unit->is_default) continue;
+        for (Ast_Case_Label *label : unit->labels) {
+            if (label->cond->kind == AST_RANGE) {
+                Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+                llvm::Type *type = get_type(range->type_info);
+                u64 min = range->lhs->eval.int_val;
+                u64 max = range->rhs->eval.int_val;
+                for (u64 c = min; c <= max; c++) {
+                    llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, false));
+                    switch_inst->addCase(case_constant, unit->basic_block);
+                }
+            } else {
+                LLVM_Value case_cond = gen_expr(label->cond);
+                llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(case_cond.value);
+                switch_inst->addCase(case_constant, unit->basic_block);
+            }
+        }
+    }
+
+    builder->Insert(switch_inst);
+
+    current_block = nullptr;
+
+    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+        if (unit->is_default) continue;
+
+        llvm::BasicBlock *basic_block = unit->basic_block;
+        emit_block(basic_block);
+
+        for (Ast_Case_Label *label : unit->labels) {
+            gen_statement_list(label->statements);
+        }
+
+        Ast_Case_Label *last_label = unit->labels.back();
+        llvm::BasicBlock *target = switch_exit;
+        if (last_label->fallthrough && unit->next) {
+            target = unit->next->basic_block;
+        }
+        gen_branch(target);
+    }
+
+    if (ifcase->default_case) {
+        Assert(default_unit);
+        emit_block(default_block);
+        gen_statement_list(default_unit->labels.front()->statements);
+
+        llvm::BasicBlock *target = switch_exit;
+        if (ifcase->default_case->fallthrough && default_unit->next) {
+            target = default_unit->next->basic_block;
+        }
+        gen_branch(target);
+    }
+
+    emit_block(switch_exit);
+}
+
+void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit) {
+    LLVM_Value condition = gen_expr(ifcase->cond);
+
+    //@Note If-Else branching
+    llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
+    llvm::BasicBlock *jump_exit = llvm_block_new();
+
+    llvm::BasicBlock *default_block = (llvm::BasicBlock *)ifcase->exit_block;
+    if (ifcase->default_case) {
+        default_block = default_unit->basic_block;
+    }
+
+    //@Note Artificial jump table
+    for (Ast_Case_Label *label : ifcase->cases) {
+        // Skip default to ensure it is only checked at the end
+        if (label->is_default) continue;
+        Ast_Case_Label *else_label = label->next_label;
+        if (else_label && else_label->is_default) {
+            else_label = else_label->next_label;
+        }
+
+        llvm::BasicBlock *else_block = jump_exit;
+        if (else_label) {
+            else_block = llvm_block_new();
+        }
+
+        llvm::Value *compare = nullptr;
+        if (label->cond->kind == AST_RANGE) {
+            //@Note Check if condition is within range
+            Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+            LLVM_Value lhs = gen_expr(range->lhs);
+            LLVM_Value rhs = gen_expr(range->rhs);
+
+            llvm::Value *gte = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, condition.value, lhs.value);
+            llvm::Value *lte = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, condition.value, rhs.value);
+            compare = builder->CreateAnd(gte, lte);
+        } else {
+            if (ifcase->cond) {
+                LLVM_Value label_cond = gen_expr(label->cond);
+                compare = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, condition.value, label_cond.value);
+            } else {
+                llvm::Value *value = gen_condition(label->cond);
+                compare = value;
+            }
+        }
+        gen_branch_condition(compare, (llvm::BasicBlock *)label->backend_block, else_block);
+
+        emit_block(else_block);
+    }
+    //@Note End of jump table
+    gen_branch(default_block);
+
+    current_block = nullptr;
+
+    //@Note Actual ifcase units
+    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
+        if (unit->is_default) continue;
+
+        llvm::BasicBlock *basic_block = unit->basic_block;
+        emit_block(basic_block);
+
+        for (Ast_Case_Label *label : unit->labels) {
+            gen_statement_list(label->statements);
+        }
+
+        Ast_Case_Label *last_label = unit->labels.back();
+        llvm::BasicBlock *target = switch_exit;
+        if (last_label->fallthrough && unit->next) {
+            target = unit->next->basic_block;
+        }
+        gen_branch(target);
+    }
+
+    if (ifcase->default_case) {
+        emit_block(default_unit->basic_block);
+        gen_statement_list(default_unit->labels.front()->statements);
+
+        llvm::BasicBlock *target = switch_exit;
+        if (ifcase->default_case->fallthrough && default_unit->next) {
+            target = default_unit->next->basic_block;
+        }
+        gen_branch(target);
+    }
+
+    emit_block(switch_exit);
+}
+
+void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
     Case_Unit *root_unit = NULL;
     Case_Unit *default_unit = NULL;
 
     Case_Unit *current_unit = NULL;
-    for (Ast_Case_Label *label = ifcase->cases[0]; label; label = label->next_label) {
+    for (Ast_Case_Label *label = ifcase->cases.front(); label; label = label->next_label) {
         bool new_unit = true;
         if (label->prev_label && (label->prev_label->fallthrough && label->prev_label->statements.count == 0)) {
             new_unit = false;
@@ -920,166 +1118,13 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
         }
     }
 
-    LLVM_Value condition = gen_expr(ifcase->cond);
+    ifcase->exit_block = llvm_block_new();
 
     //@Note Switch
     if (ifcase->switch_jumptable) {
-        Assert(ifcase->cond);
-        Assert(ifcase->cond->type_info->is_integral_type());
-        
-        llvm::BasicBlock *switch_exit = llvm_block_new("switch.exit");
-        llvm::BasicBlock *default_block = switch_exit;
-        if (ifcase->default_case) {
-            Assert(default_unit);
-            default_block = default_unit->basic_block;
-        }
-
-        u64 cases_count = ifcase->cases.count;
-        llvm::SwitchInst *switch_inst = llvm::SwitchInst::Create(condition.value, default_block, (unsigned)cases_count);
-
-        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-            if (unit->is_default) continue;
-            for (Ast_Case_Label *label : unit->labels) {
-                if (label->cond->kind == AST_RANGE) {
-                    Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                    llvm::Type *type = get_type(range->type_info);
-                    u64 min = range->lhs->eval.int_val;
-                    u64 max = range->rhs->eval.int_val;
-                    for (u64 c = min; c <= max; c++) {
-                        llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, false));
-                        switch_inst->addCase(case_constant, unit->basic_block);
-                    }
-                } else {
-                    LLVM_Value case_cond = gen_expr(label->cond);
-                    llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(case_cond.value);
-                    switch_inst->addCase(case_constant, unit->basic_block);
-                }
-            }
-        }
-
-        builder->Insert(switch_inst);
-
-        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-            if (unit->is_default) continue;
-
-            llvm::BasicBlock *basic_block = unit->basic_block;
-            emit_block(basic_block);
-
-            for (Ast_Case_Label *label : unit->labels) {
-                for (Ast_Stmt *stmt : label->statements) {
-                    gen_stmt(stmt);
-                }
-            }
-
-            Ast_Case_Label *last_label = unit->labels.back();
-            llvm::BasicBlock *jump = switch_exit;
-            if (last_label->fallthrough && unit->next) {
-                jump = unit->next->basic_block;
-            }
-            llvm::Value *branch = builder->CreateBr(jump);
-        }
-
-        if (ifcase->default_case) {
-            Assert(default_unit);
-            emit_block(default_block);
-            for (Ast_Stmt *stmt : default_unit->labels[0]->statements) {
-                gen_stmt(stmt);
-            }
-
-            llvm::BasicBlock *jump = switch_exit;
-            if (ifcase->default_case->fallthrough && default_unit->next) {
-                jump = default_unit->next->basic_block;
-            }
-            llvm::Value *branch = builder->CreateBr(jump);
-        }
-
-        emit_block(switch_exit);
+        gen_ifcase_switch_table(ifcase, root_unit, default_unit);
     } else {
-        //@Note If-Else branching
-        llvm::BasicBlock *jump_exit = llvm_block_new();
-        llvm::BasicBlock *switch_exit = llvm_block_new();
-
-        llvm::BasicBlock *default_block = switch_exit;
-        if (ifcase->default_case) {
-            default_block = default_unit->basic_block;
-        }
-
-        //@Note Artificial jump table
-        for (Ast_Case_Label *label : ifcase->cases) {
-            // Skip default to ensure it is only checked at the end
-            if (label->is_default) continue;
-            Ast_Case_Label *else_label = label->next_label;
-            if (else_label && else_label->is_default) {
-                else_label = else_label->next_label;
-            }
-
-            llvm::BasicBlock *else_block = jump_exit;
-            if (else_label) {
-                else_block = llvm_block_new();
-            }
-
-            llvm::Value *compare = nullptr;
-            if (label->cond->kind == AST_RANGE) {
-                //@Note Check if condition is within range
-                Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                LLVM_Value lhs = gen_expr(range->lhs);
-                LLVM_Value rhs = gen_expr(range->rhs);
-
-                llvm::Value *gte = builder->CreateICmp(llvm::CmpInst::ICMP_SGE, condition.value, lhs.value);
-                llvm::Value *lte = builder->CreateICmp(llvm::CmpInst::ICMP_SLE, condition.value, rhs.value);
-                compare = builder->CreateAnd(gte, lte);
-            } else {
-                if (ifcase->cond) {
-                    LLVM_Value label_cond = gen_expr(label->cond);
-                    compare = builder->CreateICmp(llvm::CmpInst::ICMP_EQ, condition.value, label_cond.value);
-                } else {
-                    llvm::Value *value = gen_condition(label->cond);
-                    compare = value;
-                }
-            }
-            builder->CreateCondBr(compare, (llvm::BasicBlock *)label->backend_block, else_block);
-
-            emit_block(else_block);
-        }
-        //@Note End of jump table
-        emit_block(jump_exit);
-        builder->CreateBr(default_block);
-
-        //@Note Actual ifcase units
-        for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-            if (unit->is_default) continue;
-
-            llvm::BasicBlock *basic_block = unit->basic_block;
-            emit_block(basic_block);
-
-            for (Ast_Case_Label *label : unit->labels) {
-                for (Ast_Stmt *stmt : label->statements) {
-                    gen_stmt(stmt);
-                }
-            }
-
-            Ast_Case_Label *last_label = unit->labels.back();
-            llvm::BasicBlock *jump = switch_exit;
-            if (last_label->fallthrough && unit->next) {
-                jump = unit->next->basic_block;
-            }
-            llvm::Value *branch = builder->CreateBr(jump);
-        }
-
-        if (ifcase->default_case) {
-            emit_block(default_unit->basic_block);
-            for (Ast_Stmt *stmt : default_unit->labels[0]->statements) {
-                gen_stmt(stmt);
-            }
-
-            llvm::BasicBlock *jump = switch_exit;
-            if (ifcase->default_case->fallthrough && default_unit->next) {
-                jump = default_unit->next->basic_block;
-            }
-            llvm::Value *branch = builder->CreateBr(jump);
-        }
-
-        emit_block(switch_exit);
+        gen_ifcase_if_else(ifcase, root_unit, default_unit);
     }
 
     for (Case_Unit *unit = root_unit; unit; ) {
@@ -1087,12 +1132,10 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
         unit = unit->next;
         delete temp;
     }
-    
 }
 
 void LLVM_Backend::gen_while(Ast_While *while_stmt) {
     // while x { ... }
-
     // label loop_head:
     // gen x
     // ifcmp neq x, 0
@@ -1102,27 +1145,21 @@ void LLVM_Backend::gen_while(Ast_While *while_stmt) {
     // br loop_head
     // label loop_tail:
 
-    LLVM_Procedure *proc = current_proc;
+    llvm::BasicBlock *body = llvm_block_new();
+    while_stmt->entry_block = llvm_block_new();
+    while_stmt->exit_block = llvm_block_new();
 
-    llvm::BasicBlock *head = llvm_block_new("loop_head");
-    llvm::BasicBlock *body = llvm_block_new("loop_body");
-    llvm::BasicBlock *tail = llvm_block_new("loop_tail");
-
-    builder->CreateBr(head);
-
-    // head
-    emit_block(head);
+    gen_branch((llvm::BasicBlock *)while_stmt->entry_block);
+    emit_block((llvm::BasicBlock *)while_stmt->entry_block);
 
     llvm::Value* condition = gen_condition(while_stmt->cond);
-    builder->CreateCondBr(condition, body, tail);
+    gen_branch_condition(condition, body, (llvm::BasicBlock*)while_stmt->exit_block);
 
-    // body
     emit_block(body);
     gen_block(while_stmt->block);
-    builder->CreateBr(head);
+    gen_branch((llvm::BasicBlock *)while_stmt->entry_block);
 
-    // tail
-    emit_block(tail);
+    emit_block((llvm::BasicBlock *)while_stmt->exit_block);
 }
 
 void LLVM_Backend::gen_for(Ast_For *for_stmt) {
@@ -1139,8 +1176,6 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
     // gen it
     // br loop_head
     // label loop_tail:
-
-
     // for it in iterator {
     // ...
     // }
@@ -1149,37 +1184,40 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
     Assert(for_stmt->var->backend_var);
 
     LLVM_Var *var = (LLVM_Var *)for_stmt->var->backend_var;
-
     Ast_Range *range = static_cast<Ast_Range*>(for_stmt->iterator);
-
     llvm::Type *it_type = get_type(range->lhs->type_info);
-
     LLVM_Value range_max = gen_expr(range->rhs);
 
     gen_var(for_stmt->var);
 
-    llvm::BasicBlock *head = llvm_block_new("loop_head");
-    llvm::BasicBlock *body = llvm_block_new("loop_body");
-    llvm::BasicBlock *tail = llvm_block_new("loop_tail");
+    llvm::BasicBlock *body = llvm_block_new();
+    for_stmt->entry_block = llvm_block_new();
+    for_stmt->exit_block = llvm_block_new();
+    for_stmt->retry_block = llvm_block_new();
 
-    builder->CreateBr(head);
+    builder->CreateBr((llvm::BasicBlock *)for_stmt->retry_block);
 
-    emit_block(head);
+    current_block = nullptr;
+
+    emit_block((llvm::BasicBlock *)for_stmt->entry_block);
     llvm::Value *it_value = builder->CreateLoad(var->type, var->alloca);
+    llvm::Value *iterate = builder->CreateAdd(it_value, llvm::ConstantInt::get(it_type, 1, false));
+    builder->CreateStore(iterate, var->alloca);
+    builder->CreateBr((llvm::BasicBlock *)for_stmt->retry_block);
+
+    current_block = nullptr;
+
+    emit_block((llvm::BasicBlock *)for_stmt->retry_block);
+    it_value = builder->CreateLoad(var->type, var->alloca);
     llvm::Value *condition = builder->CreateICmp(llvm::CmpInst::ICMP_SLT, it_value, range_max.value);
-    builder->CreateCondBr(condition, body, tail);
+    gen_branch_condition(condition, body, (llvm::BasicBlock *)for_stmt->exit_block);
 
     emit_block(body);
     gen_block(for_stmt->block);
 
-    // it += 1
-    llvm::Value *iterate = builder->CreateAdd(it_value, llvm::ConstantInt::get(it_type, 1, false));
-    builder->CreateStore(iterate, var->alloca);
+    gen_branch((llvm::BasicBlock *)for_stmt->entry_block);
 
-    builder->CreateBr(head);
-
-    // tail
-    emit_block(tail);
+    emit_block((llvm::BasicBlock *)for_stmt->exit_block);
 }
 
 void LLVM_Backend::gen_var(Ast_Var *var_node) {
@@ -1214,28 +1252,84 @@ void LLVM_Backend::gen_var(Ast_Var *var_node) {
                 llvm::Type* element_type = array_type->getElementType();
 
                 //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
-                for (int i = 0; i < literal->elements.count; i++) {
-                    Ast_Expr *elem = literal->elements[i];
+                int i = 0;
+                for (Ast_Expr *elem : literal->elements) {
                     LLVM_Value value = gen_expr(elem);
 
-                    llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (uint64_t)i);
+                    llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (u64)i);
                     llvm::ArrayRef<llvm::Value*> indices = {
                         llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
                         idx
                     };
                     llvm::Value *ptr = builder->CreateGEP(array_type, var->alloca, indices);
                     builder->CreateStore(value.value, ptr);
+                    i++;
                 }
             }
         } else if (init->kind == AST_RANGE) {
             Ast_Range *range = static_cast<Ast_Range*>(init);
             LLVM_Value init_value = gen_expr(range->lhs);
             builder->CreateStore(init_value.value, var->alloca);
+        } else if (init->type_info->is_array_type()) {
+            LLVM_Value value = gen_expr(init);
+            llvm::ArrayRef<llvm::Value*> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0)
+            };
+            llvm::Value *ptr = builder->CreateGEP(value.type, value.value, indices);
+            builder->CreateStore(ptr, var->alloca);
         } else {
             LLVM_Value init_value = gen_expr(init);
             builder->CreateStore(init_value.value, var->alloca);
         }
     }
+}
+
+void LLVM_Backend::llvm_store(llvm::Value *value, llvm::Value *address) {
+    builder->CreateStore(value, address);
+}
+
+void LLVM_Backend::emit_jump(llvm::BasicBlock *target) {
+    gen_branch(target);
+    llvm::BasicBlock *next_block = llvm_block_new("unreachable");
+    emit_block(next_block);
+}
+
+void LLVM_Backend::gen_return(Ast_Return *return_stmt) {
+    if (return_stmt->expr) {
+        LLVM_Value value = gen_expr(return_stmt->expr);
+        llvm_store(value.value, current_proc->return_value);
+    }
+    emit_jump(current_proc->exit_block);
+}
+
+void LLVM_Backend::gen_break(Ast_Break *break_stmt) {
+    Ast *ast = break_stmt->target;
+    llvm::BasicBlock *next_block = nullptr;
+    if (ast->kind == AST_WHILE) {
+        Ast_While *while_stmt = static_cast<Ast_While*>(ast);
+        next_block = (llvm::BasicBlock *)while_stmt->exit_block;
+    } else if (ast->kind == AST_FOR) {
+        Ast_For *for_stmt = static_cast<Ast_For*>(ast);
+        next_block = (llvm::BasicBlock *)for_stmt->exit_block;
+    } else if (ast->kind == AST_IFCASE) {
+        Ast_Ifcase *ifcase = static_cast<Ast_Ifcase*>(ast);
+        next_block = (llvm::BasicBlock *)ifcase->exit_block;
+    }
+    emit_jump(next_block);
+}
+
+void LLVM_Backend::gen_continue(Ast_Continue *continue_stmt) {
+    Ast *ast = continue_stmt->target;
+    llvm::BasicBlock *next_block = nullptr;
+    if (ast->kind == AST_WHILE) {
+        Ast_While *while_stmt = static_cast<Ast_While*>(ast);
+        next_block = (llvm::BasicBlock *)while_stmt->entry_block;
+    } else if (ast->kind == AST_FOR) {
+        Ast_For *for_stmt = static_cast<Ast_For*>(ast);
+        next_block = (llvm::BasicBlock *)for_stmt->entry_block;
+    }
+    emit_jump(next_block);
 }
 
 void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
@@ -1294,24 +1388,24 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
         break;
     }
 
-    case AST_RETURN:
+    case AST_BREAK:
     {
-        Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
-        if (return_stmt->expr) {
-            LLVM_Value ret = gen_expr(return_stmt->expr);
-            builder->CreateRet(ret.value);
-        } else {
-            builder->CreateRetVoid();
-        }
+        Ast_Break *break_stmt = static_cast<Ast_Break *>(stmt);
+        gen_break(break_stmt);
         break;
     }
 
-    case AST_GOTO:
+    case AST_CONTINUE:
     {
+        Ast_Continue *continue_stmt = static_cast<Ast_Continue*>(stmt);
+        gen_continue(continue_stmt);
         break;
     }
-    case AST_DEFER:
+
+    case AST_RETURN:
     {
+        Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
+        gen_return(return_stmt);
         break;
     }
     }
@@ -1336,19 +1430,3 @@ void LLVM_Backend::gen_decl(Ast_Decl *decl) {
     }
 }
 
-void LLVM_Backend::emit_block(llvm::BasicBlock *block) {
-    llvm::Function *fn = current_proc->fn;
-    fn->insert(fn->end(), block);
-    builder->SetInsertPoint(block);
-    current_block = block;
-}
-
-llvm::BasicBlock *LLVM_Backend::llvm_block_new(const char *s) {
-    llvm::BasicBlock *basic_block = llvm::BasicBlock::Create(*Ctx, s);
-    return basic_block;
-}
-
-llvm::BasicBlock *LLVM_Backend::llvm_block_new() {
-    llvm::BasicBlock *basic_block = llvm::BasicBlock::Create(*Ctx);
-    return basic_block;
-}
