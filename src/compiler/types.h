@@ -9,11 +9,14 @@ enum Builtin_Type_Kind {
     BUILTIN_TYPE_U16,
     BUILTIN_TYPE_U32,
     BUILTIN_TYPE_U64,
-    BUILTIN_TYPE_S8,
-    BUILTIN_TYPE_S16,
-    BUILTIN_TYPE_S32,
-    BUILTIN_TYPE_S64,
+    BUILTIN_TYPE_I8,
+    BUILTIN_TYPE_I16,
+    BUILTIN_TYPE_I32,
+    BUILTIN_TYPE_I64,
     BUILTIN_TYPE_INT,
+    BUILTIN_TYPE_UINT,
+    BUILTIN_TYPE_ISIZE,
+    BUILTIN_TYPE_USIZE,
     BUILTIN_TYPE_BOOL,
     BUILTIN_TYPE_F32,
     BUILTIN_TYPE_F64,
@@ -83,6 +86,7 @@ struct Ast_Type_Info : Ast {
 
 struct Enum_Field_Info {
     Atom *name;
+    s64 value;
 };
 
 struct Ast_Enum_Type_Info : Ast_Type_Info {

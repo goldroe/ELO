@@ -220,6 +220,26 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     }
 }
 
+void Resolver::resolve_break_stmt(Ast_Break *break_stmt) {
+    if (breakcont_stack.count > 0) {
+        break_stmt->target = breakcont_stack.back();
+    } else {
+        report_ast_error(break_stmt, "illegal break.\n");
+    }
+}
+
+void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
+    if (breakcont_stack.count > 0) {
+        Ast *target = breakcont_stack.back();
+        if (target->kind == AST_IFCASE) {
+            report_ast_error(continue_stmt, "illegal continue.\n");
+        }
+        continue_stmt->target = target;
+    } else {
+        report_ast_error(continue_stmt, "illegal continue.\n");
+    }
+}
+
 void Resolver::resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt) {
     Ast_Decl *decl = decl_stmt->decl;
 
@@ -249,7 +269,9 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
         while_stmt->poison();
     }
 
+    breakcont_stack.push(while_stmt);
     resolve_block(while_stmt->block);
+    breakcont_stack.pop();
 }
 
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
@@ -260,7 +282,9 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
 
     resolve_expr(for_stmt->iterator);
 
+    breakcont_stack.push(for_stmt);
     resolve_block(for_stmt->block);
+    breakcont_stack.pop();
 
     exit_scope();
 }
@@ -282,6 +306,9 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         report_ast_error(ifcase, "case statement contains no cases.\n");
         ifcase->poison();
     }
+
+
+    breakcont_stack.push(ifcase);
 
     for (Ast_Case_Label *case_label : ifcase->cases) {
         case_label->scope = new_scope(SCOPE_BLOCK);
@@ -320,6 +347,8 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         }
         exit_scope();
     }
+
+    breakcont_stack.pop();
 
     if (ifcase->switch_jumptable) {
         std::unordered_set<u64> switch_constants;
@@ -406,18 +435,22 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
         resolve_block(block);
         break;
     }
+    case AST_BREAK:
+    {
+        Ast_Break *break_stmt = static_cast<Ast_Break*>(stmt);
+        resolve_break_stmt(break_stmt);
+        break;
+    }
+    case AST_CONTINUE:
+    {
+        Ast_Continue *continue_stmt = static_cast<Ast_Continue*>(stmt);
+        resolve_continue_stmt(continue_stmt);
+        break;
+    }
     case AST_RETURN:
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         resolve_return_stmt(return_stmt);
-        break;
-    }
-    case AST_GOTO:
-    {
-        break;
-    }
-    case AST_DEFER:
-    {
         break;
     }
     }
@@ -426,12 +459,14 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
 void Resolver::resolve_block(Ast_Block *block) {
     Scope *scope = new_scope(SCOPE_BLOCK);
     scope->block = block;
-
     block->scope = scope;
 
-    for (int i = 0; i < block->statements.count; i++) {
-        Ast_Stmt *stmt = block->statements[i];
+    for (Ast_Stmt *stmt : block->statements) {
         resolve_stmt(stmt);
+        if (stmt->kind == AST_BLOCK) {
+            Ast_Block *b = static_cast<Ast_Block*>(stmt);
+            if (b->returns) block->returns = true;
+        } else if (stmt->kind == AST_RETURN) block->returns = true;
     }
 
     exit_scope();
@@ -518,7 +553,7 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        binary->type_info = lhs->type_info;
+        binary->type_info = type_bool;
     }
 
     if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
@@ -806,7 +841,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         Ast_Type_Info *struct_type = specified_type;
         if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
-            // report_note(struct_type->decl->start, literal->file, "see declaration of '%s'.\n", struct_type->decl->name->data);
+            report_note(struct_type->decl->start, literal->file, "see declaration of '%s'.\n", struct_type->decl->name->data);
             literal->poison();
         }
 
@@ -895,21 +930,21 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
         break;
 
     case LITERAL_INT:
-    case LITERAL_S32:
+    case LITERAL_I32:
         literal->type_info = type_int;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
-    case LITERAL_S8:
-        literal->type_info = type_s8;
+    case LITERAL_I8:
+        literal->type_info = type_i8;
         literal->eval.int_val = (s64)literal->int_val;
         break;
-    case LITERAL_S16:
-        literal->type_info = type_s16;
+    case LITERAL_I16:
+        literal->type_info = type_i16;
         literal->eval.int_val = (s64)literal->int_val;
         break;
-     case LITERAL_S64:
-        literal->type_info = type_s64;
+     case LITERAL_I64:
+        literal->type_info = type_i64;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
@@ -1008,7 +1043,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
             call->type_info = proc_type->return_type;
             if (!proc->has_varargs && (call->arguments.count != proc_type->parameters.count)) {
                 report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
-                // report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
+                report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
                 call->poison();
                 return;
             }
@@ -1028,7 +1063,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
             }
 
             if (bad_arg) {
-                // report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
+                report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
             }
         } else {
             report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
@@ -1086,7 +1121,9 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
             access->poison();
             return;
         }
-        access->type_info = type_s32;
+        access->type_info = access->parent->type_info;
+        access->eval.int_val = enum_field->value;
+        access->expr_flags |= EXPR_FLAG_CONSTANT;
     } else if (access->parent->type_info->is_array_type()) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
@@ -1372,6 +1409,8 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
     Auto_Array<Enum_Field_Info> enum_fields;
     for (int i = 0; i < enum_decl->fields.count; i++) {
         Ast_Enum_Field *field = enum_decl->fields[i];
+        s64 value = (s64)i;
+        field->value = value;
 
         for (int j = 0; j < enum_fields.count; j++) {
             Enum_Field_Info field_info = enum_fields[j];
@@ -1383,6 +1422,7 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
 
         Enum_Field_Info field_info = {};
         field_info.name = field->name;
+        field_info.value = value;
         enum_fields.push(field_info);
     }
 
@@ -1390,6 +1430,7 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
     enum_decl->type_info = type_info;
     type_info->decl = enum_decl;
     type_info->name = enum_decl->name;
+    type_info->base = type_i32;
 }
 
 void Resolver::resolve_var(Ast_Var *var) {
@@ -1526,9 +1567,6 @@ void Resolver::register_global_declarations() {
             global_scope->declarations.push(decl);
         }
     }
-    // // int type
-    // Ast_Type_Decl *int_decl = ast_type_decl(atom_create("int"), type_s32);
-    // global_scope->declarations.push(int_decl);
 
     for (int i = 0; i < root->declarations.count; i++) {
         Ast_Decl *decl = root->declarations[i];

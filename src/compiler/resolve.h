@@ -36,6 +36,8 @@ struct Resolver {
     Scope *current_scope = NULL;
     Ast_Proc *current_proc = NULL;
 
+    Auto_Array<Ast*> breakcont_stack;
+
     Resolver(Parser *_parser);
 
     Ast_Type_Info *resolve_type(Ast_Type_Defn *type_defn);
@@ -56,7 +58,11 @@ struct Resolver {
     void resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt);
     void resolve_if_stmt(Ast_If *if_stmt);
     void resolve_ifcase_stmt(Ast_Ifcase *ifcase);
+
     void resolve_return_stmt(Ast_Return *return_stmt);
+    void resolve_break_stmt(Ast_Break *break_stmt);
+    void resolve_continue_stmt(Ast_Continue *continue_stmt);
+
     void resolve_stmt(Ast_Stmt *stmt);
 
     Ast_Decl *lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> arguments, bool *overloaded);

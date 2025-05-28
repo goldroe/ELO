@@ -14,6 +14,8 @@ u8 Lexer::get_escape_character(u8 c) {
     case '\\': return '\\';
     case '0':  return 0;
     case 't':  return '\t';
+    case 'f': return '\f';
+    case 'v': return '\v';
     case 'n':  return '\n';
     case 'r':  return '\r';
     case '\'': return '\'';
@@ -280,10 +282,10 @@ Token Lexer::scan_integer() {
         {str_lit("u16"), LITERAL_U16},
         {str_lit("u32"), LITERAL_U32},
         {str_lit("u64"), LITERAL_U64},
-        {str_lit("s8"),  LITERAL_S8},
-        {str_lit("s16"), LITERAL_S16},
-        {str_lit("s32"), LITERAL_S32},
-        {str_lit("s64"), LITERAL_S64},
+        {str_lit("i8"),  LITERAL_I8},
+        {str_lit("i16"), LITERAL_I16},
+        {str_lit("i32"), LITERAL_I32},
+        {str_lit("i64"), LITERAL_I64},
         {str_lit("f32"), LITERAL_F32},
         {str_lit("f64"), LITERAL_F64}
     };

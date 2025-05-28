@@ -378,11 +378,11 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
         case TOKEN_MOD:
         case TOKEN_LSHIFT:
         case TOKEN_RSHIFT:
+        case TOKEN_BAR:
+        case TOKEN_AMPER:
             lhs = ast_arithmetic_expr(op, lhs, rhs);
             break;
 
-        case TOKEN_BAR:
-        case TOKEN_AMPER:
         case TOKEN_AND:
         case TOKEN_OR:
             lhs = ast_boolean_expr(op, lhs, rhs);
@@ -492,11 +492,16 @@ Ast_If *Parser::parse_if_stmt() {
 
     Ast_Block *block = parse_block();
     if_stmt = ast_if_stmt(cond, block);
+    if_stmt->mark_range(start, block->end);
 
     Ast_If *head = if_stmt;
 
     Ast_If *tail = head;
-    while (lexer->eat(TOKEN_ELSE) && !lexer->eof()) {
+
+    for (;;) {
+        Source_Pos start = lexer->current().start;
+        if (!lexer->eat(TOKEN_ELSE)) break;
+
         Ast_If *elif = NULL;
         if (lexer->match(TOKEN_IF)) {
             elif = parse_if_stmt();
@@ -505,14 +510,15 @@ Ast_If *Parser::parse_if_stmt() {
         } else {
             Ast_Block *block = parse_block();
             elif = ast_if_stmt(NULL, block);
+            elif->mark_range(start, block->end);
             elif->is_else = true;
             tail->if_next = elif;
             elif->if_prev = tail;
             tail = elif;
             break;
         }
-
         if (elif == NULL) break;
+
         elif->if_prev = tail;
         tail->if_next = elif;
         tail = elif;
@@ -645,6 +651,24 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
     return ifcase;
 }
 
+Ast_Return *Parser::parse_return_stmt() {
+    Source_Pos start = lexer->current().start;
+    expect(TOKEN_RETURN);
+    Ast_Expr *expr = parse_expr();
+    Source_Pos end = lexer->current().end;
+    expect(TOKEN_SEMI);
+    Ast_Return *return_stmt = ast_return(expr);
+    return_stmt->mark_range(start, end);
+    return return_stmt;
+}
+
+Ast_Continue *Parser::parse_continue_stmt() {
+    Ast_Continue *continue_stmt = AST_NEW(Ast_Continue);
+    continue_stmt->mark_range(lexer->current().start, lexer->current().end);
+    expect(TOKEN_CONTINUE);
+    return continue_stmt;
+}
+
 Ast_Stmt *Parser::parse_stmt() {
     Ast_Stmt *stmt = NULL;
     bool stmt_error = false;
@@ -682,7 +706,6 @@ Ast_Stmt *Parser::parse_stmt() {
     {
         Ast_Block *block = parse_block();
         stmt = block;
-        stmt->mark_range(block->start, block->end);
         break;
     }
 
@@ -729,26 +752,23 @@ Ast_Stmt *Parser::parse_stmt() {
 
     case TOKEN_BREAK:
     {
-        lexer->next_token();
         Ast_Break *break_stmt = AST_NEW(Ast_Break);
+        break_stmt->mark_range(lexer->current().start, lexer->current().end);
+        lexer->next_token();
         stmt = break_stmt;
         break;
     }
 
     case TOKEN_CONTINUE:
     {
-        lexer->next_token();
-        Ast_Continue *continue_stmt = AST_NEW(Ast_Continue);
+        Ast_Continue *continue_stmt = parse_continue_stmt();
         stmt = continue_stmt;
         break;
     }
 
     case TOKEN_RETURN:
     {
-        lexer->next_token();
-        Ast_Expr *expr = parse_expr();
-        expect(TOKEN_SEMI);
-        Ast_Return *return_stmt = ast_return(expr);
+        Ast_Return *return_stmt = parse_return_stmt();
         stmt = return_stmt;
         break;
     }

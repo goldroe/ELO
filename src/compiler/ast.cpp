@@ -1,5 +1,9 @@
 global Arena *g_ast_arena;
 
+inline bool Ast_Expr::is_binop(Token_Kind binop) {
+    return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op.kind == binop;
+}
+
 internal Ast *ast_alloc(u64 size, int alignment) {
     Ast *node = (Ast *)arena_alloc(g_ast_arena, size, alignment);
     return node;

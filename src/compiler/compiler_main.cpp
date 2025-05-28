@@ -121,16 +121,12 @@ int main(int argc, char **argv) {
     Resolver *resolver = new Resolver(parser);
     resolver->resolve();
 
-    int error_count = 0;
-
     //@Note Print reports
     for (Source_File *file = source_file_map.first; file; file = file->next) {
         quick_sort(file->reports.data, Report*, file->reports.count, report_sort_compare);
 
         for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
             Report *report = file->reports[report_idx];
-
-            if (report->kind == REPORT_PARSER_ERROR || report->kind == REPORT_AST_ERROR) error_count++;
 
 #if !defined(BUILD_DEBUG)
             print_report(report, file);
@@ -142,11 +138,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (error_count > 0) {
-        printf("%d error(s).\n", error_count);
+    if (g_error_count > 0) {
+        printf("%d error(s).\n", g_error_count);
     }
 
-    if (error_count == 0) {
+    if (g_error_count == 0) {
         LLVM_Backend *backend = new LLVM_Backend(source_file, parser->root);
         backend->gen();
     }
@@ -155,5 +151,5 @@ int main(int argc, char **argv) {
 
     printf("done.\n");
 
-    return error_count;
+    return g_error_count;
 }

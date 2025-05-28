@@ -38,6 +38,8 @@ struct Parser {
     Ast_Stmt *parse_simple_stmt();
     Ast_Stmt *parse_stmt();
     Ast_Block *parse_block();
+    Ast_Return *parse_return_stmt();
+    Ast_Continue *parse_continue_stmt();
 
     Ast_Type_Defn *parse_type();
     Ast_Param *parse_param();

@@ -68,8 +68,6 @@ enum Ast_Kind {
     AST_RETURN,
     AST_CONTINUE,
     AST_BREAK,
-    AST_GOTO,
-    AST_DEFER,
     AST_FALLTHROUGH,
 
     AST_COUNT
@@ -142,6 +140,7 @@ struct Ast_Expr : Ast {
     Eval eval;
 
     bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
+    inline bool is_binop(Token_Kind op);
 };
 
 struct Ast_Null : Ast_Expr {
@@ -356,12 +355,17 @@ struct Ast_Ifcase : Ast_Stmt {
     Ast_Case_Label *default_case;
     Auto_Array<Ast_Case_Label*> cases;
     b32 switch_jumptable;
+
+    void *exit_block;
 };
 
 struct Ast_While : Ast_Stmt {
     Ast_While() { kind = AST_WHILE; }
     Ast_Expr *cond;
     Ast_Block *block;
+
+    void *entry_block;
+    void *exit_block;
 };
 
 struct Ast_For : Ast_Stmt {
@@ -369,6 +373,10 @@ struct Ast_For : Ast_Stmt {
     Ast_Var *var;
     Ast_Expr *iterator;
     Ast_Block *block;
+
+    void *entry_block;
+    void *retry_block;
+    void *exit_block;
 };
 
 struct Ast_Expr_Stmt : Ast_Stmt {
@@ -395,10 +403,12 @@ struct Ast_Return : Ast_Stmt {
 
 struct Ast_Break : Ast_Stmt {
     Ast_Break() { kind = AST_BREAK; }
+    Ast *target;
 };
 
 struct Ast_Continue : Ast_Stmt {
     Ast_Continue() { kind = AST_CONTINUE; }
+    Ast *target;
 };
 
 struct Ast_Fallthrough : Ast_Stmt {
