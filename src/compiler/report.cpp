@@ -1,4 +1,5 @@
-Arena *g_report_arena;
+global Arena *g_report_arena;
+global int g_error_count;
 
 void report_undeclared(Ast_Ident *ident) {
     report_ast_error(ident, "undeclared identifier '%s'.\n", ident->name->data);
@@ -8,26 +9,31 @@ void report_redeclaration(Ast_Decl *decl) {
     report_ast_error(decl, "redeclaration of '%s'.\n", decl->name->data);
 }
 
-internal Report *submit_report(Source_File *file, Source_File *owner, Report_Kind kind, String8 message, Source_Pos pos, Ast *node) {
-    Report *result = alloc_item(heap_allocator(), Report);
-    result->kind = kind;
-    result->message = message;
-    result->source_pos = pos; 
-    result->node = node;
+internal Report *submit_report(Source_File *file, Source_Pos pos, Report_Kind kind, String8 message, Ast *node) {
+    Report *report = alloc_item(heap_allocator(), Report);
+    report->kind = kind;
+    report->message = message;
+    report->source_pos = pos; 
+    report->node = node;
 
-    if (kind == REPORT_NOTE) {
-        Assert(owner->reports.count > 0);
-        Report *parent = owner->reports.back();
-        parent->children.push(result);
-    } else {
-        owner->reports.push(result);
+    if (kind == REPORT_AST_ERROR || kind == REPORT_PARSER_ERROR) g_error_count++;
+
+    // if (kind == REPORT_NOTE) {
+    //     Assert(file->reports.count > 0);
+    //     Report *parent = file->reports.back();
+    //     parent->children.push(result);
+    // } else {
+    //     file->reports.push(result);
+    // }
+
+    if (kind == REPORT_AST_ERROR) {
+        // file->reports.push(report);
     }
-
 #if defined(BUILD_DEBUG)
-    print_report(result, file);
+    print_report(report, file);
 #endif
 
-    return result;
+    return report;
 } 
 
 internal void report_note(Source_Pos pos, Source_File *file, const char *fmt, ...) {
@@ -35,7 +41,7 @@ internal void report_note(Source_Pos pos, Source_File *file, const char *fmt, ..
     va_start(args, fmt);
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
-    Report *report = submit_report(pos.file, file, REPORT_NOTE, message, pos);
+    Report *report = submit_report(file, pos, REPORT_NOTE, message, NULL);
 }
 
 internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
@@ -47,7 +53,7 @@ internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     Source_Pos pos = make_source_pos(lexer->source_file, lexer->line_number, lexer->column_number, lexer->stream_index);
     Source_File *file = lexer->source_file;
 
-    Report *report = submit_report(file, file, REPORT_PARSER_ERROR, message, pos);
+    Report *report = submit_report(file, pos, REPORT_PARSER_ERROR, message, NULL);
 }
 
 internal void report_parser_error(Ast *node, const char *fmt, ...) {
@@ -55,7 +61,7 @@ internal void report_parser_error(Ast *node, const char *fmt, ...) {
     va_start(args, fmt);
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
-    Report *report = submit_report(node->file, node->file, REPORT_PARSER_ERROR, message, node->start, node);
+    Report *report = submit_report(node->file, node->start, REPORT_PARSER_ERROR, message, node);
 }
 
 internal void report_ast_error(Ast *node, const char *fmt, ...) {
@@ -63,7 +69,7 @@ internal void report_ast_error(Ast *node, const char *fmt, ...) {
     va_start(args, fmt);
     String8 message = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
-    Report *report = submit_report(node->file, node->file, REPORT_AST_ERROR, message, node->start, node);
+    Report *report = submit_report(node->file, node->start, REPORT_AST_ERROR, message, node);
 }
 
 internal int report_sort_compare(const void *a, const void *b) {
