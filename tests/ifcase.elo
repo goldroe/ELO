@@ -1,9 +1,9 @@
 #load "stdio.elo"
 
 ifcase_nonconst :: () {
-    x := 18;
     y := 10;
     z := 20;
+    x := y;
 
     ifcase x {
     case y:
@@ -16,8 +16,6 @@ ifcase_nonconst :: () {
     case 10..20:
          puts("xxx");
     }
-
-    return;
 }
 
 ifcase_empty :: () {
@@ -33,7 +31,6 @@ ifcase_empty :: () {
     case z:
          puts("z");
     }
-    return;
 }
 
 ifcase_test :: () {
@@ -67,12 +64,11 @@ ifcase_test :: () {
     case 'A': #through case 'B': #through case 'C': #through case 'D': #through case 'E': #through case 'F': #through case 'G': #through case 'H': #through case 'I': #through case 'J': #through case 'K': #through case 'L': #through case 'M': #through case 'N': #through case 'O': #through case 'P': #through case 'Q': #through case 'R': #through case 'S': #through case 'T': #through case 'U': #through case 'V': #through case 'W': #through case 'X': #through case 'Y': #through case 'Z':
         printf("alpha: %c\n", ch);
     }
-
-    return;
 }
 
 ifcase_range :: () {
     ch := '0';
+
     ifcase ch {
     case:
         printf("def\n");
@@ -84,8 +80,6 @@ ifcase_range :: () {
     case 'a'..'z':
         printf("alpha: %c", ch);
     }
-
-    return;
 }
 
 main :: () -> int {
@@ -100,6 +94,5 @@ main :: () -> int {
 
     ifcase_range();
     puts("");
-
     return 0;
 }

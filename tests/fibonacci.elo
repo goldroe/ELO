@@ -1,0 +1,28 @@
+
+#load "stdlib.elo"
+#load "stdio.elo"
+
+
+main :: () -> int {
+    num := 20;
+    number_array: [1000]u64;
+    // numbers: *u64 = number_array;
+    numbers := cast(*u64)malloc(cast(u64)(8 * 1000));
+    numbers[0] = 0u64;
+    numbers[1] = 1u64;
+
+    for i in 2..num {
+        a := numbers[i - 2];
+        b := numbers[i - 1];
+        numbers[i] = a + b;
+    }
+
+    for i in 0..num {
+        printf("%llu", numbers[i]);
+        if i < num - 1 {
+            printf(", ");
+        }
+    }
+
+    return 0;
+}

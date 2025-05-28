@@ -1,0 +1,2 @@
+
+malloc :: (size: isize) -> *void #foreign

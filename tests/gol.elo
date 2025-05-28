@@ -70,11 +70,7 @@ main :: () -> int {
                 cell := *cells[y][x];
 
                 if cell.* {
-                    if live < 2 {
-                        // under population
-                        cell.* = 0;
-                    } else if live > 3 {
-                        // over population
+                    if live < 2 || live > 3 {
                         cell.* = 0;
                     }
                 } else if live == 3 {
