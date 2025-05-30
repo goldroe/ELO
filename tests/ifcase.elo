@@ -6,15 +6,15 @@ ifcase_nonconst :: () {
     x := y;
 
     ifcase x {
-    case y:
-         puts("(:");
-         #through
-    case:
-         puts("--");
-    case z:
-         puts("):");
-    case 10..20:
-         puts("xxx");
+        case y:
+        puts("(:");
+        fallthrough;
+        case:
+        puts("--");
+        case z:
+        puts("):");
+        case 10..20:
+        puts("xxx");
     }
 }
 
@@ -23,45 +23,44 @@ ifcase_empty :: () {
     y := x;
     z := 1;
     ifcase {
-    case x > 100:
-         puts("x > 100");
-         #through
-    case y < x:
-         puts("y < x");
-    case z:
-         puts("z");
+        case x > 100:
+        puts("x > 100");
+        fallthrough;
+        case y < x:
+        puts("y < x");
+        case z:
+        puts("z");
     }
 }
 
 ifcase_test :: () {
     x := 3;
     ifcase x {
-    case 0: #through case 1: #through
-    case 2:
+        case 0: case 1: case 2:
         puts("FOO");
-        #through
-    case 3:
+        fallthrough;
+        case 3:
         puts("BUZZ");
-        #through
-    case 4:
+        fallthrough;
+        case 4:
         puts("BIZZ");
-    case 5:
-    case:
+        case 5:
+        case:
         puts("AAAA");
-    case 9..100:
-         puts("FDSFASF");
+        case 9..100:
+        puts("FDSFASF");
     }
 
     ch := 'A';
     ifcase ch {
-    case:
+        case:
         printf("def\n");
 
-    case '0': #through case '1': #through case '2': #through case '3': #through case '4': #through case '5': #through case '6': #through case '7': #through case '8': #through case '9':
-         printf("num: %c\n", ch);
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+        printf("num: %c\n", ch);
 
-    case 'a': #through case 'b': #through case 'c': #through case 'd': #through case 'e': #through case 'f': #through case 'g': #through case 'h': #through case 'i': #through case 'j': #through case 'k': #through case 'l': #through case 'm': #through case 'n': #through case 'o': #through case 'p': #through case 'q': #through case 'r': #through case 's': #through case 't': #through case 'u': #through case 'v': #through case 'w': #through case 'x': #through case 'y': #through case 'z': #through
-    case 'A': #through case 'B': #through case 'C': #through case 'D': #through case 'E': #through case 'F': #through case 'G': #through case 'H': #through case 'I': #through case 'J': #through case 'K': #through case 'L': #through case 'M': #through case 'N': #through case 'O': #through case 'P': #through case 'Q': #through case 'R': #through case 'S': #through case 'T': #through case 'U': #through case 'V': #through case 'W': #through case 'X': #through case 'Y': #through case 'Z':
+        case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x': case 'y': case 'z': 
+        case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
         printf("alpha: %c\n", ch);
     }
 }
@@ -70,14 +69,14 @@ ifcase_range :: () {
     ch := '0';
 
     ifcase ch {
-    case:
+        case:
         printf("def\n");
 
-    case '0'..'9':
-         printf("num: %c\n", ch);
+        case '0'..'9':
+        printf("num: %c\n", ch);
 
-    case 'A'..'Z': #through
-    case 'a'..'z':
+        case 'A'..'Z':
+        case 'a'..'z':
         printf("alpha: %c", ch);
     }
 }

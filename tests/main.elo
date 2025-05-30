@@ -1,3 +1,4 @@
+#load "stdio.elo"
 
 Token_Kind :: enum {
  Nil,
@@ -32,7 +33,21 @@ fact :: (n: s32) -> s32 {
  return n * fact(n - 1);
 }
 
-main :: () {
+lazy :: ()  {
+    x := 10;
+    y := x - 1;
+
+    success: bool;
+
+    success = x  > 100 || y > x;
+    printf("%d\n", cast(int)success);
+
+    success = x && y;
+    printf("%d\n", cast(int)success);
+
+}
+
+main :: () -> int {
  // designated initializer
  // int_arr : [100]s32 = .{ [0] = 0, [100] = 2 };
  // record: Record = .{.sales = 0, .time = 1.0, .total = 11284 };
@@ -40,13 +55,10 @@ main :: () {
  v: Vector2 = .{0.1, 1.0};
  // buzzz := v + 1;
 
- tok := Token_Kind.Ident;
+ // tok := Token_Kind.Ident; // unsupported llvm
 
  f := fact(10);
- asdf := fact(10.0);
-
- if asdf {
- }
+ // asdf := fact(10.0); // error
 
  x := 0;
  y : s32 = 0;
@@ -54,20 +66,27 @@ main :: () {
  buzz := true + 1;
  // h := cast(f32)1 + cast(f32)3;
 
- cast_v := cast(f32)v;
+ // cast_v := cast(f32)v; // error
 
  // arr : [5]u8 = .{ 0, 1, 2, 3, 4 };
  // arr1 : [10]u8 = .{[0] = 1, [1] = 2, [4] = 3, [3] = 0, [2] = 10};
 
- a := 1024;
+ a := 0;
  b: s32 = a;
 
  rect: Rect;
  // rect = cast(Rect)a;
  // 0 = 10;
 
- while b {
-  x := 0;
-  y := x + 1;
- }
+ // while b {
+ //  x := 0;
+ //  y := x + 1;
+ //  b = 0;
+ // }
+
+
+    lazy();
+
+ 
+    return 0;
 }

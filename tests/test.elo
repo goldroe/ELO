@@ -1,40 +1,39 @@
 #load "stdio.elo"
 
-foo :: () {
-    x := 20;
-    y := 100;
+main :: () -> int {
+    x := 23;
+    y := 2000;
+    z := 100;
 
-    ifcase x {
+    ifcase {
+    case x > 100:
+        printf("x\n");
+    case y > 1200:
+        printf("y\n");
+    case z > 100:
+         printf("z\n");
+         fallthrough;
     case:
         printf("default\n");
-    case 1..10:
-        printf("1..10\n");
     }
 
-    printf("FOO\n");
-
-    ifcase 20 {
-    case x:
-         printf("x\n");
-         return;
-    case y:
-         printf("y\n");
+    ifcase x {
+    case 0:
+        fallthrough;
+    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9: case 10:
+        printf("0..10\n");
+    case 21..30:
+         printf("21..30\n");
+         fallthrough;
+    case 11: case 12: case 13: case 14: case 15:
+         printf("11..15\n");
+    case 16: case 17: case 18: case 19: case 20:
+         printf("16..20\n");
+         fallthrough;
+    case:
+        printf("DEFAULT\n");
+        fallthrough;
     }
 
-    printf("FDJKALFJKLADJ\n");
-
-
-    return;
-}
-
-main :: () -> int {
-    foo();
-    for i in 0..10 {
-        printf("%d\n", i);
-        if i == 2 {
-            break;
-        }
-    }
-    
-    printf("GOODBYE\n");
+    return 0;
 }

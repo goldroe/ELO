@@ -18,7 +18,8 @@ Token :: struct {
 }
 
 Lexer :: struct {
-    stream: *u8;
+    stream: []u8;
+    stream_idx: u64;
     tok: Token;
 }
 
@@ -26,7 +27,7 @@ is_space :: (ch: u8) -> bool {
     ifcase ch {
     case:
         return false;
-    case ' ': #through case '\t': #through case '\f': #through case '\v': #through case '\n': #through case '\r':
+    case ' ': case '\t': case '\f': case '\v': case '\n': case '\r':
         return true;
     }
 }
@@ -36,29 +37,35 @@ is_alpha :: (ch: u8) -> bool {
 }
 
 advance :: (lexer: *Lexer) {
-
     // skip whitespace
-    while (is_space(lexer.stream.*)) {
-        lexer.stream += 1;
+    while (is_space(lexer.stream[lexer.stream_idx])) {
+        lexer.stream_idx += 1u64;
     }
+
+    printf("ALPHA\n");
 
     start := lexer.stream;
 
-    ifcase lexer.stream.* {
+    ifcase lexer.stream[lexer.stream_idx] {
     case 0u8:
         lexer.tok.kind = Token_Kind.EOF;
-    case 'a'..'z': #through case 'A'..'Z': #through case '_':
+    case 'a'..'z':
+    case 'A'..'Z':
+    case '_':
         lexer.tok.kind = Token_Kind.NAME;
-        while is_alpha(lexer.stream.*) {
-            lexer.stream += 1;
+        while is_alpha(lexer.stream[lexer.stream_idx]) {
+            lexer.stream_idx += 1u64;
         }
     }
 }
 
 main :: () -> int {
+    puts("Hello world.");
     stream := "This is some text. 1 21 1223.\n New line okay cool.";
     lexer: Lexer;
     lexer.stream = stream;
+    lexer.stream_idx = 0u64;
     advance(*lexer);
+    puts("Goodbye world.");
     return 0;
 }
