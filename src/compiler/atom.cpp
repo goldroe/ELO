@@ -87,27 +87,26 @@ internal void atom_init() {
         bucket->count = 0;
     }
 
-    atom_keyword(TOKEN_NULL,     str8_lit("null"));
-    atom_keyword(TOKEN_ENUM,     str8_lit("enum"));
-    atom_keyword(TOKEN_STRUCT,   str8_lit("struct"));
-    atom_keyword(TOKEN_TRUE,     str8_lit("true"));
-    atom_keyword(TOKEN_FALSE,    str8_lit("false"));
-    atom_keyword(TOKEN_IF,       str8_lit("if"));
-    atom_keyword(TOKEN_ELSE,     str8_lit("else"));
-    atom_keyword(TOKEN_IFCASE,   str8_lit("ifcase"));
-    atom_keyword(TOKEN_CASE,     str8_lit("case"));
-    atom_keyword(TOKEN_WHILE,    str8_lit("while"));
-    atom_keyword(TOKEN_FOR,      str8_lit("for"));
-    atom_keyword(TOKEN_BREAK,    str8_lit("break"));
-    atom_keyword(TOKEN_CONTINUE, str8_lit("continue"));
-    atom_keyword(TOKEN_RETURN,   str8_lit("return"));
-    atom_keyword(TOKEN_CAST,     str8_lit("cast"));
-    atom_keyword(TOKEN_OPERATOR, str8_lit("operator"));
-    atom_keyword(TOKEN_IN,       str8_lit("in"));
+    atom_keyword(TOKEN_NULL,        str_lit("null"));
+    atom_keyword(TOKEN_ENUM,        str_lit("enum"));
+    atom_keyword(TOKEN_STRUCT,      str_lit("struct"));
+    atom_keyword(TOKEN_TRUE,        str_lit("true"));
+    atom_keyword(TOKEN_FALSE,       str_lit("false"));
+    atom_keyword(TOKEN_IF,          str_lit("if"));
+    atom_keyword(TOKEN_ELSE,        str_lit("else"));
+    atom_keyword(TOKEN_IFCASE,      str_lit("ifcase"));
+    atom_keyword(TOKEN_CASE,        str_lit("case"));
+    atom_keyword(TOKEN_WHILE,       str_lit("while"));
+    atom_keyword(TOKEN_FOR,         str_lit("for"));
+    atom_keyword(TOKEN_BREAK,       str_lit("break"));
+    atom_keyword(TOKEN_CONTINUE,    str_lit("continue"));
+    atom_keyword(TOKEN_FALLTHROUGH, str_lit("fallthrough"));
+    atom_keyword(TOKEN_RETURN,      str_lit("return"));
+    atom_keyword(TOKEN_CAST,        str_lit("cast"));
+    atom_keyword(TOKEN_OPERATOR,    str_lit("operator"));
+    atom_keyword(TOKEN_IN,          str_lit("in"));
 
-    atom_directive(TOKEN_LOAD,   str8_lit("#load"));
-    atom_directive(TOKEN_IMPORT, str8_lit("#import"));
-    atom_directive(TOKEN_THROUGH, str8_lit("#through"));
-    atom_directive(TOKEN_FOREIGN, str8_lit("#foreign"));
+    atom_directive(TOKEN_LOAD,      str_lit("#load"));
+    atom_directive(TOKEN_IMPORT,    str_lit("#import"));
+    atom_directive(TOKEN_FOREIGN,   str_lit("#foreign"));
 }
-

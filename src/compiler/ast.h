@@ -75,8 +75,10 @@ enum Ast_Kind {
 
 struct Ast {
     Ast_Kind kind = AST_NIL;
+    Ast *next = nullptr;
+    Ast *prev = nullptr;
 
-    Source_File *file = NULL;
+    Source_File *file = nullptr;
     Source_Pos start = {};
     Source_Pos end = {};
 
@@ -95,7 +97,7 @@ struct Ast {
 struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
     Auto_Array<Ast_Decl*> declarations;
-    Scope *scope = NULL;
+    Scope *scope = nullptr;
 };
 
 enum Type_Defn_Kind {
@@ -300,9 +302,9 @@ struct Ast_Enum : Ast_Decl {
 struct Ast_Proc : Ast_Decl {
     Ast_Proc() { kind = AST_PROC; }
     Auto_Array<Ast_Param*> parameters;
-    Ast_Type_Defn *return_type_defn = NULL;
-    Scope *scope = NULL;
-    Ast_Block *block = NULL;
+    Ast_Type_Defn *return_type_defn = nullptr;
+    Scope *scope = nullptr;
+    Ast_Block *block = nullptr;
 
     Auto_Array<Ast_Decl*> local_vars;
 
@@ -329,8 +331,8 @@ struct Ast_If : Ast_Stmt {
     Ast_If() { kind = AST_IF; }
     Ast_Expr *cond;
     Ast_Block *block;
-    Ast_If *if_next = NULL;
-    Ast_If *if_prev = NULL;
+    Ast_If *if_next = nullptr;
+    Ast_If *if_prev = nullptr;
     b32 is_else;
 };
 
@@ -338,13 +340,10 @@ struct Ast_Case_Label : Ast_Stmt {
     Ast_Case_Label() { kind = AST_CASE_LABEL; }
     Scope *scope;
     Ast_Expr *cond;
-    Auto_Array<Ast_Stmt*> statements;
+    Ast_Block *block;
 
     b32 is_default;
     b32 fallthrough;
-
-    Ast_Case_Label *prev_label;
-    Ast_Case_Label *next_label;
 
     void *backend_block;
 };
@@ -392,27 +391,28 @@ struct Ast_Decl_Stmt : Ast_Stmt {
 struct Ast_Block : Ast_Stmt {
     Ast_Block() { kind = AST_BLOCK; }
     Auto_Array<Ast_Stmt*> statements;
-    Scope *scope = NULL;
+    Scope *scope = nullptr;
     b32 returns;
 };
 
 struct Ast_Return : Ast_Stmt {
     Ast_Return() { kind = AST_RETURN; }
-    Ast_Expr *expr;
+    Ast_Expr *expr = nullptr;
 };
 
 struct Ast_Break : Ast_Stmt {
     Ast_Break() { kind = AST_BREAK; }
-    Ast *target;
+    Ast *target = nullptr;
 };
 
 struct Ast_Continue : Ast_Stmt {
     Ast_Continue() { kind = AST_CONTINUE; }
-    Ast *target;
+    Ast *target = nullptr;
 };
 
 struct Ast_Fallthrough : Ast_Stmt {
     Ast_Fallthrough() { kind = AST_FALLTHROUGH; }
+    Ast *target = nullptr;
 };
 
 #define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
