@@ -23,6 +23,14 @@ llvm::BasicBlock *LLVM_Backend::llvm_block_new(const char *s) {
     return basic_block;
 }
 
+internal inline llvm::Constant *llvm_const_int(llvm::Type *type, u64 value) {
+    return llvm::ConstantInt::get(type, 0);
+}
+
+internal inline llvm::Constant *llvm_zero(llvm::Type *type) {
+    return llvm_const_int(type, 0);
+}
+
 void LLVM_Backend::emit_block(llvm::BasicBlock *block) {
     Assert(current_block == NULL);
     llvm::Function *fn = current_proc->fn;
@@ -182,33 +190,6 @@ LLVM_Struct *LLVM_Backend::gen_struct(Ast_Struct *struct_decl) {
     return llvm_struct;
 }
 
-void LLVM_Backend::gen() {
-    Ctx = new llvm::LLVMContext();
-    Module = new llvm::Module("Main", *Ctx);
-
-    for (int decl_idx = 0; decl_idx < ast_root->declarations.count; decl_idx++) {
-        Ast_Decl *decl = ast_root->declarations[decl_idx];
-        gen_decl(decl);
-    }
-
-    for (int proc_idx = 0; proc_idx < global_procedures.count; proc_idx++) {
-        LLVM_Procedure *procedure = global_procedures[proc_idx];
-        gen_procedure_body(procedure);
-    }
-
-    std::error_code EC;
-    llvm::raw_fd_ostream OS("-", EC);
-    bool broken_debug_info;
-    // Module->print(llvm::errs(), nullptr); // dump IR
-    if (llvm::verifyModule(*Module, &OS, &broken_debug_info)) {
-        Module->print(llvm::errs(), nullptr); // dump IR
-    } else {
-        char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
-        llvm::raw_fd_ostream FS(gen_file_path, EC);
-        llvm::WriteBitcodeToFile(*Module, FS);
-    }
-}
-
 LLVM_Procedure *LLVM_Backend::lookup_proc(Atom *name) {
     for (int i = 0; i < global_procedures.count; i++) {
         LLVM_Procedure *proc = global_procedures[i];
@@ -320,12 +301,12 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
             Struct_Field_Info *struct_field = struct_lookup(struct_type, access->name->name);
             unsigned field_idx = llvm_get_struct_field_index(struct_node, access->name->name);
             llvm::Type *ptr_type = get_type(access->parent->type_info);
-            llvm::Value *struct_ptr = builder->CreateGEP(ptr_type, addr.value, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0));
+            llvm::Value *struct_ptr = builder->CreateGEP(ptr_type, addr.value, llvm_zero(llvm::Type::getInt32Ty(*Ctx)));
             llvm::Value *access_ptr = builder->CreateStructGEP(llvm_struct->type, struct_ptr, field_idx);
             result.value = access_ptr;
         } else if (access->parent->type_info->is_enum_type()) {
             printf("%lld\n", access->eval.int_val);
-            llvm::Constant *constant = llvm::ConstantInt::get(get_type(access->parent->type_info->base), access->eval.int_val);
+            llvm::Constant *constant = llvm_const_int(get_type(access->parent->type_info->base), access->eval.int_val);
             result.value = constant;
         } else if (access->parent->type_info->type_flags & TYPE_FLAG_STRING) {
             LLVM_Addr addr = gen_addr(access->parent);
@@ -351,7 +332,7 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
         if (subscript->expr->type_info->is_array_type()) {
             llvm::Type *array_type = get_type(subscript->expr->type_info);
             llvm::ArrayRef<llvm::Value*> indices = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),  // ptr
+                llvm_zero(llvm::Type::getInt32Ty(*Ctx)), // ptr
                 rhs.value  // subscript
             };
             llvm::Value *ptr = builder->CreateGEP(array_type, addr.value, indices);
@@ -788,8 +769,8 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
             value = builder->CreateZExtOrTrunc(value, dest_type);
         } else if (rhs.type->isArrayTy()) {
             llvm::ArrayRef<llvm::Value*> indices = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0)
+                llvm_zero(llvm::Type::getInt32Ty(*Ctx)),
+                llvm_zero(llvm::Type::getInt32Ty(*Ctx))
             };
             llvm::Value *base_ptr = builder->CreatePointerCast(rhs.value, dest_type);
             llvm::Value *ptr = builder->CreateGEP(rhs.type, base_ptr, indices);
@@ -874,15 +855,12 @@ void LLVM_Backend::gen_if(Ast_If *if_stmt) {
     // br icmp, if_then, if_else
     // or
     // br if_then -- if no else
-
     // label: if_then
     // build if block
     /// br if_exit
-
     // label: if_else
     // build else stmt
     // br if_exit
-
     // label: if_exit
 
     llvm::BasicBlock *exit_block = llvm_block_new("if.exit");
@@ -913,106 +891,51 @@ void LLVM_Backend::gen_if(Ast_If *if_stmt) {
     }
 }
 
-struct Case_Unit {
-    Case_Unit *next = nullptr;
-    llvm::BasicBlock *basic_block = nullptr;
-    Auto_Array<Ast_Case_Label*> labels;
-    bool is_default = false;
-    Ast_Case_Label *default_label = nullptr;
-};
-
-void LLVM_Backend::gen_ifcase_switch_table(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit) {
+void LLVM_Backend::gen_ifcase_switch(Ast_Ifcase *ifcase) {
     Assert(ifcase->cond);
     Assert(ifcase->cond->type_info->is_integral_type());
     LLVM_Value condition = gen_expr(ifcase->cond);
 
     llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
-
-    llvm::BasicBlock *default_block = (llvm::BasicBlock *)ifcase->exit_block;
+    llvm::BasicBlock *default_block = switch_exit;
     if (ifcase->default_case) {
-        Assert(default_unit);
-        default_block = default_unit->basic_block;
+        default_block = (llvm::BasicBlock *)ifcase->default_case->backend_block;
     }
 
-    u64 cases_count = ifcase->cases.count;
-    llvm::SwitchInst *switch_inst = llvm::SwitchInst::Create(condition.value, default_block, (unsigned)cases_count);
+    llvm::SwitchInst *switch_inst = llvm::SwitchInst::Create(condition.value, default_block, (unsigned)ifcase->cases.count);
 
-    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-        if (unit->is_default) continue;
-        for (Ast_Case_Label *label : unit->labels) {
-            if (label->cond->kind == AST_RANGE) {
-                Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                llvm::Type *type = get_type(range->type_info);
-                u64 min = range->lhs->eval.int_val;
-                u64 max = range->rhs->eval.int_val;
-                for (u64 c = min; c <= max; c++) {
-                    llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, false));
-                    switch_inst->addCase(case_constant, unit->basic_block);
-                }
-            } else {
-                LLVM_Value case_cond = gen_expr(label->cond);
-                llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(case_cond.value);
-                switch_inst->addCase(case_constant, unit->basic_block);
+    for (Ast_Case_Label *label : ifcase->cases) {
+        if (label->is_default) continue;
+        if (label->cond->kind == AST_RANGE) {
+            Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+            llvm::Type *type = get_type(range->type_info);
+            u64 min = range->lhs->eval.int_val, max = range->rhs->eval.int_val;
+            for (u64 c = min; c <= max; c++) {
+                llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, false));
+                switch_inst->addCase(case_constant, (llvm::BasicBlock *)label->backend_block);
             }
+        } else {
+            LLVM_Value case_cond = gen_expr(label->cond);
+            llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(case_cond.value);
+            switch_inst->addCase(case_constant, (llvm::BasicBlock *)label->backend_block);
         }
     }
 
     builder->Insert(switch_inst);
-
-    current_block = nullptr;
-
-    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-        if (unit->is_default) continue;
-
-        llvm::BasicBlock *basic_block = unit->basic_block;
-        emit_block(basic_block);
-
-        for (Ast_Case_Label *label : unit->labels) {
-            gen_statement_list(label->statements);
-        }
-
-        Ast_Case_Label *last_label = unit->labels.back();
-        llvm::BasicBlock *target = switch_exit;
-        if (last_label->fallthrough && unit->next) {
-            target = unit->next->basic_block;
-        }
-        gen_branch(target);
-    }
-
-    if (ifcase->default_case) {
-        Assert(default_unit);
-        emit_block(default_block);
-        gen_statement_list(default_unit->labels.front()->statements);
-
-        llvm::BasicBlock *target = switch_exit;
-        if (ifcase->default_case->fallthrough && default_unit->next) {
-            target = default_unit->next->basic_block;
-        }
-        gen_branch(target);
-    }
-
-    emit_block(switch_exit);
 }
 
-void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit) {
+void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase) {
     LLVM_Value condition = gen_expr(ifcase->cond);
-
-    //@Note If-Else branching
     llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
     llvm::BasicBlock *jump_exit = llvm_block_new();
 
-    llvm::BasicBlock *default_block = (llvm::BasicBlock *)ifcase->exit_block;
-    if (ifcase->default_case) {
-        default_block = default_unit->basic_block;
-    }
-
-    //@Note Artificial jump table
+    //@Note If-Else branching
     for (Ast_Case_Label *label : ifcase->cases) {
-        // Skip default to ensure it is only checked at the end
+        // Skip default to ensure it is only branched at end of if-else chain
         if (label->is_default) continue;
-        Ast_Case_Label *else_label = label->next_label;
+        Ast_Case_Label *else_label = static_cast<Ast_Case_Label*>(label->next);
         if (else_label && else_label->is_default) {
-            else_label = else_label->next_label;
+            else_label = static_cast<Ast_Case_Label*>(else_label->next);
         }
 
         llvm::BasicBlock *else_block = jump_exit;
@@ -1039,99 +962,76 @@ void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase, Case_Unit *root_unit, 
                 compare = value;
             }
         }
+
         gen_branch_condition(compare, (llvm::BasicBlock *)label->backend_block, else_block);
 
         emit_block(else_block);
     }
-    //@Note End of jump table
-    gen_branch(default_block);
 
-    current_block = nullptr;
-
-    //@Note Actual ifcase units
-    for (Case_Unit *unit = root_unit; unit; unit = unit->next) {
-        if (unit->is_default) continue;
-
-        llvm::BasicBlock *basic_block = unit->basic_block;
-        emit_block(basic_block);
-
-        for (Ast_Case_Label *label : unit->labels) {
-            gen_statement_list(label->statements);
-        }
-
-        Ast_Case_Label *last_label = unit->labels.back();
-        llvm::BasicBlock *target = switch_exit;
-        if (last_label->fallthrough && unit->next) {
-            target = unit->next->basic_block;
-        }
-        gen_branch(target);
-    }
-
+    llvm::BasicBlock *default_block = (llvm::BasicBlock *)ifcase->exit_block;
     if (ifcase->default_case) {
-        emit_block(default_unit->basic_block);
-        gen_statement_list(default_unit->labels.front()->statements);
-
-        llvm::BasicBlock *target = switch_exit;
-        if (ifcase->default_case->fallthrough && default_unit->next) {
-            target = default_unit->next->basic_block;
-        }
-        gen_branch(target);
+        default_block = (llvm::BasicBlock *)ifcase->default_case->backend_block;
     }
-
-    emit_block(switch_exit);
+    gen_branch(default_block);
 }
 
 void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
-    Case_Unit *root_unit = NULL;
-    Case_Unit *default_unit = NULL;
-
-    Case_Unit *current_unit = NULL;
-    for (Ast_Case_Label *label = ifcase->cases.front(); label; label = label->next_label) {
-        bool new_unit = true;
-        if (label->prev_label && (label->prev_label->fallthrough && label->prev_label->statements.count == 0)) {
-            new_unit = false;
-            if (label->is_default) {
-                new_unit = true;
-            } else if (label->prev_label->is_default) {
-                new_unit = true;
-            }
-        }
-
-        if (new_unit) {
-            Case_Unit *unit = new Case_Unit();
-            unit->basic_block = llvm_block_new();
-            if (current_unit) {
-                current_unit->next = unit;
-            } else {
-                root_unit = unit;
-            }
-            current_unit = unit;
-        }
-
-        current_unit->labels.push(label);
-        label->backend_block = (void *)current_unit->basic_block;
-
-        if (label->is_default) {
-            default_unit = current_unit;
-            current_unit->is_default = true;
-            current_unit->default_label = label;
-        }
-    }
+    if (ifcase->cases.count == 0) return;
 
     ifcase->exit_block = llvm_block_new();
+    llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
 
-    //@Note Switch
+    for (Ast_Case_Label *label = ifcase->cases.front(); label; label = static_cast<Ast_Case_Label *>(label->next)) {
+        Ast_Case_Label *prev = static_cast<Ast_Case_Label*>(label->prev);
+        if (!prev) {
+            label->backend_block = llvm_block_new();
+            continue;
+        }
+
+        if (prev->block->statements.count == 0) {
+            label->backend_block = prev->backend_block;
+        } else {
+            label->backend_block = llvm_block_new();
+        }
+    }
+
     if (ifcase->switch_jumptable) {
-        gen_ifcase_switch_table(ifcase, root_unit, default_unit);
+        gen_ifcase_switch(ifcase);
     } else {
-        gen_ifcase_if_else(ifcase, root_unit, default_unit);
+        gen_ifcase_if_else(ifcase);
     }
 
-    for (Case_Unit *unit = root_unit; unit; ) {
-        Case_Unit *temp = unit;
-        unit = unit->next;
-        delete temp;
+    current_block = nullptr;
+
+    llvm::BasicBlock *case_block = nullptr;
+    for (Ast_Case_Label *label : ifcase->cases) {
+        //@Note Skip default to ensure default is last on if-else
+        if (!ifcase->switch_jumptable && label->is_default) {
+            continue;
+        }
+
+        if (case_block != label->backend_block) {
+            case_block = (llvm::BasicBlock *)label->backend_block;
+            emit_block(case_block);
+        }
+
+        if (label->block->statements.count == 0) continue;
+
+        gen_block(label->block);
+
+        llvm::BasicBlock *next_block = switch_exit;
+        gen_branch(next_block);
     }
+
+    if (!ifcase->switch_jumptable && ifcase->default_case) {
+        emit_block((llvm::BasicBlock *)ifcase->default_case->backend_block);
+        for (Ast_Stmt *stmt : ifcase->default_case->block->statements) {
+            gen_stmt(stmt);
+        }
+        gen_branch(switch_exit);
+    }
+
+    emit_block(switch_exit);
 }
 
 void LLVM_Backend::gen_while(Ast_While *while_stmt) {
@@ -1305,31 +1205,60 @@ void LLVM_Backend::gen_return(Ast_Return *return_stmt) {
 
 void LLVM_Backend::gen_break(Ast_Break *break_stmt) {
     Ast *ast = break_stmt->target;
+    Assert(ast);
     llvm::BasicBlock *next_block = nullptr;
-    if (ast->kind == AST_WHILE) {
+    switch (ast->kind) {
+    case AST_WHILE:
+    {
         Ast_While *while_stmt = static_cast<Ast_While*>(ast);
         next_block = (llvm::BasicBlock *)while_stmt->exit_block;
-    } else if (ast->kind == AST_FOR) {
+        break;
+    }
+    case AST_FOR:
+    {
         Ast_For *for_stmt = static_cast<Ast_For*>(ast);
         next_block = (llvm::BasicBlock *)for_stmt->exit_block;
-    } else if (ast->kind == AST_IFCASE) {
+        break;
+    }
+    case AST_IFCASE:
+    {
         Ast_Ifcase *ifcase = static_cast<Ast_Ifcase*>(ast);
         next_block = (llvm::BasicBlock *)ifcase->exit_block;
+        break;
+    }
     }
     emit_jump(next_block);
 }
 
 void LLVM_Backend::gen_continue(Ast_Continue *continue_stmt) {
     Ast *ast = continue_stmt->target;
+    Assert(ast);
+
     llvm::BasicBlock *next_block = nullptr;
-    if (ast->kind == AST_WHILE) {
+    switch (ast->kind) {
+    case AST_WHILE:
+    {
         Ast_While *while_stmt = static_cast<Ast_While*>(ast);
         next_block = (llvm::BasicBlock *)while_stmt->entry_block;
-    } else if (ast->kind == AST_FOR) {
+        break;
+    }
+    case AST_FOR: 
+    {
         Ast_For *for_stmt = static_cast<Ast_For*>(ast);
         next_block = (llvm::BasicBlock *)for_stmt->entry_block;
+        break;
+    }
     }
     emit_jump(next_block);
+}
+
+void LLVM_Backend::gen_fallthrough(Ast_Fallthrough *fallthrough) {
+    Assert(fallthrough->target->kind == AST_CASE_LABEL);
+    Ast_Case_Label *label = static_cast<Ast_Case_Label*>(fallthrough->target);
+    if (label->next) {
+        Ast_Case_Label *next = static_cast<Ast_Case_Label*>(label->next);
+        emit_jump((llvm::BasicBlock *)next->backend_block);
+    }
 }
 
 void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
@@ -1408,6 +1337,13 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
         gen_return(return_stmt);
         break;
     }
+
+    case AST_FALLTHROUGH:
+    {
+        Ast_Fallthrough *fallthrough = static_cast<Ast_Fallthrough*>(stmt);
+        gen_fallthrough(fallthrough);
+        break;
+    }
     }
 }
 
@@ -1430,3 +1366,30 @@ void LLVM_Backend::gen_decl(Ast_Decl *decl) {
     }
 }
 
+void LLVM_Backend::gen() {
+    Ctx = new llvm::LLVMContext();
+    Module = new llvm::Module("Main", *Ctx);
+
+    for (int decl_idx = 0; decl_idx < ast_root->declarations.count; decl_idx++) {
+        Ast_Decl *decl = ast_root->declarations[decl_idx];
+        gen_decl(decl);
+    }
+
+    for (int proc_idx = 0; proc_idx < global_procedures.count; proc_idx++) {
+        LLVM_Procedure *procedure = global_procedures[proc_idx];
+        gen_procedure_body(procedure);
+    }
+
+    std::error_code EC;
+    llvm::raw_fd_ostream OS("-", EC);
+    bool broken_debug_info;
+    // Module->print(llvm::errs(), nullptr); // dump IR
+    if (llvm::verifyModule(*Module, &OS, &broken_debug_info)) {
+        Module->print(llvm::errs(), nullptr); // dump IR
+    } else {
+        // char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
+        char *gen_file_path = "out.bc";
+        llvm::raw_fd_ostream FS(gen_file_path, EC);
+        llvm::WriteBitcodeToFile(*Module, FS);
+    }
+}

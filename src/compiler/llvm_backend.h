@@ -37,7 +37,6 @@
 #pragma warning(pop)
 
 struct LLVM_Decl;
-struct Case_Unit;
 
 struct LLVM_Value {
     llvm::Value *value;
@@ -147,6 +146,7 @@ struct LLVM_Backend {
     void emit_block(llvm::BasicBlock *block);
     void emit_jump(llvm::BasicBlock *target);
 
+    void gen_fallthrough(Ast_Fallthrough *fallthrough);
     void gen_break(Ast_Break *break_stmt);
     void gen_return(Ast_Return *return_stmt);
     void gen_continue(Ast_Continue *continue_stmt);
@@ -155,8 +155,8 @@ struct LLVM_Backend {
     void gen_branch_condition(llvm::Value *condition, llvm::BasicBlock *true_block, llvm::BasicBlock *false_block);
 
     void gen_ifcase(Ast_Ifcase *ifcase);
-    void gen_ifcase_switch_table(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit);
-    void LLVM_Backend::gen_ifcase_if_else(Ast_Ifcase *ifcase, Case_Unit *root_unit, Case_Unit *default_unit);
+    void gen_ifcase_switch(Ast_Ifcase *ifcase);
+    void gen_ifcase_if_else(Ast_Ifcase *ifcase);
 };
 
 #endif // LLVM_BACKEND_H
