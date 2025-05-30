@@ -62,6 +62,7 @@ struct Resolver {
     void resolve_return_stmt(Ast_Return *return_stmt);
     void resolve_break_stmt(Ast_Break *break_stmt);
     void resolve_continue_stmt(Ast_Continue *continue_stmt);
+    void resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough);
 
     void resolve_stmt(Ast_Stmt *stmt);
 

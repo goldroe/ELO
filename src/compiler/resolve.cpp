@@ -195,6 +195,28 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
     resolve_block(if_stmt->block);
 }
 
+
+void Resolver::resolve_break_stmt(Ast_Break *break_stmt) {
+    if (breakcont_stack.count > 0) {
+        break_stmt->target = breakcont_stack.back();
+    } else {
+        report_ast_error(break_stmt, "illegal break.\n");
+    }
+}
+
+void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
+    if (breakcont_stack.count > 0) {
+        Ast *target = breakcont_stack.back();
+        if (target->kind == AST_IFCASE) {
+            report_ast_error(continue_stmt, "illegal continue.\n");
+        }
+        continue_stmt->target = target;
+    } else {
+        report_ast_error(continue_stmt, "illegal continue.\n");
+    }
+}
+
+
 void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(current_proc->type_info);
     current_proc->returns = true;
@@ -220,23 +242,9 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     }
 }
 
-void Resolver::resolve_break_stmt(Ast_Break *break_stmt) {
-    if (breakcont_stack.count > 0) {
-        break_stmt->target = breakcont_stack.back();
-    } else {
-        report_ast_error(break_stmt, "illegal break.\n");
-    }
-}
-
-void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
-    if (breakcont_stack.count > 0) {
-        Ast *target = breakcont_stack.back();
-        if (target->kind == AST_IFCASE) {
-            report_ast_error(continue_stmt, "illegal continue.\n");
-        }
-        continue_stmt->target = target;
-    } else {
-        report_ast_error(continue_stmt, "illegal continue.\n");
+void Resolver::resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough) {
+    if (!fallthrough->target) {
+        report_parser_error(fallthrough, "illegal fallthrough, must be placed at end of a case block.\n");
     }
 }
 
@@ -302,19 +310,12 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         ifcase->switch_jumptable = false;
     }
 
-    if (ifcase->cases.count == 0) {
-        report_ast_error(ifcase, "case statement contains no cases.\n");
-        ifcase->poison();
-    }
-
-
     breakcont_stack.push(ifcase);
 
     for (Ast_Case_Label *case_label : ifcase->cases) {
-        case_label->scope = new_scope(SCOPE_BLOCK);
+        resolve_expr(case_label->cond);
 
         if (case_label->cond) {
-            resolve_expr(case_label->cond);
             if (!case_label->cond->is_constant()) {
                 ifcase->switch_jumptable = false;
             }
@@ -335,17 +336,14 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
                 }
             }
         } else {
-            if (case_label->cond->kind == AST_RANGE) {
+            if (case_label->cond && case_label->cond->kind == AST_RANGE) {
                 //@Todo report crashes
                 report_ast_error(case_label, "illegal range condition in an ifcase without an initial condition to compare.\n");
                 ifcase->poison();
             }
         }
 
-        for (Ast_Stmt *s : case_label->statements) {
-            resolve_stmt(s);
-        }
-        exit_scope();
+        resolve_block(case_label->block);
     }
 
     breakcont_stack.pop();
@@ -354,30 +352,28 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         std::unordered_set<u64> switch_constants;
 
         for (Ast_Case_Label *label : ifcase->cases) {
-            if (label->cond) {
-                if (label->cond->kind == AST_RANGE) {
-                    Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                    u64 min = range->lhs->eval.int_val;
-                    u64 max = range->rhs->eval.int_val;
-                    for (u64 c = min; c <= max; c++) {
-                        auto find = switch_constants.find(c);
-                        if (find != switch_constants.end()) {
-                            ifcase->poison();
-                            report_ast_error(label, "case value '%llu' in range '%s' already used.\n", c, string_from_expr(label->cond));
-                            break;
-                        } else {
-                            switch_constants.insert(c);
-                        }
-                    }
-                } else {
-                    u64 c = label->cond->eval.int_val;
+            if (label->cond && label->cond->kind == AST_RANGE) {
+                Ast_Range *range = static_cast<Ast_Range*>(label->cond);
+                u64 min = range->lhs->eval.int_val;
+                u64 max = range->rhs->eval.int_val;
+                for (u64 c = min; c <= max; c++) {
                     auto find = switch_constants.find(c);
                     if (find != switch_constants.end()) {
-                        report_ast_error(label, "case value '%llu' already used.\n", c);
                         ifcase->poison();
+                        report_ast_error(label, "case value '%llu' in range '%s' already used.\n", c, string_from_expr(label->cond));
+                        break;
                     } else {
                         switch_constants.insert(c);
                     }
+                }
+            } else if (label->cond) {
+                u64 c = label->cond->eval.int_val;
+                auto find = switch_constants.find(c);
+                if (find != switch_constants.end()) {
+                    report_ast_error(label, "case value '%llu' already used.\n", c);
+                    ifcase->poison();
+                } else {
+                    switch_constants.insert(c);
                 }
             }
         }
@@ -451,6 +447,12 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     {
         Ast_Return *return_stmt = static_cast<Ast_Return*>(stmt);
         resolve_return_stmt(return_stmt);
+        break;
+    }
+    case AST_FALLTHROUGH:
+    {
+        Ast_Fallthrough *fallthrough = static_cast<Ast_Fallthrough*>(stmt);
+        resolve_fallthrough_stmt(fallthrough);
         break;
     }
     }
@@ -529,10 +531,37 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
 void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
     Ast_Expr *lhs = binary->lhs;
     Ast_Expr *rhs = binary->rhs;
-
     Assert(lhs->valid() && rhs->valid());
-    
+
+    // switch (binary->op.kind) {
+    // case TOKEN_PLUS:
+    // case TOKEN_MINUS:
+    //     if (lhs->type_info->is_arithmetic_type()) {
+            
+    //     }
+    // case TOKEN_STAR:
+    // case TOKEN_SLASH:
+    // case TOKEN_MOD:
+    // case TOKEN_AMPER:
+    // case TOKEN_BAR:
+
+    // case TOKEN_EQ2:
+    // case TOKEN_NEQ:
+    // case TOKEN_LT:
+    // case TOKEN_LTEQ:
+    // case TOKEN_GT:
+    // case TOKEN_GTEQ:
+
+    // case TOKEN_BANG:
+    // case TOKEN_AND:
+    // case TOKEN_OR:
+    // case TOKEN_XOR:
+    // case TOKEN_LSHIFT:
+    // case TOKEN_RSHIFT:
+    // }
+
     if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
+        binary->type_info = lhs->type_info;
         if (!lhs->type_info->is_arithmetic_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
             binary->poison();
@@ -541,22 +570,22 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        binary->type_info = lhs->type_info;
     }
 
     if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
-        if (!lhs->type_info->is_integral_type()) {
+        binary->type_info = type_bool;
+        if (lhs->type_info->is_struct_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        if (!rhs->type_info->is_integral_type()) {
+        if (rhs->type_info->is_struct_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        binary->type_info = type_bool;
     }
 
     if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
+        binary->type_info = type_bool;
         //@Note Give null expr type of lhs
         if (rhs->kind == AST_NULL) {
             rhs->type_info = lhs->type_info;
@@ -569,7 +598,6 @@ void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
             binary->poison();
         }
-        binary->type_info = type_bool;
     }
 
     if (binary->valid() &&
@@ -1603,7 +1631,6 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
         return;
     }
 
-    bool incomplete_resolve = false;
     decl->resolve_state = RESOLVE_STARTED;
 
     switch (decl->kind) {
