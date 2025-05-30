@@ -33,7 +33,7 @@ Ast_Compound_Literal *Parser::parse_compound_literal() {
 
     Auto_Array<Ast_Expr*> elements;
 
-    while (!lexer->eof() && !lexer->match(TOKEN_RBRACE)) {
+    while (!lexer->match(TOKEN_RBRACE)) {
         Ast_Expr *expr = parse_expr(); 
         if (expr == NULL) break;
 
@@ -174,7 +174,7 @@ Ast_Call *Parser::parse_call_expr(Ast_Expr *expr) {
 
     Auto_Array<Ast_Expr*> arguments;
     do {
-        if (lexer->eof() || lexer->match(TOKEN_RPAREN)){
+        if (lexer->match(TOKEN_RPAREN)){
             break;   
         }
         Ast_Expr *arg = parse_expr();
@@ -196,7 +196,7 @@ Ast_Expr *Parser::parse_postfix_expr() {
     if (expr == NULL) return expr;
 
     bool terminate = false;
-    while (!terminate && !lexer->eof()) {
+    while (!terminate) {
         Token op = lexer->current();
         switch (op.kind) {
         default: terminate = true; break;
@@ -235,6 +235,31 @@ Ast_Expr *Parser::parse_postfix_expr() {
     return expr; 
 }
 
+Ast_Cast *Parser::parse_cast_expr() {
+    Ast_Cast *cast = nullptr;
+    expect(TOKEN_CAST);
+    Ast_Type_Defn *type_defn = NULL;
+    if (lexer->eat(TOKEN_LPAREN)) {
+        type_defn = parse_type();
+        if (type_defn == NULL) {
+            report_parser_error(lexer, "missing type in cast expression.\n");
+        }
+        if (lexer->eat(TOKEN_RPAREN)) {
+            Ast_Expr *next_expr = parse_unary_expr();
+            if (next_expr) {
+                cast = ast_cast_expr(type_defn, next_expr);
+            } else {
+                report_parser_error(lexer, "missing expression after cast.\n");
+            }
+        } else {
+            report_parser_error(lexer, "missing ')' after type of cast.\n");
+        }
+    } else {
+        report_parser_error(lexer, "missing '(' after 'cast'.\n");
+    }
+    return cast;
+}
+
 Ast_Expr *Parser::parse_unary_expr() {
     Token op = lexer->current();
     switch (op.kind) {
@@ -246,30 +271,9 @@ Ast_Expr *Parser::parse_unary_expr() {
 
     case TOKEN_CAST:
     {
-        Ast_Type_Defn *type_defn = NULL;
-        lexer->next_token();
-        if (lexer->eat(TOKEN_LPAREN)) {
-            type_defn = parse_type();
-            if (type_defn == NULL) {
-                report_parser_error(lexer, "missing type in cast expression.\n");
-            }
-            if (lexer->eat(TOKEN_RPAREN)) {
-                Ast_Expr *next_expr = parse_unary_expr();
-                if (next_expr) {
-                    Ast_Cast *cast = ast_cast_expr(type_defn, next_expr);
-                    cast->mark_range(op.start, cast->end);
-                    return cast;
-                } else {
-                    report_parser_error(lexer, "missing expression after cast.\n");
-                }
-            } else {
-                report_parser_error(lexer, "missing ')' after type of cast.\n");
-            }
-        } else {
-            report_parser_error(lexer, "missing '(' after 'cast'.\n");
-        }
-        return NULL;
-        break;
+        Ast_Cast *cast = parse_cast_expr();
+        cast->mark_range(op.start, cast->end);
+        return cast;
     }
 
     case TOKEN_PLUS:
@@ -389,6 +393,7 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
             break;
 
         case TOKEN_EQ2:
+        case TOKEN_NEQ:
         case TOKEN_LT:
         case TOKEN_GT:
         case TOKEN_LTEQ:
@@ -567,45 +572,44 @@ Ast_For *Parser::parse_for_stmt() {
     return stmt;
 }
 
-Ast_Case_Label *Parser::parse_case_label() {
+Ast_Case_Label *Parser::parse_case_label(Ast_Ifcase *ifcase) {
     Source_Pos start = lexer->current().start;
+    Ast_Case_Label *label = nullptr;
+    if (lexer->eat(TOKEN_CASE)) {
+        Ast_Expr *cond = parse_range_expr();
 
-    expect(TOKEN_CASE);
-    Ast_Expr *cond = parse_range_expr();
+        Source_Pos end = lexer->current().end;
+        expect(TOKEN_COLON);
 
-    Source_Pos end = lexer->current().end;
-    expect(TOKEN_COLON);
+        label = AST_NEW(Ast_Case_Label);
+        label->block = AST_NEW(Ast_Block);
+        label->cond = cond;
 
-    Ast_Case_Label *label = AST_NEW(Ast_Case_Label);
-    label->cond = cond;
-
-    Auto_Array<Ast_Stmt*> fallthrough_statements;
-
-    while (!lexer->eof()) {
-        if (lexer->match(TOKEN_CASE)) break;
-        Ast_Stmt *stmt = parse_stmt();
-        if (!stmt) break;
-
-        if (stmt->kind == AST_FALLTHROUGH) {
-            label->fallthrough = true;
-        } else {
-            label->statements.push(stmt);
+        for (;;) {
+            Ast_Stmt *stmt = parse_stmt();
+            if (!stmt) break;
+            label->block->statements.push(stmt);
         }
-        fallthrough_statements.push(stmt);
-    }
 
-    if (fallthrough_statements.count) {
-        for (Ast_Stmt *stmt : fallthrough_statements) {
-            if (stmt->kind == AST_FALLTHROUGH && stmt != fallthrough_statements.back()) {
-                report_parser_error(stmt, "illegal #fallthrough, must be placed at end of case block.\n");
+        for (Ast_Stmt *stmt : label->block->statements) {
+            if (stmt->kind == AST_FALLTHROUGH) {
+                if (stmt != label->block->statements.back()) {
+                    report_parser_error(stmt, "illegal fallthrough, must be placed at end of a case block.\n");
+                }
+                Ast_Fallthrough *fallthrough = static_cast<Ast_Fallthrough*>(stmt);
+                fallthrough->target = label;
+                label->fallthrough = true;
             }
         }
-        // end = fallthrough_statements.back()->end;
-        fallthrough_statements.clear();
+
+        label->mark_range(start, end);
     }
 
-    label->mark_range(start, end);
-
+    if (label->block->statements.count > 0) {
+        Ast_Stmt *first = label->block->statements.front();
+        Ast_Stmt *last = label->block->statements.back();
+        label->block->mark_range(first->start, last->end);
+    }
     return label;
 }
 
@@ -620,28 +624,18 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
 
     expect(TOKEN_LBRACE);
 
-    Ast_Case_Label *last_label = nullptr;
-
-    while (!lexer->eof()) {
+    for (;;) {
         if (lexer->match(TOKEN_RBRACE)) break;
 
-        Ast_Stmt *stmt = parse_stmt();
-        if (!stmt) break;
+        Ast_Case_Label *label = parse_case_label(ifcase);
+        if (!label) break;
 
-        if (stmt->kind == AST_CASE_LABEL) {
-            Ast_Case_Label *label = static_cast<Ast_Case_Label*>(stmt);
-
-            if (last_label) {
-                last_label->next_label = label;
-            }
-            label->prev_label = last_label;
-            last_label = label;
-
-            ifcase->cases.push(label);
-        } else {
-            report_parser_error(lexer, "illegal statement in case statement, not under a case label.\n");
-            ifcase->poison();
+        if (ifcase->cases.count > 0) {
+            Ast_Case_Label *prev = ifcase->cases.back();
+            prev->next = label;
+            label->prev = prev;
         }
+        ifcase->cases.push(label);
     }
 
     Source_Pos end = lexer->current().end;
@@ -666,6 +660,7 @@ Ast_Continue *Parser::parse_continue_stmt() {
     Ast_Continue *continue_stmt = AST_NEW(Ast_Continue);
     continue_stmt->mark_range(lexer->current().start, lexer->current().end);
     expect(TOKEN_CONTINUE);
+    expect(TOKEN_SEMI);
     return continue_stmt;
 }
 
@@ -686,12 +681,13 @@ Ast_Stmt *Parser::parse_stmt() {
         break;
     }
 
-    case TOKEN_THROUGH:
+    case TOKEN_FALLTHROUGH:
     {
         Token token = lexer->current();
         lexer->next_token();
         stmt = AST_NEW(Ast_Fallthrough);
         stmt->mark_range(token.start, token.end);
+        expect(TOKEN_SEMI);
         break;
     }
 
@@ -706,13 +702,6 @@ Ast_Stmt *Parser::parse_stmt() {
     {
         Ast_Block *block = parse_block();
         stmt = block;
-        break;
-    }
-
-    case TOKEN_CASE:
-    {
-        Ast_Case_Label *case_label = parse_case_label();
-        stmt = case_label;
         break;
     }
 
@@ -795,7 +784,7 @@ Ast_Type_Defn *Parser::parse_type() {
     Ast_Type_Defn *type = NULL;
 
     bool terminate = false;
-    while (!terminate && !lexer->eof()) {
+    while (!terminate) {
         switch (lexer->peek()) {
         default:
             terminate = true;
@@ -870,7 +859,7 @@ Ast_Block *Parser::parse_block() {
     Source_Pos start = lexer->current().start;
     Ast_Block *block = AST_NEW(Ast_Block);
     expect(TOKEN_LBRACE);
-    while (!lexer->eof() && !lexer->match(TOKEN_RBRACE)) {
+    while (!lexer->match(TOKEN_RBRACE)) {
         Ast_Stmt *stmt = parse_stmt();
         if (stmt == NULL) break;
         block->statements.push(stmt);
@@ -885,7 +874,7 @@ Ast_Proc *Parser::parse_proc(Token name) {
     bool has_varargs = false;
     Auto_Array<Ast_Param*> parameters;
     expect(TOKEN_LPAREN);
-    while (!lexer->eof() && !lexer->match(TOKEN_RPAREN)) {
+    while (!lexer->match(TOKEN_RPAREN)) {
         Ast_Param *param = parse_param();
         if (param == NULL) break;
         parameters.push(param);
@@ -953,7 +942,7 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
                 goto ERROR_HANDLE;
             }
 
-            while (!lexer->eof() && !lexer->match(TOKEN_RPAREN)) {
+            while (!lexer->match(TOKEN_RPAREN)) {
                 Ast_Param *param = parse_param();
                 if (param == NULL) break;
                 parameters.push(param);
@@ -1011,7 +1000,7 @@ Ast_Struct *Parser::parse_struct(Token name) {
     Source_Pos end = {};
     Auto_Array<Ast_Struct_Field*> fields;
     if (lexer->eat(TOKEN_LBRACE)) {
-        while (!lexer->match(TOKEN_RBRACE) && !lexer->eof()) {
+        while (!lexer->match(TOKEN_RBRACE)) {
             Ast_Struct_Field *field = parse_struct_field();
             if (field == NULL) break;
             fields.push(field);
@@ -1042,7 +1031,7 @@ Ast_Enum *Parser::parse_enum(Token name) {
     Source_Pos end = {};
     Auto_Array<Ast_Enum_Field*> fields;
     if (lexer->eat(TOKEN_LBRACE)) {
-        while (!lexer->match(TOKEN_RBRACE) && !lexer->eof()) {
+        while (!lexer->match(TOKEN_RBRACE)) {
             Ast_Enum_Field *field = parse_enum_field();
             if (field == NULL) break;
             

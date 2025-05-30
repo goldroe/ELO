@@ -14,7 +14,7 @@ struct Parser {
     void expect(Token_Kind token);
 
     Ast_Ifcase *parse_ifcase_stmt();
-    Ast_Case_Label *parse_case_label();
+    Ast_Case_Label *parse_case_label(Ast_Ifcase *ifcase);
 
     Ast_Compound_Literal *parse_compound_literal();
     Ast_Expr *parse_expr();
@@ -28,6 +28,8 @@ struct Parser {
     Ast_Expr *parse_binary_expr(Ast_Expr *lhs, int prec);
     Ast_Expr *parse_postfix_expr();
     Ast_Expr *parse_primary_expr();
+
+    Ast_Cast *parse_cast_expr();
 
     Ast_Expr *parse_range_expr();
 
