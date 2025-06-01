@@ -2,6 +2,7 @@
 #load "stdio.elo"
 
 Token_Kind :: enum {
+    UNKNOWN,
     EOF,
     NAME,
     NUMBER,
@@ -18,8 +19,7 @@ Token :: struct {
 }
 
 Lexer :: struct {
-    stream: []u8;
-    stream_idx: u64;
+    stream: *u8;
     tok: Token;
 }
 
@@ -36,36 +36,77 @@ is_alpha :: (ch: u8) -> bool {
     return 'A' <= ch && ch <= 'Z' || 'a' <= ch && ch <= 'z';
 }
 
-advance :: (lexer: *Lexer) {
-    // skip whitespace
-    while (is_space(lexer.stream[lexer.stream_idx])) {
-        lexer.stream_idx += 1u64;
+is_digit :: (ch: u8) -> bool {
+    return '0' <= ch && ch <= '9';
+}
+
+eat_char :: (lexer: *Lexer) {
+    lexer.stream = lexer.stream + 1;
+}
+
+eat_whitespace :: (lexer: *Lexer) {
+    while (is_space(lexer.stream.*)) {
+        eat_char(lexer);
     }
+}
 
-    printf("ALPHA\n");
+advance :: (lexer: *Lexer) {
+    eat_whitespace(lexer);
 
-    start := lexer.stream;
+    ifcase lexer.stream.* {
+    case:
+        lexer.tok.kind = Token_Kind.UNKNOWN;
+        printf("error: unexpected char '%c'.\n", lexer.stream.*);
+        eat_char(lexer);
 
-    ifcase lexer.stream[lexer.stream_idx] {
     case 0u8:
         lexer.tok.kind = Token_Kind.EOF;
+
     case 'a'..'z':
     case 'A'..'Z':
     case '_':
         lexer.tok.kind = Token_Kind.NAME;
-        while is_alpha(lexer.stream[lexer.stream_idx]) {
-            lexer.stream_idx += 1u64;
+        while is_alpha(lexer.stream.*) {
+            eat_char(lexer);
         }
+
+    case '0'..'9':
+        lexer.tok.kind = Token_Kind.NUMBER;
+        while is_digit(lexer.stream.*) {
+            eat_char(lexer);
+        }
+
+    case '.':
+        lexer.tok.kind = Token_Kind.DOT;
+        eat_char(lexer);
     }
 }
 
 main :: () -> int {
-    puts("Hello world.");
-    stream := "This is some text. 1 21 1223.\n New line okay cool.";
     lexer: Lexer;
-    lexer.stream = stream;
-    lexer.stream_idx = 0u64;
-    advance(*lexer);
-    puts("Goodbye world.");
+    lexer.stream = "This is some 1002 text. 1 21 1223. * 12";;
+
+    while 1 {
+        advance(*lexer);
+        ifcase lexer.tok.kind {
+        case:
+            puts("UNKNOWN");
+        case Token_Kind.EOF:
+            puts("EOF");
+        case Token_Kind.NAME:
+            puts("NAME");
+        case Token_Kind.NUMBER:
+            puts("NUMBER");
+        case Token_Kind.DOT:
+            puts("DOT");
+        case Token_Kind.COMMA:
+            puts("COMMA");
+        }
+
+        if (lexer.tok.kind == Token_Kind.EOF) {
+            break;
+        }
+    }
+
     return 0;
 }
