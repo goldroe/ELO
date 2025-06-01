@@ -41,7 +41,7 @@ enum Type_Info_Flags {
     TYPE_FLAG_STRING    = (1<<13),
 
     TYPE_FLAG_INTEGRAL  = (TYPE_FLAG_INTEGER|TYPE_FLAG_BOOLEAN|TYPE_FLAG_ENUM),
-    TYPE_FLAG_NUMERIC   = (TYPE_FLAG_INTEGER|TYPE_FLAG_FLOAT|TYPE_FLAG_BOOLEAN),
+    TYPE_FLAG_NUMERIC   = (TYPE_FLAG_INTEGER|TYPE_FLAG_BOOLEAN|TYPE_FLAG_ENUM|TYPE_FLAG_FLOAT|TYPE_FLAG_BOOLEAN|TYPE_FLAG_POINTER),
     TYPE_FLAG_AGGREGATE = (TYPE_FLAG_STRUCT|TYPE_FLAG_ARRAY|TYPE_FLAG_STRING),
 };
 EnumDefineFlagOperators(Type_Info_Flags);
@@ -65,22 +65,23 @@ struct Ast_Type_Info : Ast {
         Auto_Array<Struct_Field_Info> fields;
     } aggregate;
 
-
     bool is_struct_access();
+    inline bool is_user_defined_type() { return type_flags & (TYPE_FLAG_STRUCT|TYPE_FLAG_ARRAY); }
     inline bool is_boolean_type() { return (type_flags & TYPE_FLAG_BOOLEAN); }
-    inline bool is_custom_type() { return (type_flags & TYPE_FLAG_STRUCT) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_custom_type() { return type_flags & (TYPE_FLAG_STRUCT|TYPE_FLAG_ENUM); }
     inline bool is_struct_type() { return type_flags & TYPE_FLAG_STRUCT; }
     inline bool is_enum_type() { return type_flags & TYPE_FLAG_ENUM; }
     inline bool is_proc_type() { return type_flags & TYPE_FLAG_PROC; }
     inline bool is_builtin_type() { return type_flags & TYPE_FLAG_BUILTIN; }
-    inline bool is_conditional_type() { return (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ENUM); }
+    inline bool is_conditional_type() { return type_flags & TYPE_FLAG_NUMERIC; }
+    inline bool is_numeric_type() { return type_flags & TYPE_FLAG_NUMERIC; }
     inline bool is_array_type() { return type_flags & TYPE_FLAG_ARRAY; }
     inline bool is_pointer_type() { return type_flags & TYPE_FLAG_POINTER; }
-    inline bool is_indirection_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_ARRAY); }
-    inline bool is_arithmetic_type() { return (type_flags & TYPE_FLAG_POINTER) || (type_flags & TYPE_FLAG_NUMERIC) || (type_flags & TYPE_FLAG_ENUM); }
-    inline bool is_integral_type() { return (type_flags & TYPE_FLAG_INTEGRAL); }
-    inline bool is_float_type() { return (type_flags & TYPE_FLAG_FLOAT); }
-    inline bool is_signed() { return (type_flags & TYPE_FLAG_SIGNED); }
+    inline bool is_indirection_type() { return type_flags & (TYPE_FLAG_POINTER|TYPE_FLAG_ARRAY); }
+    inline bool is_arithmetic_type() { return type_flags & TYPE_FLAG_NUMERIC; }
+    inline bool is_integral_type() { return type_flags & TYPE_FLAG_INTEGRAL; }
+    inline bool is_float_type() { return type_flags & TYPE_FLAG_FLOAT; }
+    inline bool is_signed() { return type_flags & TYPE_FLAG_SIGNED; }
     inline Ast_Type_Info *deref() { return base; }
 };
 

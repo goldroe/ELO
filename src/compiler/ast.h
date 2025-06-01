@@ -12,6 +12,61 @@ struct Scope;
 struct Ast_Ident;
 struct Ast_Operator_Proc;
 
+enum OP {
+    OP_ERR = -1,
+
+    OP_ADDRESS,
+    OP_DEREF,
+    OP_SUBSCRIPT,
+    OP_ACCESS,
+    OP_CAST,
+
+    // Unary
+    OP_UNARY_PLUS,
+    OP_UNARY_MINUS,
+    OP_NOT,
+    OP_BIT_NOT,
+
+    // Binary
+    OP_ADD,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV,
+    OP_MOD,
+
+    OP_EQ,
+    OP_NEQ,
+    OP_LT,
+    OP_LTEQ,
+    OP_GT,
+    OP_GTEQ,
+
+    OP_OR,
+    OP_AND,
+    OP_BIT_AND,
+    OP_BIT_OR,
+    OP_XOR,
+    OP_LSH,
+    OP_RSH,
+
+    // Assign
+    OP_ASSIGN,
+    OP_ADD_ASSIGN,
+    OP_SUB_ASSIGN,
+    OP_MUL_ASSIGN,
+    OP_DIV_ASSIGN,
+    OP_MOD_ASSIGN,
+    OP_LSHIFT_ASSIGN,
+    OP_RSHIFT_ASSIGN,
+    OP_AND_ASSIGN,
+    OP_OR_ASSIGN,
+    OP_XOR_ASSIGN,
+    OP_LSH_ASSIGN,
+    OP_RSH_ASSIGN,
+    OP_ASSIGN_END,
+
+};
+
 enum Ast_Kind {
     AST_NIL,
 
@@ -122,10 +177,6 @@ enum Expr_Flags {
     EXPR_FLAG_CONSTANT    = (1<<0),
     EXPR_FLAG_LVALUE      = (1<<1),
     EXPR_FLAG_OP_CALL     = (1<<9),
-    EXPR_FLAG_ARITHMETIC  = (1<<10),
-    EXPR_FLAG_BOOLEAN     = (1<<11),
-    EXPR_FLAG_ASSIGNMENT  = (1<<12),
-    EXPR_FLAG_COMPARISON  = (1<<13),
 };
 EnumDefineFlagOperators(Expr_Flags);
 
@@ -142,7 +193,7 @@ struct Ast_Expr : Ast {
     Eval eval;
 
     bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
-    inline bool is_binop(Token_Kind op);
+    inline bool is_binop(OP op);
 };
 
 struct Ast_Null : Ast_Expr {
@@ -202,7 +253,7 @@ struct Ast_Ident : Ast_Expr {
 
 struct Ast_Unary : Ast_Expr {
     Ast_Unary() { kind = AST_UNARY; }
-    Token op;
+    OP op;
     Ast_Operator_Proc *proc;
     Ast_Expr *elem;
 };
@@ -225,7 +276,7 @@ struct Ast_Cast : Ast_Expr {
 
 struct Ast_Assignment : Ast_Expr {
     Ast_Assignment() { kind = AST_ASSIGNMENT; }
-    Token op;
+    OP op;
     Ast_Operator_Proc *proc;
     Ast_Expr *lhs;
     Ast_Expr *rhs;
@@ -233,7 +284,7 @@ struct Ast_Assignment : Ast_Expr {
 
 struct Ast_Binary : Ast_Expr {
     Ast_Binary() { kind = AST_BINARY; }
-    Token op;
+    OP op;
     Ast_Operator_Proc *proc;
     Ast_Expr *lhs;
     Ast_Expr *rhs;
@@ -315,7 +366,7 @@ struct Ast_Proc : Ast_Decl {
 
 struct Ast_Operator_Proc : Ast_Proc {
     Ast_Operator_Proc() { kind = AST_OPERATOR_PROC; }
-    Token_Kind op;
+    OP op;
 };
 
 enum Stmt_Flags {
@@ -331,8 +382,6 @@ struct Ast_If : Ast_Stmt {
     Ast_If() { kind = AST_IF; }
     Ast_Expr *cond;
     Ast_Block *block;
-    Ast_If *if_next = nullptr;
-    Ast_If *if_prev = nullptr;
     b32 is_else;
 };
 
@@ -419,5 +468,6 @@ struct Ast_Fallthrough : Ast_Stmt {
 
 internal Ast *ast_alloc(u64 size, int alignment);
 internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base);
+internal char *string_from_operator(OP op);
 
 #endif // AST_H

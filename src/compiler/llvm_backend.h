@@ -114,6 +114,9 @@ struct LLVM_Backend {
     LLVM_Addr gen_addr(Ast_Expr *expr);
     llvm::Value* gen_condition(Ast_Expr *expr);
 
+
+    llvm::Value *gen_logical_not(llvm::Value *value);
+
     LLVM_Value gen_expr(Ast_Expr *expr);
     LLVM_Value gen_binary_op(Ast_Binary *binop);
 
@@ -139,7 +142,7 @@ struct LLVM_Backend {
     LLVM_Procedure *lookup_proc(Atom *name);
     LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
 
-    void get_lazy_expressions(Ast_Binary *root, Token_Kind op, Auto_Array<Ast_Expr*> *expr_list);
+    void get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast_Expr*> *expr_list);
     void lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block);
 
     bool emit_block_check_branch();
@@ -157,6 +160,13 @@ struct LLVM_Backend {
     void gen_ifcase(Ast_Ifcase *ifcase);
     void gen_ifcase_switch(Ast_Ifcase *ifcase);
     void gen_ifcase_if_else(Ast_Ifcase *ifcase);
+
+
+    llvm::Value *LLVM_Backend::emit_gep_offset(llvm::Value *ptr, llvm::Value *offset);
+    LLVM_Value LLVM_Backend::gen_null(Ast_Null *null);
+    LLVM_Value LLVM_Backend::gen_literal(Ast_Literal *literal);
+
+    LLVM_Value LLVM_Backend::gen_assignment(Ast_Assignment *assignment);
 };
 
 #endif // LLVM_BACKEND_H

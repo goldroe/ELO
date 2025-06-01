@@ -48,7 +48,7 @@ Ast_Decl *Resolver::lookup(Scope *scope, Atom *name) {
     return NULL;
 }
 
-Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, Ast_Type_Info *lhs, Ast_Type_Info *rhs) {
+Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(OP op, Ast_Type_Info *lhs, Ast_Type_Info *rhs) {
     Ast_Operator_Proc *result = NULL;
     Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
@@ -57,9 +57,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, 
             Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
             resolve_proc_header(proc);
             Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-            if (proc->op == op && proc_type->parameters.count == 2 &&
-                typecheck(proc_type->parameters[0], lhs) &&
-                typecheck(proc_type->parameters[1], rhs)) {
+            if (proc->op == op && typecheck(proc_type->parameters[0], lhs) && typecheck(proc_type->parameters[1], rhs)) {
                 result = proc;
                 break;
             }
@@ -68,7 +66,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(Token_Kind op, 
     return result;
 }
 
-Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(Token_Kind op, Ast_Type_Info *type) {
+Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(OP op, Ast_Type_Info *type) {
     Ast_Operator_Proc *result = NULL;
     Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
@@ -77,8 +75,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(Token_Kind op, A
             Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
             resolve_proc_header(proc);
             Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-            if (proc->op == op && proc_type->parameters.count == 1 &&
-                typecheck(proc_type->parameters[0], type)) {
+            if (proc->op == op && typecheck(proc_type->parameters[0], type)) {
                 result = proc;
                 break;
             }
@@ -407,7 +404,7 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     case AST_IF:
     {
         Ast_If *if_stmt = static_cast<Ast_If*>(stmt);
-        for (Ast_If *node = if_stmt; node; node = node->if_next) {
+        for (Ast_If *node = if_stmt; node; node = (Ast_If *)node->next) {
             resolve_if_stmt(node);
         }
         break;
@@ -528,105 +525,38 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
     return type;
 }
 
-void Resolver::resolve_builtin_operator_expr(Ast_Binary *binary) {
-    Ast_Expr *lhs = binary->lhs;
-    Ast_Expr *rhs = binary->rhs;
-    Assert(lhs->valid() && rhs->valid());
-
-    // switch (binary->op.kind) {
-    // case TOKEN_PLUS:
-    // case TOKEN_MINUS:
-    //     if (lhs->type_info->is_arithmetic_type()) {
-            
-    //     }
-    // case TOKEN_STAR:
-    // case TOKEN_SLASH:
-    // case TOKEN_MOD:
-    // case TOKEN_AMPER:
-    // case TOKEN_BAR:
-
-    // case TOKEN_EQ2:
-    // case TOKEN_NEQ:
-    // case TOKEN_LT:
-    // case TOKEN_LTEQ:
-    // case TOKEN_GT:
-    // case TOKEN_GTEQ:
-
-    // case TOKEN_BANG:
-    // case TOKEN_AND:
-    // case TOKEN_OR:
-    // case TOKEN_XOR:
-    // case TOKEN_LSHIFT:
-    // case TOKEN_RSHIFT:
-    // }
-
-    if (binary->expr_flags & EXPR_FLAG_ARITHMETIC) {
-        binary->type_info = lhs->type_info;
-        if (!lhs->type_info->is_arithmetic_type()) {
-            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-        if (!rhs->type_info->is_arithmetic_type()) {
-            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-    }
-
-    if (binary->expr_flags & EXPR_FLAG_BOOLEAN) {
-        binary->type_info = type_bool;
-        if (lhs->type_info->is_struct_type()) {
-            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-        if (rhs->type_info->is_struct_type()) {
-            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-    }
-
-    if (binary->expr_flags & EXPR_FLAG_COMPARISON) {
-        binary->type_info = type_bool;
-        //@Note Give null expr type of lhs
-        if (rhs->kind == AST_NULL) {
-            rhs->type_info = lhs->type_info;
-        }
-        if (!lhs->type_info->is_arithmetic_type()) {
-            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-        if (!rhs->type_info->is_arithmetic_type()) {
-            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_token(binary->op.kind));
-            binary->poison();
-        }
-    }
-
-    if (binary->valid() &&
-        lhs->is_constant() && rhs->is_constant()) {
-        binary->expr_flags |= EXPR_FLAG_CONSTANT;
-        binary->eval = eval_binary_expr(binary);
-    }
-}
-
 Eval Resolver::eval_unary_expr(Ast_Unary *u) {
     Eval result = {};
     Eval e = u->elem->eval;
     if (u->elem->type_info->is_integral_type()) {
-        switch (u->op.kind) {
-        case TOKEN_PLUS:
+        switch (u->op) {
+        case OP_UNARY_PLUS:
             result.int_val = e.int_val;
-        case TOKEN_MINUS:
-            result.int_val = e.int_val;
-        case TOKEN_BANG:
+            break;
+        case OP_UNARY_MINUS:
+            result.int_val = -e.int_val;
+            break;
+        case OP_NOT:
             result.int_val = !e.int_val;
+            break;
+        case OP_BIT_NOT:
+            result.int_val = ~e.int_val;
+            break;
         }
     } else if (u->elem->type_info->is_float_type()) {
-        switch (u->op.kind) {
-        case TOKEN_PLUS:
+        switch (u->op) {
+        case OP_UNARY_PLUS:
             result.float_val = e.float_val;
-        case TOKEN_MINUS:
+            break;
+        case OP_UNARY_MINUS:
             result.float_val = -e.float_val;
-        case TOKEN_BANG:
+            break;
+        case OP_NOT:
             result.float_val = !e.float_val;
+            break;
+        case OP_BIT_NOT:
+            Assert(0);
+            break;
         }
     }
     return result;
@@ -638,123 +568,95 @@ Eval Resolver::eval_binary_expr(Ast_Binary *b) {
     Eval rhs = b->rhs->eval;    
 
     if (b->lhs->type_info->is_integral_type()) {
-        switch (b->op.kind) {
-        case TOKEN_PLUS:
+        switch (b->op) {
+        case OP_ADD:
             result.int_val = lhs.int_val + rhs.int_val;
             break;
-        case TOKEN_MINUS:
+        case OP_SUB:
             result.int_val = lhs.int_val - rhs.int_val;
             break;
-        case TOKEN_STAR:
+        case OP_MUL:
             result.int_val = lhs.int_val * rhs.int_val;
             break;
-        case TOKEN_SLASH:
+        case OP_DIV:
             result.int_val = lhs.int_val / rhs.int_val;
             break;
-        case TOKEN_MOD:
+        case OP_MOD:
             result.int_val = lhs.int_val % rhs.int_val;
             break;
-        case TOKEN_NEQ:
+        case OP_NEQ:
             result.int_val = lhs.int_val != rhs.int_val;
             break;
-        case TOKEN_LT:
+        case OP_LT:
             result.int_val = lhs.int_val < rhs.int_val;
             break;
-        case TOKEN_LTEQ:
+        case OP_LTEQ:
             result.int_val = lhs.int_val <= rhs.int_val;
             break;
-        case TOKEN_GT:
+        case OP_GT:
             result.int_val = lhs.int_val > rhs.int_val;
             break;
-        case TOKEN_GTEQ:
+        case OP_GTEQ:
             result.int_val = lhs.int_val >= rhs.int_val;
             break;
-        case TOKEN_AMPER:
+        case OP_BIT_AND:
             result.int_val = lhs.int_val & rhs.int_val;
             break;
-        case TOKEN_AND:
+        case OP_AND:
             result.int_val = lhs.int_val && rhs.int_val;
             break;
-        case TOKEN_BAR:
+        case OP_BIT_OR:
             result.int_val = lhs.int_val | rhs.int_val;
             break;
-        case TOKEN_OR:
+        case OP_OR:
             result.int_val = lhs.int_val || rhs.int_val;
             break;
-        case TOKEN_XOR:
+        case OP_XOR:
             result.int_val = lhs.int_val ^ rhs.int_val;
             break;
         }
-    }    
-    
-    if (b->lhs->type_info->is_float_type()) {
-        switch (b->op.kind) {
-        case TOKEN_PLUS:
+    } else if (b->lhs->type_info->is_float_type()) {
+        switch (b->op) {
+        case OP_ADD:
             result.float_val = lhs.float_val + rhs.float_val;
             break;
-        case TOKEN_MINUS:
+        case OP_SUB:
             result.float_val = lhs.float_val - rhs.float_val;
             break;
-        case TOKEN_STAR:
+        case OP_MUL:
             result.float_val = lhs.float_val * rhs.float_val;
             break;
-        case TOKEN_SLASH:
+        case OP_DIV:
             result.float_val = lhs.float_val / rhs.float_val;
             break;
-        case TOKEN_MOD:
+        case OP_MOD:
             result.float_val = fmod(lhs.float_val, rhs.float_val);
             break;
-        case TOKEN_NEQ:
+        case OP_NEQ:
             result.float_val = lhs.float_val != rhs.float_val;
             break;
-        case TOKEN_LT:
+        case OP_LT:
             result.float_val = lhs.float_val < rhs.float_val;
             break;
-        case TOKEN_LTEQ:
+        case OP_LTEQ:
             result.float_val = lhs.float_val <= rhs.float_val;
             break;
-        case TOKEN_GT:
+        case OP_GT:
             result.float_val = lhs.float_val > rhs.float_val;
             break;
-        case TOKEN_GTEQ:
+        case OP_GTEQ:
             result.float_val = lhs.float_val >= rhs.float_val;
             break;
-        case TOKEN_AND:
+        case OP_AND:
             result.float_val = lhs.float_val && rhs.float_val;
             break;
-        case TOKEN_OR:
+        case OP_OR:
             result.float_val = lhs.float_val || rhs.float_val;
             break;
         }        
     }
 
     return result;
-}
-
-void Resolver::resolve_user_defined_operator_expr(Ast_Binary *expr) {
-    Token op = expr->op;
-    Ast_Operator_Proc *proc = lookup_user_defined_binary_operator(op.kind, expr->lhs->type_info, expr->rhs->type_info);
-    if (proc) {
-        resolve_proc_header(proc);
-        Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-        expr->type_info = proc_type->return_type;
-        expr->proc = proc;
-    } else {
-        report_ast_error(expr, "no binary operator'%s' (%s,%s) found.\n", string_from_token(op.kind), string_from_type(expr->lhs->type_info), string_from_type(expr->rhs->type_info));
-        expr->poison();
-    }
-}
-
-void Resolver::resolve_user_defined_operator_expr(Ast_Unary *expr) {
-    Token op = expr->op;
-    Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(op.kind, expr->elem->type_info);
-    if (proc) {
-        expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
-        expr->proc = proc;
-    } else {
-        report_ast_error(expr, "no unary operator'%s' (%s) found.\n", string_from_token(op.kind), string_from_type(expr->elem->type_info));
-        expr->poison();
-    }
 }
 
 void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
@@ -783,35 +685,226 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
     assignment->type_info = lhs->type_info;
 }
 
-void Resolver::resolve_binary_expr(Ast_Binary *binary) {
-    Ast_Expr *lhs = binary->lhs;
-    Ast_Expr *rhs = binary->rhs;
+void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
+    Ast_Expr *elem = expr->elem;
+    switch (expr->op) {
+    case OP_UNARY_PLUS:
+        if (elem->type_info->is_numeric_type()) {
+            expr->type_info = elem->type_info;
+        } else {
+            report_ast_error(elem, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            expr->poison();
+        }
+    case OP_UNARY_MINUS:
+        if (elem->type_info->is_numeric_type() && !elem->type_info->is_pointer_type()) {
+            expr->type_info = elem->type_info;
+        } else {
+            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            expr->poison();
+        }
+    case OP_NOT:
+    case OP_BIT_NOT:
+        if (elem->type_info->is_numeric_type()) {
+            expr->type_info = elem->type_info;
+        } else {
+            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
+    }
+}
+
+void Resolver::resolve_unary_expr(Ast_Unary *expr) {
+    resolve_expr(expr->elem);
+    if (expr->elem->valid()) {
+        if (expr->elem->type_info->is_user_defined_type()) {
+            Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(expr->op, expr->elem->type_info);
+            if (proc) {
+                resolve_proc_header(proc);
+                expr->expr_flags |= EXPR_FLAG_OP_CALL;
+                expr->proc = proc;
+                if (proc->valid()) {
+                    expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+                }
+            } else {
+                report_ast_error(expr, "could not find operator'%s' (%s).\n", string_from_operator(expr->op), string_from_type(expr->elem->type_info));
+            }
+        } else {
+            resolve_builtin_unary_expr(expr);
+            if (expr->valid() && expr->elem->is_constant()) {
+                expr->expr_flags |= EXPR_FLAG_CONSTANT;
+                expr->eval = eval_unary_expr(expr);
+            }
+        }
+    } else {
+        expr->poison();
+    }
+}
+
+void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
+    Ast_Expr *lhs = expr->lhs;
+    Ast_Expr *rhs = expr->rhs;
+    Assert(lhs->valid() && rhs->valid());
+
+    switch (expr->op) {
+    case OP_ADD:
+        if (lhs->type_info->is_pointer_type() && rhs->type_info->is_pointer_type()) {
+            report_ast_error(expr, "cannot add two pointers.\n");
+        } else if (lhs->type_info->is_pointer_type()) {
+            if (!rhs->type_info->is_integral_type()) {
+                report_ast_error(rhs, "pointer addition requires integral operand.\n");
+                expr->poison();
+            }
+            expr->type_info = lhs->type_info;
+        } else if (rhs->type_info->is_pointer_type()) {
+            if (!lhs->type_info->is_integral_type()) {
+                report_ast_error(lhs, "pointer addition requires integral operand.\n");
+                expr->poison();
+            }
+            expr->type_info = rhs->type_info;
+        } else {
+            if (!lhs->type_info->is_arithmetic_type()) {
+                report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+                expr->poison();
+            }
+            if (!rhs->type_info->is_arithmetic_type()) {
+                report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+                expr->poison();
+            }
+            expr->type_info = lhs->type_info;
+        }
+        break;
+
+    case OP_SUB:
+        if (lhs->type_info->is_pointer_type() && rhs->type_info->is_pointer_type()) {
+            if (lhs->type_info != rhs->type_info) {
+                report_ast_error(expr, "'%s' and '%s' are incompatible pointer types.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
+                expr->poison();
+            }
+            expr->type_info = lhs->type_info;
+        } else if (lhs->type_info->is_pointer_type()) {
+            if (!rhs->type_info->is_integral_type()) {
+                report_ast_error(rhs, "pointer subtraction requires pointer or integral operand.\n");
+                expr->poison();
+            }
+        } else if (rhs->type_info->is_pointer_type()) {
+            report_ast_error(lhs, "pointer can only be subtracted from another pointer.\n");
+            expr->poison();
+        } else {
+            if (!lhs->type_info->is_arithmetic_type()) {
+                report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+                expr->poison();
+            }
+            if (!rhs->type_info->is_arithmetic_type()) {
+                report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+                expr->poison();
+            }
+            expr->type_info = lhs->type_info;
+        }
+        break;
+
+    case OP_MUL:
+    case OP_DIV:
+    case OP_MOD:
+        expr->type_info = lhs->type_info;
+        if (!lhs->type_info->is_arithmetic_type() || lhs->type_info->is_pointer_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        if (!rhs->type_info->is_arithmetic_type() || rhs->type_info->is_pointer_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
+
+    case OP_BIT_AND:
+    case OP_BIT_OR:
+    case OP_XOR:
+    case OP_LSH:
+    case OP_RSH:
+        expr->type_info = lhs->type_info;
+        if (!lhs->type_info->is_integral_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        if (!rhs->type_info->is_integral_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
+
+    case OP_EQ:
+    case OP_NEQ:
+    case OP_LT:
+    case OP_LTEQ:
+    case OP_GT:
+    case OP_GTEQ:
+        expr->type_info = type_bool;
+        if (lhs->type_info->is_struct_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        if (rhs->type_info->is_struct_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
+
+    case OP_OR:
+    case OP_AND:
+        expr->type_info = type_bool;
+        //@Note Give null expr type of lhs
+        if (rhs->kind == AST_NULL) {
+            rhs->type_info = lhs->type_info;
+        }
+        if (!lhs->type_info->is_arithmetic_type()) {
+            report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        if (!rhs->type_info->is_arithmetic_type()) {
+            report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
+    }
+
+    if (expr->valid() &&
+        lhs->is_constant() && rhs->is_constant()) {
+        expr->expr_flags |= EXPR_FLAG_CONSTANT;
+        expr->eval = eval_binary_expr(expr);
+    }
+}
+
+void Resolver::resolve_binary_expr(Ast_Binary *expr) {
+    Ast_Expr *lhs = expr->lhs;
+    Ast_Expr *rhs = expr->rhs;
 
     resolve_expr(lhs);
     resolve_expr(rhs);
 
-    if (!lhs) {
-        lhs = ast_error_expr();
-        binary->poison();
-    }
-    if (!rhs) {
-        rhs = ast_error_expr();
-        binary->poison();
-    }
-
     if (lhs->invalid()) {
-        binary->poison();
+        expr->poison();
     }
     if (rhs->invalid()) {
-        binary->poison();
+        expr->poison();
     }
 
     if (lhs->valid() && rhs->valid()) {
-        if (!lhs->type_info->is_custom_type() && !rhs->type_info->is_custom_type()) {
-            resolve_builtin_operator_expr(binary);  
+        if (lhs->type_info->is_user_defined_type() || rhs->type_info->is_user_defined_type()) {
+            Ast_Operator_Proc *proc = lookup_user_defined_binary_operator(expr->op, expr->lhs->type_info, expr->rhs->type_info);
+            if (proc) {
+                resolve_proc_header(proc);
+                expr->proc = proc;
+                expr->expr_flags |= EXPR_FLAG_OP_CALL;
+                if (proc->valid()) {
+                    expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+                }
+            } else {
+                report_ast_error(expr, "could not find operator'%s' (%s,%s).\n", string_from_operator(expr->op), string_from_type(expr->lhs->type_info), string_from_type(expr->rhs->type_info));
+                expr->poison();
+            }
         } else {
-            binary->expr_flags |= EXPR_FLAG_OP_CALL;
-            resolve_user_defined_operator_expr(binary);
+            resolve_builtin_binary_expr(expr);  
         }
     }
 }
@@ -906,41 +999,6 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     }
     if (is_constant) {
         literal->expr_flags |= EXPR_FLAG_CONSTANT;
-    }
-}
-
-bool inline is_constant_unary_op(Token_Kind op) {
-    switch (op) {
-    default:
-        return false;
-    case TOKEN_PLUS:
-    case TOKEN_MINUS:
-    case TOKEN_BANG:
-        return true;
-    }
-}
-
-void Resolver::resolve_unary_expr(Ast_Unary *unary) {
-    resolve_expr(unary->elem);
-
-    if (unary->elem->valid()) {
-        if (unary->elem->type_info->is_custom_type()) {
-            unary->expr_flags |= EXPR_FLAG_OP_CALL;
-            resolve_user_defined_operator_expr(unary);
-        } else if (unary->elem->valid() && !(unary->elem->type_info->type_flags & TYPE_FLAG_NUMERIC)) {
-            report_ast_error(unary, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(unary->elem), string_from_type(unary->elem->type_info), string_from_token(unary->op.kind));
-            unary->poison();
-        }
-        unary->type_info = unary->elem->type_info;
-    } else {
-        unary->poison();
-    }
-
-    if (unary->valid() && unary->elem->is_constant()) {
-        if (is_constant_unary_op(unary->op.kind)) {
-            unary->expr_flags |= EXPR_FLAG_CONSTANT;
-            unary->eval = eval_unary_expr(unary);
-        }
     }
 }
 
@@ -1381,7 +1439,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
         Ast_Proc_Type_Info *type = static_cast<Ast_Proc_Type_Info*>(operator_proc->type_info);
 
         if (type->parameters.count == 0) {
-            report_ast_error(proc, "operator %s missing parameters.\n", string_from_token(operator_proc->op));
+            report_ast_error(proc, "operator %s missing parameters.\n", string_from_operator(operator_proc->op));
         }
 
         bool has_custom_type = false;
@@ -1393,7 +1451,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
         }
 
         if (!has_custom_type) {
-            report_ast_error(proc, "operator %s must have at least one user-defined type.\n", string_from_token(operator_proc->op));
+            report_ast_error(proc, "operator %s must have at least one user-defined type.\n", string_from_operator(operator_proc->op));
         }
     }
 }

@@ -52,18 +52,17 @@ Ast_Compound_Literal *Parser::parse_compound_literal() {
 }
 
 Ast_Expr *Parser::parse_primary_expr() {
-    Ast_Expr *expr = NULL;
-
     Token token = lexer->current();
-    switch(token.kind) {
 
+    switch (token.kind) {
+    default:
+        return nullptr;
     case TOKEN_DOT:
     {
         lexer->next_token();
         Ast_Compound_Literal *compound = parse_compound_literal();
         compound->mark_start(token.start);
-        expr = compound;
-        break;
+        return compound;
     }
 
     case TOKEN_LPAREN:
@@ -74,8 +73,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         expect(TOKEN_RPAREN);
         Ast_Paren *paren = ast_paren(elem);
         paren->mark_range(token.start, end);
-        expr = paren;
-        break;
+        return paren;
     }
 
     case TOKEN_NULL:
@@ -83,8 +81,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         lexer->next_token();
         Ast_Null *null = AST_NEW(Ast_Null);
         null->mark_range(token.start, token.end);
-        expr = null;
-        break;
+        return null;
     }
 
     case TOKEN_TRUE:
@@ -95,16 +92,14 @@ Ast_Expr *Parser::parse_primary_expr() {
         literal->literal_flags = LITERAL_BOOLEAN;
         literal->int_val = (token.kind == TOKEN_TRUE);
         literal->mark_range(token.start, token.end);
-        expr = literal;
-        break;
+        return literal;
     }
 
     case TOKEN_IDENT:
     {
         lexer->next_token();
         Ast_Ident *ident = ast_ident(token);
-        expr = ident;
-        break;
+        return ident;
     }
 
     case TOKEN_INTLIT:
@@ -112,8 +107,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         lexer->next_token();
         Ast_Literal *literal = ast_intlit(token);
         literal->mark_range(token.start, token.end);
-        expr = literal;
-        break;
+        return literal;
     }
 
     case TOKEN_FLOATLIT:
@@ -121,8 +115,7 @@ Ast_Expr *Parser::parse_primary_expr() {
         lexer->next_token();
         Ast_Literal *literal = ast_floatlit(token);
         literal->mark_range(token.start, token.end);
-        expr = literal;
-        break;
+        return literal;
     }
 
     case TOKEN_STRLIT:
@@ -130,11 +123,9 @@ Ast_Expr *Parser::parse_primary_expr() {
         lexer->next_token();
         Ast_Literal *literal = ast_strlit(token);
         literal->mark_range(token.start, token.end);
-        expr = literal;
-        break;
+        return literal;
     }
     }
-    return expr;
 }
 
 Ast_Access *Parser::parse_access_expr(Ast_Expr *base) {
@@ -192,8 +183,7 @@ Ast_Call *Parser::parse_call_expr(Ast_Expr *expr) {
 
 Ast_Expr *Parser::parse_postfix_expr() {
     Ast_Expr *expr = parse_primary_expr();
-
-    if (expr == NULL) return expr;
+    if (!expr) return nullptr;
 
     bool terminate = false;
     while (!terminate) {
@@ -261,8 +251,9 @@ Ast_Cast *Parser::parse_cast_expr() {
 }
 
 Ast_Expr *Parser::parse_unary_expr() {
-    Token op = lexer->current();
-    switch (op.kind) {
+    Token op_tok = lexer->current();
+
+    switch (op_tok.kind) {
     default:
     {
         Ast_Expr *expr = parse_postfix_expr();
@@ -272,77 +263,86 @@ Ast_Expr *Parser::parse_unary_expr() {
     case TOKEN_CAST:
     {
         Ast_Cast *cast = parse_cast_expr();
-        cast->mark_range(op.start, cast->end);
+        cast->mark_range(op_tok.start, cast->end);
         return cast;
+    }
+
+    case TOKEN_STAR:
+    {
+        lexer->next_token();
+        Ast_Expr *operand = parse_unary_expr();
+        Ast_Address *expr = ast_address_expr(operand);
+        expr->mark_start(op_tok.start);
+        expr->mark_start(expr->end);
+        return expr;
     }
 
     case TOKEN_PLUS:
     case TOKEN_MINUS:
     case TOKEN_BANG:
+    case TOKEN_SQUIGGLE:
     {
         lexer->next_token();
+        OP op = get_unary_operator(op_tok.kind);
         Ast_Expr *operand = parse_unary_expr();
         Ast_Unary *expr = ast_unary_expr(op, operand);
-        return expr;
-    }
-
-    case TOKEN_STAR:
-    {
-        lexer->next_token();
-        Ast_Expr *operand = parse_unary_expr();
-        Ast_Address *expr = ast_address_expr(op, operand);
+        expr->mark_start(op_tok.start);
+        expr->mark_end(expr->end);
         return expr;
     }
     }
 }
 
-internal int get_operator_precedence(Token_Kind op) {
-    switch (op) {
-    default:
-        return -1;
+// internal int get_operator_precedence(Token_Kind op) {
+//     switch (op) {
+//     default:
+//         return -1;
 
-    case TOKEN_STAR:
-    case TOKEN_SLASH:
-    case TOKEN_MOD:
-        return 10000;
+//     case TOKEN_STAR:
+//     case TOKEN_SLASH:
+//     case TOKEN_MOD:
+//         return 10000;
 
-    case TOKEN_PLUS:
-    case TOKEN_MINUS:
-        return 9000;
+//     case TOKEN_PLUS:
+//     case TOKEN_MINUS:
+//         return 9000;
 
-    case TOKEN_LT:
-    case TOKEN_GT:
-    case TOKEN_LTEQ:
-    case TOKEN_GTEQ:
-        return 8000;
+//     case TOKEN_LT:
+//     case TOKEN_GT:
+//     case TOKEN_LTEQ:
+//     case TOKEN_GTEQ:
+//         return 8000;
 
-    case TOKEN_EQ2:
-    case TOKEN_NEQ:
-        return 7000;
+//     case TOKEN_EQ2:
+//     case TOKEN_NEQ:
+//         return 7000;
 
-    case TOKEN_AMPER:
-        return 6000;
+//     case TOKEN_AMPER:
+//         return 6000;
 
-    case TOKEN_XOR:
-        return 5000;
+//     case TOKEN_XOR:
+//         return 5000;
         
-    case TOKEN_BAR:
-        return 4000;
+//     case TOKEN_BAR:
+//         return 4000;
 
-    case TOKEN_AND:
-    case TOKEN_OR:
-        return 3000;
+//     case TOKEN_AND:
+//     case TOKEN_OR:
+//         return 3000;
 
-    case TOKEN_LSHIFT:
-    case TOKEN_RSHIFT:
-        return 2000;
-    }
-}
+//     case TOKEN_LSHIFT:
+//     case TOKEN_RSHIFT:
+//         return 2000;
+//     }
+// }
 
 Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
     for (;;) {
-        Token op = lexer->current();
-        int prec = get_operator_precedence(op.kind);
+        Token op_tok = lexer->current();
+
+        OP op = get_binary_operator(op_tok.kind);
+
+        int prec = get_operator_precedence(op);
 
         if (prec < current_prec) {
             return lhs;
@@ -352,12 +352,13 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
 
         Ast_Expr *rhs = parse_unary_expr();
         if (rhs == NULL) {
-            report_parser_error(lexer, "expected expression after '%s'.\n", string_from_token(op.kind));
+            report_parser_error(lexer, "expected expression after '%s'.\n", string_from_operator(op));
             return lhs;
         }
 
-        Token next_op = lexer->current();
-        int next_prec = get_operator_precedence(next_op.kind);
+        Token next_op_tok = lexer->current();
+        OP next_op = get_binary_operator(next_op_tok.kind);
+        int next_prec = get_operator_precedence(next_op);
 
         if (prec < next_prec) {
             rhs = parse_binary_expr(rhs, prec + 1);
@@ -370,45 +371,16 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
             }
         }
 
-        switch (op.kind) {
-        // default:
-            // error(op.l0, "invalid operator '%s'.\n", string_from_token(op.kind));
-            // break;
-
-        case TOKEN_PLUS:
-        case TOKEN_MINUS:
-        case TOKEN_STAR:
-        case TOKEN_SLASH:
-        case TOKEN_MOD:
-        case TOKEN_LSHIFT:
-        case TOKEN_RSHIFT:
-        case TOKEN_BAR:
-        case TOKEN_AMPER:
-            lhs = ast_arithmetic_expr(op, lhs, rhs);
-            break;
-
-        case TOKEN_AND:
-        case TOKEN_OR:
-            lhs = ast_boolean_expr(op, lhs, rhs);
-            break;
-
-        case TOKEN_EQ2:
-        case TOKEN_NEQ:
-        case TOKEN_LT:
-        case TOKEN_GT:
-        case TOKEN_LTEQ:
-        case TOKEN_GTEQ:
-            lhs = ast_comparison_expr(op, lhs, rhs);
-            break;
-        }
+        lhs = ast_binary_expr(op, lhs, rhs);
     }
 }
 
 Ast_Expr *Parser::parse_assignment_expr() {
     Ast_Expr *expr = parse_unary_expr();
     if (expr) {
-        Token op = lexer->current();
-        if (is_assignment_op(op.kind)) {
+        Token op_tok = lexer->current();
+        OP op = get_binary_operator(op_tok.kind);
+        if (is_assignment_op(op)) {
             lexer->next_token();
             Ast_Expr *rhs = parse_expr();
             expr = ast_assignment_expr(op, expr, rhs);
@@ -499,9 +471,7 @@ Ast_If *Parser::parse_if_stmt() {
     if_stmt = ast_if_stmt(cond, block);
     if_stmt->mark_range(start, block->end);
 
-    Ast_If *head = if_stmt;
-
-    Ast_If *tail = head;
+    Ast_If *tail = if_stmt;
 
     for (;;) {
         Source_Pos start = lexer->current().start;
@@ -510,27 +480,26 @@ Ast_If *Parser::parse_if_stmt() {
         Ast_If *elif = NULL;
         if (lexer->match(TOKEN_IF)) {
             elif = parse_if_stmt();
-            elif->if_prev = tail;
-            tail->if_next = elif;
+            elif->prev = tail;
+            tail->next = elif;
         } else {
             Ast_Block *block = parse_block();
             elif = ast_if_stmt(NULL, block);
             elif->mark_range(start, block->end);
             elif->is_else = true;
-            tail->if_next = elif;
-            elif->if_prev = tail;
+            tail->next = elif;
+            elif->prev = tail;
             tail = elif;
             break;
         }
         if (elif == NULL) break;
 
-        elif->if_prev = tail;
-        tail->if_next = elif;
+        elif->prev = tail;
+        tail->next = elif;
         tail = elif;
     }
 
-    head->mark_range(start, block->end);
-    return head;
+    return if_stmt;
 }
 
 Ast_While *Parser::parse_while_stmt() {
@@ -665,7 +634,7 @@ Ast_Continue *Parser::parse_continue_stmt() {
 }
 
 Ast_Stmt *Parser::parse_stmt() {
-    Ast_Stmt *stmt = NULL;
+    Ast_Stmt *stmt = nullptr;
     bool stmt_error = false;
 
     switch (lexer->peek()) {
@@ -921,14 +890,15 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
 
     Ast_Operator_Proc *proc = NULL;
 
-    Token op = lexer->current();
+    Token op_tok = lexer->current();
 
     Auto_Array<Ast_Param*> parameters;
 
-    if (is_operator(op.kind)) {
+    if (is_operator(op_tok.kind)) {
+        OP op = {}; //@todo get operator
         lexer->next_token();
 
-        if (op.kind == TOKEN_LBRACKET) {
+        if (op_tok.kind == TOKEN_LBRACKET) {
             expect(TOKEN_RBRACKET);
         }
 
@@ -936,7 +906,7 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
             report_parser_error(lexer, "missing '::', got '%s'.\n", string_from_token(lexer->peek()));
         }
 
-        if (operator_is_overloadable(op.kind)) {
+        if (operator_is_overloadable(op_tok.kind)) {
             if (!lexer->eat(TOKEN_LPAREN)) {
                 report_parser_error(lexer, "missing '('.\n");
                 goto ERROR_HANDLE;
@@ -964,14 +934,14 @@ Ast_Operator_Proc *Parser::parse_operator_proc() {
             }
 
             Ast_Block *block = parse_block();
-            proc = ast_operator_proc(op.kind, parameters, return_type, block);
+            proc = ast_operator_proc(op, parameters, return_type, block);
             proc->mark_range(start, end);
         } else {
-            report_parser_error(lexer, "invalid operator, cannot overload '%s'.\n", string_from_token(op.kind));
+            report_parser_error(lexer, "invalid operator, cannot overload '%s'.\n", string_from_token(op_tok.kind));
             goto ERROR_HANDLE;
         }
     } else {
-        report_parser_error(lexer, "expected operator, got '%s'.\n", string_from_token(op.kind));
+        report_parser_error(lexer, "expected operator, got '%s'.\n", string_from_token(op_tok.kind));
         goto ERROR_HANDLE;
     } 
 

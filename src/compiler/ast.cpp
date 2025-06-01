@@ -1,7 +1,170 @@
 global Arena *g_ast_arena;
 
-inline bool Ast_Expr::is_binop(Token_Kind binop) {
-    return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op.kind == binop;
+internal inline OP get_unary_operator(Token_Kind kind) {
+    switch (kind) {
+    default:
+        return OP_ERR;
+    case TOKEN_CAST:
+        return OP_CAST;
+    case TOKEN_PLUS:
+        return OP_UNARY_PLUS;
+    case TOKEN_MINUS:
+        return OP_UNARY_MINUS;
+    case TOKEN_BANG:
+        return OP_NOT;
+    case TOKEN_SQUIGGLE:
+        return OP_BIT_NOT;
+    }
+}
+
+internal inline OP get_binary_operator(Token_Kind kind) {
+    switch (kind) {
+    default:
+        return OP_ERR;
+
+    case TOKEN_PLUS:
+        return OP_ADD;
+    case TOKEN_MINUS:
+        return OP_SUB;
+    case TOKEN_STAR:
+        return OP_MUL;
+    case TOKEN_SLASH:
+        return OP_DIV;
+    case TOKEN_MOD:
+        return OP_MOD;
+
+    case TOKEN_EQ2:
+        return OP_EQ;
+    case TOKEN_NEQ:
+        return OP_NEQ;
+    case TOKEN_LT:
+        return OP_LT;
+    case TOKEN_GT:
+        return OP_GT;
+    case TOKEN_LTEQ:
+        return OP_LTEQ;
+    case TOKEN_GTEQ:
+        return OP_GTEQ;
+
+    case TOKEN_BAR:
+        return OP_BIT_OR;
+    case TOKEN_AMPER:
+        return OP_BIT_AND;
+    case TOKEN_OR:
+        return OP_OR;
+    case TOKEN_AND:
+        return OP_AND;
+    case TOKEN_XOR:
+        return OP_XOR;
+
+    case TOKEN_LSHIFT:
+        return OP_LSH;
+    case TOKEN_RSHIFT:
+        return OP_RSH;
+
+    case TOKEN_EQ:
+        return OP_ASSIGN;
+    case TOKEN_PLUS_EQ:
+        return OP_ADD_ASSIGN;
+    case TOKEN_MINUS_EQ:
+        return OP_SUB_ASSIGN;
+    case TOKEN_STAR_EQ:
+        return OP_MUL_ASSIGN;
+    case TOKEN_SLASH_EQ:
+        return OP_DIV_ASSIGN;
+    case TOKEN_MOD_EQ:
+        return OP_MOD_ASSIGN;
+    case TOKEN_AMPER_EQ:
+        return OP_AND_ASSIGN;
+    case TOKEN_BAR_EQ:
+        return OP_OR_ASSIGN;
+    case TOKEN_XOR_EQ:
+        return OP_XOR_ASSIGN;
+    case TOKEN_LSHIFT_EQ:
+        return OP_LSH_ASSIGN;
+    case TOKEN_RSHIFT_EQ:
+        return OP_RSH_ASSIGN;
+    }
+}
+
+internal inline int get_operator_precedence(OP op) {
+    switch (op) {
+    default:
+    case OP_ERR:
+        return -1;
+
+    case OP_SUBSCRIPT:
+    case OP_ACCESS:
+        return 13000;
+
+    case OP_UNARY_PLUS:
+    case OP_UNARY_MINUS:
+    case OP_NOT:
+    case OP_BIT_NOT:
+    case OP_DEREF:
+    case OP_ADDRESS:
+    case OP_CAST:
+        return 12000;
+
+    case OP_MUL:
+    case OP_DIV:
+    case OP_MOD:
+        return 11000;
+
+    case OP_ADD:
+    case OP_SUB:
+        return 10000;
+
+    case OP_LT:
+    case OP_LTEQ:
+    case OP_GT:
+    case OP_GTEQ:
+        return 9000;
+
+    case OP_EQ:
+    case OP_NEQ:
+        return 8000;
+
+    case OP_BIT_AND:
+        return 70000;
+
+    case OP_XOR:
+        return 6000;
+
+    case OP_BIT_OR:
+        return 5000;
+
+    case OP_AND:
+        return 4000;
+
+    case OP_OR:
+        return 3000;
+
+    case OP_LSH:
+    case OP_RSH:
+        return 2000;
+
+    case OP_ASSIGN:
+    case OP_ADD_ASSIGN:
+    case OP_SUB_ASSIGN:
+    case OP_MUL_ASSIGN:
+    case OP_DIV_ASSIGN:
+    case OP_MOD_ASSIGN:
+    case OP_LSHIFT_ASSIGN:
+    case OP_RSHIFT_ASSIGN:
+    case OP_AND_ASSIGN:
+    case OP_OR_ASSIGN:
+    case OP_XOR_ASSIGN:
+        return 1000;
+    }
+}
+
+internal inline bool is_assignment_op(OP op) {
+    return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
+}
+
+inline bool Ast_Expr::is_binop(OP binop) {
+    return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op == binop;
 }
 
 internal Ast *ast_alloc(u64 size, int alignment) {
@@ -67,9 +230,9 @@ internal Ast_Proc *ast_proc(Atom *name, Auto_Array<Ast_Param*> parameters, Ast_T
     return result;
 }
 
-internal Ast_Operator_Proc *ast_operator_proc(Token_Kind op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
+internal Ast_Operator_Proc *ast_operator_proc(OP op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
     Ast_Operator_Proc *result = AST_NEW(Ast_Operator_Proc);
-    result->name = atom_create(str8_pushf(ast_allocator(), "operator%s", string_from_token(op)));
+    result->name = atom_create(str8_pushf(ast_allocator(), "operator%s", string_from_operator(op)));
     result->op = op;
     result->parameters = parameters;
     result->return_type_defn = return_type;
@@ -165,21 +328,18 @@ internal Ast_Compound_Literal *ast_compound_literal(Auto_Array<Ast_Expr*> elemen
     return result;
 }
 
-internal Ast_Unary *ast_unary_expr(Token op, Ast_Expr *elem) {
+internal Ast_Unary *ast_unary_expr(OP op, Ast_Expr *elem) {
     Ast_Unary *result = AST_NEW(Ast_Unary);
-    result->mark_start(op.start);
-    result->mark_end(elem->end);
     result->op = op;
     result->elem = elem;
     return result;
 }
 
-internal Ast_Address *ast_address_expr(Token op, Ast_Expr *elem) {
+internal Ast_Address *ast_address_expr(Ast_Expr *elem) {
     Ast_Address *result = AST_NEW(Ast_Address);
-    result->mark_start(op.start);
-    result->mark_start(elem->end);
     result->elem = elem;
     result->expr_flags |= EXPR_FLAG_LVALUE;
+    // result->op = OP_ADDRESS;
     return result;
 }
 
@@ -227,7 +387,7 @@ internal Ast_Expr *ast_error_expr() {
     return result;
 }
 
-internal Ast_Binary *ast_binary_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
+internal Ast_Binary *ast_binary_expr(OP op, Ast_Expr *lhs, Ast_Expr *rhs) {
     Ast_Binary *result = AST_NEW(Ast_Binary);
     result->op = op;
     result->lhs = lhs;
@@ -237,32 +397,13 @@ internal Ast_Binary *ast_binary_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
     return result; 
 }
 
-internal Ast_Binary *ast_arithmetic_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Binary *result = ast_binary_expr(op, lhs, rhs);
-    result->expr_flags = EXPR_FLAG_ARITHMETIC;
-    return result;
-}
-
-internal Ast_Binary *ast_boolean_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Binary *result = ast_binary_expr(op, lhs, rhs);
-    result->expr_flags = EXPR_FLAG_BOOLEAN;
-    return result;
-}
-
-internal Ast_Assignment *ast_assignment_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
+internal Ast_Assignment *ast_assignment_expr(OP op, Ast_Expr *lhs, Ast_Expr *rhs) {
     Ast_Assignment *result = AST_NEW(Ast_Assignment);
-    result->expr_flags |= EXPR_FLAG_ASSIGNMENT;
     result->expr_flags |= EXPR_FLAG_LVALUE;
     result->op = op;
     result->lhs = lhs;
     result->rhs = rhs;
     result->mark_range(lhs->start, rhs->end);
-    return result;
-}
-
-internal Ast_Binary *ast_comparison_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Binary *result = ast_binary_expr(op, lhs, rhs);
-    result->expr_flags = EXPR_FLAG_COMPARISON;
     return result;
 }
 
@@ -425,7 +566,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     case AST_UNARY:
     {
         Ast_Unary *unary = (Ast_Unary *)expr;
-        cstring str = string_from_token(unary->op.kind);
+        cstring str = string_from_operator(unary->op);
         str = cstring_append(str, string_from_expr(unary->elem));
         result = str;
         break;
@@ -450,7 +591,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Binary *binary = (Ast_Binary *)expr;
         cstring str = string_from_expr(binary->lhs);
-        str = cstring_append(str, string_from_token(binary->op.kind));
+        str = cstring_append(str, string_from_operator(binary->op));
         str = cstring_append(str, string_from_expr(binary->rhs));
         result = str;
         break;
@@ -479,4 +620,88 @@ internal char *string_from_expr(Ast_Expr *expr) {
     }
 
     return result;
+}
+
+internal char *string_from_operator(OP op) {
+    switch (op) {
+    default:
+        Assert(0);
+        return "";
+    case OP_ADD:
+        return "+";
+    case OP_SUB:
+        return "-";
+    case OP_MUL:
+        return "*";
+    case OP_DIV:
+        return "/";
+    case OP_MOD:
+        return "%";
+    case OP_UNARY_MINUS:
+        return "-";
+    case OP_UNARY_PLUS:
+        return "+";
+    case OP_EQ:
+        return "==";
+    case OP_NEQ:
+        return "!=";
+    case OP_LT:
+        return "<";
+    case OP_LTEQ:
+        return "<=";
+    case OP_GT:
+        return ">";
+    case OP_GTEQ:
+        return ">=";
+    case OP_NOT:
+        return "!";
+    case OP_OR:
+        return "||";
+    case OP_AND:
+        return "&&";
+    case OP_BIT_NOT:
+        return "~";
+    case OP_BIT_AND:
+        return "&";
+    case OP_BIT_OR:
+        return "|";
+    case OP_XOR:
+        return "^";
+    case OP_LSH:
+        return "<<";
+    case OP_RSH:
+        return ">>";
+    case OP_ASSIGN:
+        return "=";
+    case OP_ADD_ASSIGN:
+        return "+=";
+    case OP_SUB_ASSIGN:
+        return "-=";
+    case OP_MUL_ASSIGN:
+        return "*=";
+    case OP_DIV_ASSIGN:
+        return "/=";
+    case OP_MOD_ASSIGN:
+        return "%/=";
+    case OP_AND_ASSIGN:
+        return "&=";
+    case OP_OR_ASSIGN:
+        return "|=";
+    case OP_XOR_ASSIGN:
+        return "^=";
+    case OP_LSH_ASSIGN:
+        return "<<=";
+    case OP_RSH_ASSIGN:
+        return ">>=";
+    case OP_ADDRESS:
+        return "*";
+    case OP_DEREF:
+        return ".*";
+    case OP_SUBSCRIPT:
+        return "[]";
+    case OP_ACCESS:
+        return ".";
+    case OP_CAST:
+        return "cast";
+    }
 }

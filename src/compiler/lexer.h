@@ -72,6 +72,7 @@ enum Token_Kind {
     TOKEN_AND,
     TOKEN_OR,
     TOKEN_XOR,
+    TOKEN_SQUIGGLE,
 
     TOKEN_LSHIFT,
     TOKEN_RSHIFT,

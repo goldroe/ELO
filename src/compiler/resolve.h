@@ -67,17 +67,18 @@ struct Resolver {
     void resolve_stmt(Ast_Stmt *stmt);
 
     Ast_Decl *lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> arguments, bool *overloaded);
-    Ast_Operator_Proc *lookup_user_defined_binary_operator(Token_Kind op, Ast_Type_Info *lhs, Ast_Type_Info *rhs);
-    Ast_Operator_Proc *lookup_user_defined_unary_operator(Token_Kind op, Ast_Type_Info *type);
+    Ast_Operator_Proc *lookup_user_defined_binary_operator(OP op, Ast_Type_Info *lhs, Ast_Type_Info *rhs);
+    Ast_Operator_Proc *lookup_user_defined_unary_operator(OP op, Ast_Type_Info *type);
 
-    void resolve_builtin_operator_expr(Ast_Binary *binary);
-    void resolve_user_defined_operator_expr(Ast_Binary *expr);
-    void resolve_binary_expr(Ast_Binary *binary);
+    void resolve_user_defined_binary_expr(Ast_Binary *expr);
+    void resolve_builtin_binary_expr(Ast_Binary *expr);
+    void resolve_binary_expr(Ast_Binary *expr);
+
+    void resolve_user_defined_unary_expr(Ast_Unary *expr);
+    void resolve_builtin_unary_expr(Ast_Unary *expr);
+    void resolve_unary_expr(Ast_Unary *unary);
 
     void resolve_assignment_expr(Ast_Assignment *assignment);
-
-    void resolve_user_defined_operator_expr(Ast_Unary *expr);
-    void resolve_unary_expr(Ast_Unary *unary);
 
     void resolve_ident(Ast_Ident *ident);
     void resolve_range_expr(Ast_Range *range);

@@ -499,6 +499,14 @@ lex_start:
         break;
     }
 
+
+    case '~':
+    {
+        token.kind = TOKEN_SQUIGGLE;
+        eat_char();
+        break;
+    }
+
     case '!':
     {
         token.kind = TOKEN_BANG;
