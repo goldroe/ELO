@@ -27,6 +27,8 @@
 #include "resolve.h"
 #include "llvm_backend.h"
 
+global bool compiler_dump_IR;
+
 #include "source_file.cpp"
 #include "report.cpp"
 #include "atom.cpp"
@@ -61,6 +63,25 @@ internal void compiler_exit() {
 #endif
 }
 
+internal void compiler_process_args(int argc, char **args) {
+    for (int i = 0; i < argc; i++) {
+        String8 arg = str8_cstring(args[i]);
+        switch (arg.data[0]) {
+        case '-':
+        {
+            if (arg.count == 0) {
+                break;
+            }
+
+            if (str8_match(arg, str_lit("-dump_ir"), StringMatchFlag_CaseInsensitive)) {
+                compiler_dump_IR = true;
+            }
+            break;
+        }
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     argc--; argv++;
     if (argc == 0) {
@@ -68,6 +89,8 @@ int main(int argc, char **argv) {
         printf("Usage: ELO option... filename...");
         return 1;
     }
+
+    compiler_process_args(argc, argv);
 
 #ifdef OS_WINDOWS
     hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -148,8 +171,6 @@ int main(int argc, char **argv) {
     }
 
     compiler_exit();
-
-    printf("done.\n");
 
     return g_error_count;
 }

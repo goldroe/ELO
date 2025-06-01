@@ -323,7 +323,6 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
             llvm::Value *access_ptr = builder->CreateStructGEP(llvm_struct->type, base_addr, field_idx);
             result.value = access_ptr;
         } else if (access->parent->type_info->is_enum_type()) {
-            printf("%lld\n", access->eval.int_val);
             llvm::Constant *constant = llvm_const_int(get_type(access->parent->type_info->base), access->eval.int_val);
             result.value = constant;
         } else if (access->parent->type_info->type_flags & TYPE_FLAG_STRING) {
@@ -636,13 +635,14 @@ LLVM_Value LLVM_Backend::gen_assignment(Ast_Assignment *assignment) {
     if (rhs.type->isIntegerTy()) {
         value = builder->CreateZExtOrTrunc(value, dest_type);
     } else if (rhs.type->isArrayTy()) {
-        llvm::ArrayRef<llvm::Value*> indices = {
-            llvm_zero(llvm::Type::getInt32Ty(*Ctx)),
-            llvm_zero(llvm::Type::getInt32Ty(*Ctx))
-        };
-        llvm::Value *base_ptr = builder->CreatePointerCast(rhs.value, dest_type);
-        llvm::Value *ptr = builder->CreateGEP(rhs.type, base_ptr, indices);
-        value = ptr;
+        // //@Todo @Crash String Literals
+        // llvm::ArrayRef<llvm::Value*> indices = {
+        //     llvm_zero(llvm::Type::getInt32Ty(*Ctx)),
+        //     llvm_zero(llvm::Type::getInt32Ty(*Ctx))
+        // };
+        // // llvm::Value *base_ptr = builder->CreatePointerCast(rhs.value, dest_type);
+        // llvm::Value *ptr = builder->CreateGEP(rhs.type, rhs.value, indices);
+        // value = ptr;
     }
 
     builder->CreateStore(value, addr.value);
@@ -1427,6 +1427,7 @@ void LLVM_Backend::gen() {
     Ctx = new llvm::LLVMContext();
     Module = new llvm::Module("Main", *Ctx);
 
+
     for (int decl_idx = 0; decl_idx < ast_root->declarations.count; decl_idx++) {
         Ast_Decl *decl = ast_root->declarations[decl_idx];
         gen_decl(decl);
@@ -1440,13 +1441,50 @@ void LLVM_Backend::gen() {
     std::error_code EC;
     llvm::raw_fd_ostream OS("-", EC);
     bool broken_debug_info;
-    // Module->print(llvm::errs(), nullptr); // dump IR
     if (llvm::verifyModule(*Module, &OS, &broken_debug_info)) {
         Module->print(llvm::errs(), nullptr); // dump IR
-    } else {
-        // char *gen_file_path = cstring_fmt("%S.bc", path_remove_extension(file->path));
-        char *gen_file_path = "out.bc";
-        llvm::raw_fd_ostream FS(gen_file_path, EC);
-        llvm::WriteBitcodeToFile(*Module, FS);
+        return;
     }
+
+    if (compiler_dump_IR) {
+        Module->print(llvm::errs(), nullptr); // dump IR
+    }
+
+    LLVMInitializeNativeTarget();
+    LLVMInitializeX86TargetInfo();
+    LLVMInitializeX86Target();
+    LLVMInitializeX86TargetMC();
+    LLVMInitializeX86Disassembler();
+    LLVMInitializeX86AsmPrinter();
+    LLVMInitializeX86AsmParser();
+
+    char *errors = nullptr;
+
+	char const *target_triple = LLVM_DEFAULT_TARGET_TRIPLE;
+    LLVMTargetRef target;
+    if (LLVMGetTargetFromTriple(target_triple, &target, &errors)) {
+        fprintf(stderr, "ERROR:%s\n", errors);
+        return;
+    }
+    LLVMTargetMachineRef target_machine = LLVMCreateTargetMachine(target, target_triple, "generic", LLVMGetHostCPUFeatures(), LLVMCodeGenLevelDefault, LLVMRelocDefault, LLVMCodeModelDefault);
+    LLVMSetTarget((LLVMModuleRef)Module, target_triple);
+
+    LLVMTargetDataRef data_layout = LLVMCreateTargetDataLayout(target_machine);
+    char* data_layout_str = LLVMCopyStringRepOfTargetData(data_layout);
+    LLVMSetDataLayout((LLVMModuleRef)Module, data_layout_str);
+    LLVMDisposeMessage(data_layout_str);
+
+    String8 object_name = path_remove_extension(path_file_name(file->path));
+    String8 object_file_name = path_join(heap_allocator(), os_current_dir(heap_allocator()), object_name);
+    object_file_name = str8_concat(heap_allocator(), object_file_name, str_lit(".o"));
+
+    if (LLVMTargetMachineEmitToFile(target_machine, (LLVMModuleRef)Module, (char *)object_file_name.data, LLVMObjectFile, &errors)) {
+        fprintf(stderr, "ERROR:%s\n", errors);
+        return;
+    }
+
+    char *linker_args = "msvcrt.lib legacy_stdio_definitions.lib";
+    char *linker_command = cstring_fmt("link.exe %s %s", (char *)object_file_name.data, linker_args);
+
+    system(linker_command);
 }
