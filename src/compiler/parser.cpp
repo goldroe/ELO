@@ -990,7 +990,13 @@ Ast_Enum_Field *Parser::parse_enum_field() {
     Token name = lexer->current();
     if (lexer->eat(TOKEN_IDENT)) {
         field = ast_enum_field(name.name);
-        field->mark_range(name.start, name.end);
+        field->mark_start(name.start);
+        field->mark_end(name.end);
+        if (lexer->eat(TOKEN_EQ)) {
+            Ast_Expr *expr = parse_expr();
+            field->expr = expr;
+            field->mark_end(expr->end);
+        }
     }
     return field;
 }

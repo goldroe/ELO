@@ -354,8 +354,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
                 u64 min = range->lhs->eval.int_val;
                 u64 max = range->rhs->eval.int_val;
                 for (u64 c = min; c <= max; c++) {
-                    auto find = switch_constants.find(c);
-                    if (find != switch_constants.end()) {
+                    if (switch_constants.find(c) != switch_constants.end()) {
                         ifcase->poison();
                         report_ast_error(label, "case value '%llu' in range '%s' already used.\n", c, string_from_expr(label->cond));
                         break;
@@ -1493,10 +1492,17 @@ void Resolver::resolve_struct(Ast_Struct *struct_decl) {
 
 void Resolver::resolve_enum(Ast_Enum *enum_decl) {
     Auto_Array<Enum_Field_Info> enum_fields;
+    s64 value = 0;
     for (int i = 0; i < enum_decl->fields.count; i++) {
         Ast_Enum_Field *field = enum_decl->fields[i];
-        s64 value = (s64)i;
-        field->value = value;
+        if (field->expr) {
+            resolve_expr(field->expr);
+            if (field->expr->is_constant()) {
+                value = field->expr->eval.int_val;
+            } else {
+                report_ast_error(field, "expression does not resolve to a constant.\n");
+            }
+        }
 
         for (int j = 0; j < enum_fields.count; j++) {
             Enum_Field_Info field_info = enum_fields[j];
@@ -1510,6 +1516,9 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
         field_info.name = field->name;
         field_info.value = value;
         enum_fields.push(field_info);
+        field->value = value;
+
+        value++;
     }
 
     Enum_Type *type = enum_type(enum_fields);

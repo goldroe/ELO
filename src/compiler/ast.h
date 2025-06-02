@@ -346,6 +346,7 @@ struct Ast_Struct : Ast_Decl {
 struct Ast_Enum_Field : Ast {
     Ast_Enum_Field() { kind = AST_ENUM_FIELD; }
     Atom *name;
+    Ast_Expr *expr;
     s64 value;
 };
 
