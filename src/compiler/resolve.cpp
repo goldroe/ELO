@@ -48,7 +48,7 @@ Ast_Decl *Resolver::lookup(Scope *scope, Atom *name) {
     return NULL;
 }
 
-Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(OP op, Ast_Type_Info *lhs, Ast_Type_Info *rhs) {
+Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(OP op, Type *lhs, Type *rhs) {
     Ast_Operator_Proc *result = NULL;
     Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
@@ -56,7 +56,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(OP op, Ast_Type
         if (decl->kind == AST_OPERATOR_PROC) {
             Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
             resolve_proc_header(proc);
-            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
             if (proc->op == op && typecheck(proc_type->parameters[0], lhs) && typecheck(proc_type->parameters[1], rhs)) {
                 result = proc;
                 break;
@@ -66,7 +66,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_binary_operator(OP op, Ast_Type
     return result;
 }
 
-Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(OP op, Ast_Type_Info *type) {
+Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(OP op, Type *type) {
     Ast_Operator_Proc *result = NULL;
     Scope *scope = global_scope;
     for (int i = 0; i < scope->declarations.count; i++) {
@@ -74,7 +74,7 @@ Ast_Operator_Proc *Resolver::lookup_user_defined_unary_operator(OP op, Ast_Type_
         if (decl->kind == AST_OPERATOR_PROC) {
             Ast_Operator_Proc *proc = static_cast<Ast_Operator_Proc*>(decl);
             resolve_proc_header(proc);
-            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
             if (proc->op == op && typecheck(proc_type->parameters[0], type)) {
                 result = proc;
                 break;
@@ -119,13 +119,13 @@ Ast_Decl *Resolver::lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> argument
         if (decl->kind == AST_PROC) {
             Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
             resolve_proc_header(proc);
-            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
+            Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
             if (proc_type->parameters.count == arguments.count) {
                 bool match = true;
                 for (int j = 0; j < arguments.count; j++) {
-                    Ast_Type_Info *param = proc_type->parameters[j];
+                    Type *param = proc_type->parameters[j];
                     Ast_Expr *arg = arguments[j];
-                    if (!typecheck(param, arg->type_info)) {
+                    if (!typecheck(param, arg->type)) {
                         match = false;
                         break;
                     }
@@ -157,9 +157,9 @@ void Resolver::exit_scope() {
     current_scope = current_scope->parent;
 }
 
-internal Struct_Field_Info *struct_lookup(Ast_Type_Info *type_info, Atom *name) {
-    for (int i = 0; i < type_info->aggregate.fields.count; i++) {
-        Struct_Field_Info *field = &type_info->aggregate.fields[i];
+internal Struct_Field_Info *struct_lookup(Type *type, Atom *name) {
+    for (int i = 0; i < type->aggregate.fields.count; i++) {
+        Struct_Field_Info *field = &type->aggregate.fields[i];
         if (atoms_match(field->name, name)) {
             return field;
         }
@@ -185,7 +185,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
     if (cond &&
         cond->valid() &&
-        cond->type_info->is_struct_type()) {
+        cond->type->is_struct_type()) {
         report_ast_error(cond, "'%s' is not a valid conditional expression.\n", string_from_expr(cond));
     }
 
@@ -215,7 +215,7 @@ void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
 
 
 void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
-    Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(current_proc->type_info);
+    Proc_Type *proc_type = static_cast<Proc_Type*>(current_proc->type);
     current_proc->returns = true;
 
     if (return_stmt->expr) {
@@ -227,8 +227,8 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
         }
 
         if (return_stmt->expr->valid() &&
-            !typecheck(proc_type->return_type, return_stmt->expr->type_info)) {
-            report_ast_error(return_stmt->expr, "invalid return type '%s', procedure returns '%s'.\n", string_from_type(return_stmt->expr->type_info), string_from_type(proc_type->return_type)); 
+            !typecheck(proc_type->return_type, return_stmt->expr->type)) {
+            report_ast_error(return_stmt->expr, "invalid return type '%s', procedure returns '%s'.\n", string_from_type(return_stmt->expr->type), string_from_type(proc_type->return_type)); 
             return_stmt->poison();
         }
     } else {
@@ -269,7 +269,7 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
     Ast_Expr *cond = while_stmt->cond;
     resolve_expr(cond);
 
-    if (cond->valid() && !cond->type_info->is_conditional_type()) {
+    if (cond->valid() && !cond->type->is_conditional_type()) {
         report_ast_error(cond, "'%s' is not a conditional expression.\n", string_from_expr(cond));
         while_stmt->poison();
     }
@@ -300,7 +300,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
     ifcase->switch_jumptable = true;
 
     if (ifcase->cond) {
-        if (!ifcase->cond->type_info->is_integral_type()) {
+        if (!ifcase->cond->type->is_integral_type()) {
             ifcase->switch_jumptable = false;
         }
     } else {
@@ -327,8 +327,8 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
             
         if (ifcase->cond) {
             if (case_label->cond) {
-                if (!typecheck(ifcase->cond->type_info, case_label->cond->type_info)) {
-                    report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type_info));
+                if (!typecheck(ifcase->cond->type, case_label->cond->type)) {
+                    report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type));
                     ifcase->poison();
                 }
             }
@@ -471,8 +471,8 @@ void Resolver::resolve_block(Ast_Block *block) {
     exit_scope();
 }
 
-Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
-    Ast_Type_Info *type = NULL;
+Type *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
+    Type *type = NULL;
     for (Ast_Type_Defn *t = type_defn; t; t = t->base) {
         switch (t->type_defn_kind) {
         case TYPE_DEFN_NIL:
@@ -483,8 +483,8 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
             Ast_Decl *decl = lookup(t->name);
             if (decl) {
                 resolve_decl(decl);
-                if (type) type->base = decl->type_info;
-                else type = decl->type_info;
+                if (type) type->base = decl->type;
+                else type = decl->type;
             } else {
                 report_ast_error(t, "undeclared type '%s'.\n", t->name->data);
                 return type_poison;
@@ -493,18 +493,18 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
         }
         case TYPE_DEFN_POINTER:
         {
-            Ast_Type_Info *ptr = ast_pointer_type_info(type);
+            Type *ptr = pointer_type(type);
             type = ptr;
             break;
         }
         case TYPE_DEFN_ARRAY:
         {
             Ast_Expr *array_size = t->array_size;
-            Ast_Array_Type_Info *array = ast_array_type_info(type);
+            Array_Type *array = array_type(type);
 
             if (array_size) {
                 resolve_expr(array_size);
-                if (array_size->type_info->is_integral_type()) {
+                if (array_size->type->is_integral_type()) {
                     if (array_size->is_constant()) {
                         array->array_size = array_size->eval.int_val;
                         array->is_fixed = true;
@@ -528,7 +528,7 @@ Ast_Type_Info *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
 Eval Resolver::eval_unary_expr(Ast_Unary *u) {
     Eval result = {};
     Eval e = u->elem->eval;
-    if (u->elem->type_info->is_integral_type()) {
+    if (u->elem->type->is_integral_type()) {
         switch (u->op) {
         case OP_UNARY_PLUS:
             result.int_val = e.int_val;
@@ -543,7 +543,7 @@ Eval Resolver::eval_unary_expr(Ast_Unary *u) {
             result.int_val = ~e.int_val;
             break;
         }
-    } else if (u->elem->type_info->is_float_type()) {
+    } else if (u->elem->type->is_float_type()) {
         switch (u->op) {
         case OP_UNARY_PLUS:
             result.float_val = e.float_val;
@@ -567,7 +567,7 @@ Eval Resolver::eval_binary_expr(Ast_Binary *b) {
     Eval lhs = b->lhs->eval;
     Eval rhs = b->rhs->eval;    
 
-    if (b->lhs->type_info->is_integral_type()) {
+    if (b->lhs->type->is_integral_type()) {
         switch (b->op) {
         case OP_ADD:
             result.int_val = lhs.int_val + rhs.int_val;
@@ -615,7 +615,7 @@ Eval Resolver::eval_binary_expr(Ast_Binary *b) {
             result.int_val = lhs.int_val ^ rhs.int_val;
             break;
         }
-    } else if (b->lhs->type_info->is_float_type()) {
+    } else if (b->lhs->type->is_float_type()) {
         switch (b->op) {
         case OP_ADD:
             result.float_val = lhs.float_val + rhs.float_val;
@@ -668,7 +668,7 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
 
     //@Note Give null expr type of lhs
     if (rhs->kind == AST_NULL) {
-        rhs->type_info = lhs->type_info;
+        rhs->type = lhs->type;
     }
 
     if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
@@ -677,37 +677,37 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
     }
 
     if (lhs->valid() && rhs->valid()) {
-        if (!typecheck(lhs->type_info, rhs->type_info)) {
-            report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s'.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
+        if (!typecheck(lhs->type, rhs->type)) {
+            report_ast_error(rhs, "type mismatch, cannot assign to '%s' from '%s'.\n", string_from_type(lhs->type), string_from_type(rhs->type));
             assignment->poison();
         }
     }
-    assignment->type_info = lhs->type_info;
+    assignment->type = lhs->type;
 }
 
 void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
     Ast_Expr *elem = expr->elem;
     switch (expr->op) {
     case OP_UNARY_PLUS:
-        if (elem->type_info->is_numeric_type()) {
-            expr->type_info = elem->type_info;
+        if (elem->type->is_numeric_type()) {
+            expr->type = elem->type;
         } else {
-            report_ast_error(elem, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            report_ast_error(elem, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
             expr->poison();
         }
     case OP_UNARY_MINUS:
-        if (elem->type_info->is_numeric_type() && !elem->type_info->is_pointer_type()) {
-            expr->type_info = elem->type_info;
+        if (elem->type->is_numeric_type() && !elem->type->is_pointer_type()) {
+            expr->type = elem->type;
         } else {
-            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
             expr->poison();
         }
     case OP_NOT:
     case OP_BIT_NOT:
-        if (elem->type_info->is_numeric_type()) {
-            expr->type_info = elem->type_info;
+        if (elem->type->is_numeric_type()) {
+            expr->type = elem->type;
         } else {
-            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type_info), string_from_operator(expr->op));
+            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
             expr->poison();
         }
         break;
@@ -717,17 +717,17 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
 void Resolver::resolve_unary_expr(Ast_Unary *expr) {
     resolve_expr(expr->elem);
     if (expr->elem->valid()) {
-        if (expr->elem->type_info->is_user_defined_type()) {
-            Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(expr->op, expr->elem->type_info);
+        if (expr->elem->type->is_user_defined_type()) {
+            Ast_Operator_Proc *proc = lookup_user_defined_unary_operator(expr->op, expr->elem->type);
             if (proc) {
                 resolve_proc_header(proc);
                 expr->expr_flags |= EXPR_FLAG_OP_CALL;
                 expr->proc = proc;
                 if (proc->valid()) {
-                    expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+                    expr->type = static_cast<Proc_Type*>(proc->type)->return_type;
                 }
             } else {
-                report_ast_error(expr, "could not find operator'%s' (%s).\n", string_from_operator(expr->op), string_from_type(expr->elem->type_info));
+                report_ast_error(expr, "could not find operator'%s' (%s).\n", string_from_operator(expr->op), string_from_type(expr->elem->type));
             }
         } else {
             resolve_builtin_unary_expr(expr);
@@ -748,70 +748,70 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
 
     switch (expr->op) {
     case OP_ADD:
-        if (lhs->type_info->is_pointer_type() && rhs->type_info->is_pointer_type()) {
+        if (lhs->type->is_pointer_type() && rhs->type->is_pointer_type()) {
             report_ast_error(expr, "cannot add two pointers.\n");
-        } else if (lhs->type_info->is_pointer_type()) {
-            if (!rhs->type_info->is_integral_type()) {
+        } else if (lhs->type->is_pointer_type()) {
+            if (!rhs->type->is_integral_type()) {
                 report_ast_error(rhs, "pointer addition requires integral operand.\n");
                 expr->poison();
             }
-            expr->type_info = lhs->type_info;
-        } else if (rhs->type_info->is_pointer_type()) {
-            if (!lhs->type_info->is_integral_type()) {
+            expr->type = lhs->type;
+        } else if (rhs->type->is_pointer_type()) {
+            if (!lhs->type->is_integral_type()) {
                 report_ast_error(lhs, "pointer addition requires integral operand.\n");
                 expr->poison();
             }
-            expr->type_info = rhs->type_info;
+            expr->type = rhs->type;
         } else {
-            if (!lhs->type_info->is_arithmetic_type()) {
+            if (!lhs->type->is_arithmetic_type()) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type_info->is_arithmetic_type()) {
+            if (!rhs->type->is_arithmetic_type()) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            expr->type_info = lhs->type_info;
+            expr->type = lhs->type;
         }
         break;
 
     case OP_SUB:
-        if (lhs->type_info->is_pointer_type() && rhs->type_info->is_pointer_type()) {
-            if (lhs->type_info != rhs->type_info) {
-                report_ast_error(expr, "'%s' and '%s' are incompatible pointer types.\n", string_from_type(lhs->type_info), string_from_type(rhs->type_info));
+        if (lhs->type->is_pointer_type() && rhs->type->is_pointer_type()) {
+            if (lhs->type != rhs->type) {
+                report_ast_error(expr, "'%s' and '%s' are incompatible pointer types.\n", string_from_type(lhs->type), string_from_type(rhs->type));
                 expr->poison();
             }
-            expr->type_info = lhs->type_info;
-        } else if (lhs->type_info->is_pointer_type()) {
-            if (!rhs->type_info->is_integral_type()) {
+            expr->type = lhs->type;
+        } else if (lhs->type->is_pointer_type()) {
+            if (!rhs->type->is_integral_type()) {
                 report_ast_error(rhs, "pointer subtraction requires pointer or integral operand.\n");
                 expr->poison();
             }
-        } else if (rhs->type_info->is_pointer_type()) {
+        } else if (rhs->type->is_pointer_type()) {
             report_ast_error(lhs, "pointer can only be subtracted from another pointer.\n");
             expr->poison();
         } else {
-            if (!lhs->type_info->is_arithmetic_type()) {
+            if (!lhs->type->is_arithmetic_type()) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type_info->is_arithmetic_type()) {
+            if (!rhs->type->is_arithmetic_type()) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            expr->type_info = lhs->type_info;
+            expr->type = lhs->type;
         }
         break;
 
     case OP_MUL:
     case OP_DIV:
     case OP_MOD:
-        expr->type_info = lhs->type_info;
-        if (!lhs->type_info->is_arithmetic_type() || lhs->type_info->is_pointer_type()) {
+        expr->type = lhs->type;
+        if (!lhs->type->is_arithmetic_type() || lhs->type->is_pointer_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type_info->is_arithmetic_type() || rhs->type_info->is_pointer_type()) {
+        if (!rhs->type->is_arithmetic_type() || rhs->type->is_pointer_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -822,12 +822,12 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_XOR:
     case OP_LSH:
     case OP_RSH:
-        expr->type_info = lhs->type_info;
-        if (!lhs->type_info->is_integral_type()) {
+        expr->type = lhs->type;
+        if (!lhs->type->is_integral_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type_info->is_integral_type()) {
+        if (!rhs->type->is_integral_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -839,12 +839,12 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_LTEQ:
     case OP_GT:
     case OP_GTEQ:
-        expr->type_info = type_bool;
-        if (lhs->type_info->is_struct_type()) {
+        expr->type = type_bool;
+        if (lhs->type->is_struct_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (rhs->type_info->is_struct_type()) {
+        if (rhs->type->is_struct_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -852,16 +852,16 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
 
     case OP_OR:
     case OP_AND:
-        expr->type_info = type_bool;
+        expr->type = type_bool;
         //@Note Give null expr type of lhs
         if (rhs->kind == AST_NULL) {
-            rhs->type_info = lhs->type_info;
+            rhs->type = lhs->type;
         }
-        if (!lhs->type_info->is_arithmetic_type()) {
+        if (!lhs->type->is_arithmetic_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type_info->is_arithmetic_type()) {
+        if (!rhs->type->is_arithmetic_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -890,17 +890,17 @@ void Resolver::resolve_binary_expr(Ast_Binary *expr) {
     }
 
     if (lhs->valid() && rhs->valid()) {
-        if (lhs->type_info->is_user_defined_type() || rhs->type_info->is_user_defined_type()) {
-            Ast_Operator_Proc *proc = lookup_user_defined_binary_operator(expr->op, expr->lhs->type_info, expr->rhs->type_info);
+        if (lhs->type->is_user_defined_type() || rhs->type->is_user_defined_type()) {
+            Ast_Operator_Proc *proc = lookup_user_defined_binary_operator(expr->op, expr->lhs->type, expr->rhs->type);
             if (proc) {
                 resolve_proc_header(proc);
                 expr->proc = proc;
                 expr->expr_flags |= EXPR_FLAG_OP_CALL;
                 if (proc->valid()) {
-                    expr->type_info = static_cast<Ast_Proc_Type_Info*>(proc->type_info)->return_type;
+                    expr->type = static_cast<Proc_Type*>(proc->type)->return_type;
                 }
             } else {
-                report_ast_error(expr, "could not find operator'%s' (%s,%s).\n", string_from_operator(expr->op), string_from_type(expr->lhs->type_info), string_from_type(expr->rhs->type_info));
+                report_ast_error(expr, "could not find operator'%s' (%s,%s).\n", string_from_operator(expr->op), string_from_type(expr->lhs->type), string_from_type(expr->rhs->type));
                 expr->poison();
             }
         } else {
@@ -911,11 +911,11 @@ void Resolver::resolve_binary_expr(Ast_Binary *expr) {
 
 void Resolver::resolve_cast_expr(Ast_Cast *cast) {
     resolve_expr(cast->elem);
-    cast->type_info = resolve_type(cast->type_defn);
+    cast->type = resolve_type(cast->type_defn);
 
     if (cast->elem->valid()) {
-        if (!typecheck_castable(cast->type_info, cast->elem->type_info)) {
-            report_ast_error(cast->elem, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->elem), string_from_type(cast->type_info), string_from_type(cast->elem->type_info));
+        if (!typecheck_castable(cast->type, cast->elem->type)) {
+            report_ast_error(cast->elem, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->elem), string_from_type(cast->type), string_from_type(cast->elem->type));
         }
     } else {
         cast->poison();
@@ -927,8 +927,8 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
     resolve_expr(subscript->index);
 
     if (subscript->expr->valid()) {
-        if (subscript->expr->type_info->is_indirection_type()) {
-            subscript->type_info = subscript->expr->type_info->deref();
+        if (subscript->expr->type->is_indirection_type()) {
+            subscript->type = subscript->expr->type->deref();
         } else {
             report_ast_error(subscript->expr, "'%s' is not a pointer or array type.\n", string_from_expr(subscript->expr));
             subscript->poison();
@@ -938,7 +938,7 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
     }
 
     if (subscript->index->valid()) {
-        if (!subscript->index->type_info->is_integral_type()) {
+        if (!subscript->index->type->is_integral_type()) {
             report_ast_error(subscript->index, "array subscript is not of integral type.\n");
             subscript->poison();
         }
@@ -948,9 +948,9 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
 }
 
 void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
-    Ast_Type_Info *specified_type = resolve_type(literal->type_defn);
+    Type *specified_type = resolve_type(literal->type_defn);
 
-    literal->type_info = specified_type;
+    literal->type = specified_type;
 
     for (int i = 0; i < literal->elements.count; i++) {
         Ast_Expr *elem = literal->elements[i];
@@ -959,7 +959,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
     }
 
     if (specified_type->is_struct_type()) {
-        Ast_Type_Info *struct_type = specified_type;
+        Type *struct_type = specified_type;
         if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
             report_note(struct_type->decl->start, literal->file, "see declaration of '%s'.\n", struct_type->decl->name->data);
@@ -972,19 +972,19 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
             if (elem->invalid()) continue;
             
             Struct_Field_Info *field = &struct_type->aggregate.fields[i];
-            if (!typecheck(field->type_info, elem->type_info)) {
-                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(field->type_info));
+            if (!typecheck(field->type, elem->type)) {
+                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type), string_from_type(field->type));
                 literal->poison();
             }
         }
     } else if (specified_type->is_array_type()) {
-        Ast_Type_Info *elem_type = specified_type->base;
+        Type *elem_type = specified_type->base;
         for (int i = 0; i < literal->elements.count; i++) {
             Ast_Expr *elem = literal->elements[i];
             if (elem->invalid()) break;
 
-            if (!typecheck(elem_type, elem->type_info)) {
-                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type_info), string_from_type(elem_type));
+            if (!typecheck(elem_type, elem->type)) {
+                report_ast_error(elem, "cannot convert from '%s' to '%s'.\n", string_from_type(elem->type), string_from_type(elem_type));
                 literal->poison();
             }
         }
@@ -1011,63 +1011,63 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
         break;
 
     case LITERAL_NULL:
-        literal->type_info = type_null;
+        literal->type = type_null;
         literal->eval.int_val = 0;
         break;
 
     case LITERAL_INT:
     case LITERAL_I32:
-        literal->type_info = type_int;
+        literal->type = type_int;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
     case LITERAL_I8:
-        literal->type_info = type_i8;
+        literal->type = type_i8;
         literal->eval.int_val = (s64)literal->int_val;
         break;
     case LITERAL_I16:
-        literal->type_info = type_i16;
+        literal->type = type_i16;
         literal->eval.int_val = (s64)literal->int_val;
         break;
      case LITERAL_I64:
-        literal->type_info = type_i64;
+        literal->type = type_i64;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
      case LITERAL_U8:
-        literal->type_info = type_u8;
+        literal->type = type_u8;
         literal->eval.int_val = (s64)literal->int_val;
         break;
      case LITERAL_U16:
-        literal->type_info = type_u16;
+        literal->type = type_u16;
         literal->eval.int_val = (s64)literal->int_val;
         break;
      case LITERAL_U32:
-        literal->type_info = type_u32;
+        literal->type = type_u32;
         literal->eval.int_val = (s64)literal->int_val;
         break;
      case LITERAL_U64:
-        literal->type_info = type_u64;
+        literal->type = type_u64;
         literal->eval.int_val = (s64)literal->int_val;
         break;
 
     case LITERAL_BOOLEAN:
-        literal->type_info = type_bool;
+        literal->type = type_bool;
         literal->eval.int_val = literal->int_val;
         break;
 
     case LITERAL_FLOAT:
     case LITERAL_F32:
-        literal->type_info = type_f32;
+        literal->type = type_f32;
         literal->eval.float_val = literal->float_val;
         break;
     case LITERAL_F64:
-        literal->type_info = type_f64;
+        literal->type = type_f64;
         literal->eval.float_val = literal->float_val;
         break;
 
     case LITERAL_STRING:
-        literal->type_info = ast_pointer_type_info(type_u8);
+        literal->type = pointer_type(type_u8);
         break;
     }
 }
@@ -1077,13 +1077,13 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
 
     if (found) {
         resolve_decl(found);
-        ident->type_info = found->type_info;
+        ident->type = found->type;
 
         if (!(found->decl_flags & DECL_FLAG_TYPE)) {
             ident->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
-        ident->decl = found;
+        ident->ref = found;
 
         if (found->invalid()) ident->poison();
     } else {
@@ -1099,7 +1099,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         if (arg->invalid()) call->poison();
     }
 
-    Ast_Type_Info *elem_type = NULL;
+    Type *elem_type = NULL;
 
     if (call->elem->kind == AST_IDENT) {
         Ast_Ident *name = static_cast<Ast_Ident*>(call->elem);
@@ -1107,8 +1107,8 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
         if (decl) {
             resolve_decl(decl);
-            name->decl = decl;
-            elem_type = decl->type_info;
+            name->ref = decl;
+            elem_type = decl->type;
         } else {
             if (overloaded) {
                 report_ast_error(name, "no overloaded procedure matches all argument types.\n");
@@ -1119,14 +1119,14 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         }
     } else {
         resolve_expr(call->elem);
-        elem_type = call->elem->type_info;
+        elem_type = call->elem->type;
     }
 
     if (elem_type) {
         if (elem_type->is_proc_type()) {
             Ast_Proc *proc = static_cast<Ast_Proc*>(elem_type->decl);
-            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-            call->type_info = proc_type->return_type;
+            Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
+            call->type = proc_type->return_type;
             if (!proc->has_varargs && (call->arguments.count != proc_type->parameters.count)) {
                 report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
                 report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
@@ -1139,9 +1139,9 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
                 Ast_Param *param = proc->parameters[param_idx];
                 Ast_Expr *arg = call->arguments[i];
                 if (!param->is_vararg) {
-                    if (arg->valid() && !typecheck(param->type_info, arg->type_info)) {
+                    if (arg->valid() && !typecheck(param->type, arg->type)) {
                         bad_arg = true;
-                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type_info), string_from_type(param->type_info));
+                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type), string_from_type(param->type));
                         call->poison();
                     }
                     param_idx++;
@@ -1160,8 +1160,8 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     resolve_expr(deref->elem);
-    if (deref->elem->type_info->is_indirection_type()) {
-        deref->type_info = deref->elem->type_info->deref();
+    if (deref->elem->type->is_indirection_type()) {
+        deref->type = deref->elem->type->deref();
     } else {
         report_ast_error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
         deref->poison();
@@ -1175,12 +1175,12 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
         return;
     }
 
-    if (access->parent->type_info->is_struct_access()) {
+    if (access->parent->type->is_struct_access()) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
-        Ast_Type_Info *struct_type = access->parent->type_info;
-        if (access->parent->type_info->is_pointer_type()) {
-            struct_type = access->parent->type_info->base;
+        Type *struct_type = access->parent->type;
+        if (access->parent->type->is_pointer_type()) {
+            struct_type = access->parent->type->base;
         }
 
         Struct_Field_Info *struct_field = struct_lookup(struct_type, access->name->name);
@@ -1189,51 +1189,51 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
             access->poison();
             return;
         }
-        access->type_info = struct_field->type_info;
-    } else if (access->parent->type_info->is_enum_type()) {
+        access->type = struct_field->type;
+    } else if (access->parent->type->is_enum_type()) {
         if (access->parent->kind == AST_ACCESS) {
             Ast_Access *parent_access = static_cast<Ast_Access*>(access->parent);
-            if (parent_access->parent->type_info->is_struct_type()) {
+            if (parent_access->parent->type->is_struct_type()) {
                 report_ast_error(access, "cannot access expression of enum inside struct.\n");
                 access->poison();
                 return;
             }
         }
 
-        Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(access->parent->type_info);
+        Enum_Type *enum_type = static_cast<Enum_Type*>(access->parent->type);
         Ast_Enum_Field *enum_field = enum_lookup((Ast_Enum *)enum_type->decl, access->name->name);
         if (!enum_field) {
             report_ast_error(access->parent, "'%s' is not a member of '%s'.\n", access->name->name->data, enum_type->decl->name->data);
             access->poison();
             return;
         }
-        access->type_info = access->parent->type_info;
+        access->type = access->parent->type;
         access->eval.int_val = enum_field->value;
         access->expr_flags |= EXPR_FLAG_CONSTANT;
-    } else if (access->parent->type_info->is_array_type()) {
+    } else if (access->parent->type->is_array_type()) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
-        Ast_Type_Info *type = access->parent->type_info;
+        Type *type = access->parent->type;
         Struct_Field_Info *struct_field = struct_lookup(type, access->name->name);
         if (!struct_field) {
             report_ast_error(access->parent, "'%s' is not a member of array type.\n", access->name->name->data);
             access->poison();
             return;
         }
-        access->type_info = struct_field->type_info;
-    } else if (access->parent->type_info->type_flags & TYPE_FLAG_STRING) {
+        access->type = struct_field->type;
+    } else if (access->parent->type->type_flags & TYPE_FLAG_STRING) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
-        Ast_Type_Info *type = access->parent->type_info;
+        Type *type = access->parent->type;
         Struct_Field_Info *struct_field = struct_lookup(type, access->name->name);
         if (!struct_field) {
             report_ast_error(access->parent, "'%s' is not a member of string type.\n", access->name->name->data);
             access->poison();
             return;
         }
-        access->type_info = struct_field->type_info;
+        access->type = struct_field->type;
     } else {
-        report_ast_error(access->parent, "cannot access left of .'%s', illegal type '%s'.\n", access->name->name->data, string_from_type(access->parent->type_info));
+        report_ast_error(access->parent, "cannot access left of .'%s', illegal type '%s'.\n", access->name->name->data, string_from_type(access->parent->type));
         access->poison();
         return;
     }
@@ -1244,37 +1244,37 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
     resolve_expr(range->rhs);
 
     if (range->lhs->valid()) {
-        if (!range->lhs->type_info->is_integral_type()) {
+        if (!range->lhs->type->is_integral_type()) {
             report_ast_error(range->lhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->lhs));
             range->poison();
         }
     }
 
     if (range->rhs->valid()) {
-        if (!range->rhs->type_info->is_integral_type()) {
+        if (!range->rhs->type->is_integral_type()) {
             report_ast_error(range->rhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->rhs));
             range->poison();
         }
     }
 
     if (range->lhs->valid() && range->rhs->valid()) {
-        if (typecheck(range->lhs->type_info, range->rhs->type_info)) {
+        if (typecheck(range->lhs->type, range->rhs->type)) {
             
         } else {
-            report_ast_error(range, "mismatched types in range expression ('%s' and '%s').\n", string_from_type(range->lhs->type_info), string_from_type(range->rhs->type_info));
+            report_ast_error(range, "mismatched types in range expression ('%s' and '%s').\n", string_from_type(range->lhs->type), string_from_type(range->rhs->type));
         }
     }
 
     if (range->lhs->is_constant() && range->rhs->is_constant()) range->expr_flags |= EXPR_FLAG_CONSTANT;
 
-    range->type_info = range->lhs->type_info;
+    range->type = range->lhs->type;
 }
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
     resolve_expr(address->elem);
 
     if (address->elem->valid()) {
-        address->type_info = ast_pointer_type_info(address->elem->type_info);
+        address->type = pointer_type(address->elem->type);
 
         if (!(address->elem->expr_flags & EXPR_FLAG_LVALUE)) {
             report_ast_error(address->elem, "cannot take address of '%s'.\n", string_from_expr(address->elem));
@@ -1298,7 +1298,7 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
     case AST_NULL:
     {
         Ast_Null *null = static_cast<Ast_Null*>(expr);
-        null->type_info = type_null;
+        null->type = type_null;
         break;
     }
 
@@ -1306,7 +1306,7 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
     {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
         resolve_expr(paren->elem);
-        paren->type_info = paren->elem->type_info;
+        paren->type = paren->elem->type;
 
         if (paren->elem->valid()) {
             if (paren->elem->is_constant()) {
@@ -1420,23 +1420,23 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
 }
 
 void Resolver::resolve_proc_header(Ast_Proc *proc) {
-    Ast_Type_Info *return_type = resolve_type(proc->return_type_defn);
-    Auto_Array<Ast_Type_Info*> parameters;
+    Type *return_type = resolve_type(proc->return_type_defn);
+    Auto_Array<Type*> parameters;
     for (int i = 0; i < proc->parameters.count; i++) {
         Ast_Param *param = proc->parameters[i];
-        Ast_Type_Info *type = resolve_type(param->type_defn);
-        param->type_info = type;
+        Type *type = resolve_type(param->type_defn);
+        param->type = type;
         parameters.push(type);
     }
     if (return_type == NULL) return_type = type_void;
 
-    Ast_Proc_Type_Info *type = ast_proc_type_info(return_type, parameters);
+    Proc_Type *type = proc_type(return_type, parameters);
     type->decl = proc;
-    proc->type_info = type;
+    proc->type = type;
 
     if (proc->kind == AST_OPERATOR_PROC) {
         Ast_Operator_Proc *operator_proc = static_cast<Ast_Operator_Proc*>(proc);
-        Ast_Proc_Type_Info *type = static_cast<Ast_Proc_Type_Info*>(operator_proc->type_info);
+        Proc_Type *type = static_cast<Proc_Type*>(operator_proc->type);
 
         if (type->parameters.count == 0) {
             report_ast_error(proc, "operator %s missing parameters.\n", string_from_operator(operator_proc->op));
@@ -1444,7 +1444,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
 
         bool has_custom_type = false;
         for (int i = 0; i < type->parameters.count; i++) {
-            Ast_Type_Info *param = type->parameters[i];
+            Type *param = type->parameters[i];
             if (!param->is_builtin_type()) {
                 has_custom_type = true;
             }
@@ -1477,18 +1477,18 @@ void Resolver::resolve_struct(Ast_Struct *struct_decl) {
     Auto_Array<Struct_Field_Info> struct_fields;
     for (int i = 0; i < struct_decl->fields.count; i++) {
         Ast_Struct_Field *field = struct_decl->fields[i];
-        field->type_info = resolve_type(field->type_defn);
+        field->type = resolve_type(field->type_defn);
 
         Struct_Field_Info field_info = {};
         field_info.name = field->name;
-        field_info.type_info = field->type_info;
+        field_info.type = field->type;
         field_info.mem_offset = 0;
         struct_fields.push(field_info);
     }
-    Ast_Type_Info *type_info = ast_struct_type_info(struct_fields);
-    struct_decl->type_info = type_info;
-    type_info->decl = struct_decl;
-    type_info->name = struct_decl->name;
+    Type *type = struct_type(struct_fields);
+    struct_decl->type = type;
+    type->decl = struct_decl;
+    type->name = struct_decl->name;
 }
 
 void Resolver::resolve_enum(Ast_Enum *enum_decl) {
@@ -1512,11 +1512,11 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
         enum_fields.push(field_info);
     }
 
-    Ast_Enum_Type_Info *type_info = ast_enum_type_info(enum_fields);
-    enum_decl->type_info = type_info;
-    type_info->decl = enum_decl;
-    type_info->name = enum_decl->name;
-    type_info->base = type_i32;
+    Enum_Type *type = enum_type(enum_fields);
+    enum_decl->type = type;
+    type->decl = enum_decl;
+    type->name = enum_decl->name;
+    type->base = type_i32;
 }
 
 void Resolver::resolve_var(Ast_Var *var) {
@@ -1524,22 +1524,22 @@ void Resolver::resolve_var(Ast_Var *var) {
         Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(var->init);
         literal->visited = true;
 
-        Auto_Array<Ast_Type_Info*> literal_types;
+        Auto_Array<Type*> literal_types;
         for (int i = 0; i < literal->elements.count; i++) {
             Ast_Expr *element = literal->elements[i];
             resolve_expr(element);
-            if (!literal_types.find(element->type_info)) {
-                literal_types.push(element->type_info);
+            if (!literal_types.find(element->type)) {
+                literal_types.push(element->type);
             }
         }
 
-        Ast_Type_Info *literal_type_spec = resolve_type(literal->type_defn);
-        Ast_Type_Info *specified_type = resolve_type(var->type_defn);
+        Type *literal_type_spec = resolve_type(literal->type_defn);
+        Type *specified_type = resolve_type(var->type_defn);
 
         if (specified_type && literal_type_spec) {
             if (typecheck(specified_type, literal_type_spec)) {
-                var->type_info = specified_type;
-                literal->type_info = specified_type;
+                var->type = specified_type;
+                literal->type = specified_type;
             } else {
                 report_ast_error(literal, "type mismatch, cannot convert from '%s' to '%s'.\n", string_from_type(literal_type_spec), string_from_type(specified_type));
                 literal->poison();
@@ -1547,31 +1547,31 @@ void Resolver::resolve_var(Ast_Var *var) {
             }
         }
 
-        Ast_Type_Info *type_info = specified_type;
-        if (!type_info) {
-            type_info = literal_type_spec;
+        Type *type = specified_type;
+        if (!type) {
+            type = literal_type_spec;
         }
 
-        var->type_info = type_info;
+        var->type = type;
 
-        if (type_info) {
-            if (type_info->is_array_type()) {
-                Ast_Type_Info *base_type = type_info->base;
+        if (type) {
+            if (type->is_array_type()) {
+                Type *base_type = type->base;
                 for (int i = 0; i < literal->elements.count; i++) {
                     Ast_Expr *element = literal->elements[i];
-                    if (!typecheck(element->type_info, base_type)) {
-                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type_info), string_from_type(base_type));
+                    if (!typecheck(element->type, base_type)) {
+                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type), string_from_type(base_type));
                         literal->poison();
                         goto ERROR_BLOCK;
                     }
                 }
-            } else if (type_info->is_struct_type()) {
-                int count = (int)Min(type_info->aggregate.fields.count, literal->elements.count);
+            } else if (type->is_struct_type()) {
+                int count = (int)Min(type->aggregate.fields.count, literal->elements.count);
                 for (int i = 0; i < count; i++) {
                     Ast_Expr *element = literal->elements[i];
-                    Struct_Field_Info field = type_info->aggregate.fields[i];
-                    if (!typecheck(field.type_info, element->type_info)) {
-                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type_info), string_from_type(field.type_info));
+                    Struct_Field_Info field = type->aggregate.fields[i];
+                    if (!typecheck(field.type, element->type)) {
+                        report_ast_error(literal, "cannot convert from '%s' to '%s'.\n", string_from_type(element->type), string_from_type(field.type));
                         literal->poison();
                         goto ERROR_BLOCK;
                     }
@@ -1579,9 +1579,9 @@ void Resolver::resolve_var(Ast_Var *var) {
             }
         } else {
             if (literal_types.count == 1) {
-                Ast_Type_Info *type = ast_array_type_info(literal_types[0]);
-                literal->type_info = type;
-                var->type_info = type;
+                Type *type = array_type(literal_types[0]);
+                literal->type = type;
+                var->type = type;
             } else {
                 report_ast_error(literal, "cannot infer type of compound literal.\n");
                 literal->poison();
@@ -1589,12 +1589,12 @@ void Resolver::resolve_var(Ast_Var *var) {
             }
         }
 
-        if (var->type_info->is_array_type()) {
-            Ast_Array_Type_Info *array_type = static_cast<Ast_Array_Type_Info*>(var->type_info);
+        if (var->type->is_array_type()) {
+            Array_Type *array_type = static_cast<Array_Type*>(var->type);
             array_type->array_size = literal->elements.count;
         }
     } else {
-        Ast_Type_Info *specified_type = NULL;
+        Type *specified_type = NULL;
         if (var->type_defn) {
             specified_type = resolve_type(var->type_defn);
         }
@@ -1607,19 +1607,19 @@ void Resolver::resolve_var(Ast_Var *var) {
         }
 
         if (var->type_defn && var->init) {
-            var->type_info = specified_type;
-            if (var->init->valid() && !typecheck(specified_type, var->init->type_info)) {
-                report_ast_error(var->init, "cannot assign '%s' of type '%s' to '%s'\n", string_from_expr(var->init), string_from_type(var->init->type_info), var->name->data);
+            var->type = specified_type;
+            if (var->init->valid() && !typecheck(specified_type, var->init->type)) {
+                report_ast_error(var->init, "cannot assign '%s' of type '%s' to '%s'\n", string_from_expr(var->init), string_from_type(var->init->type), var->name->data);
                 goto ERROR_BLOCK;
             }
         } else if (var->type_defn != NULL) {
-            var->type_info = specified_type;
+            var->type = specified_type;
         } else {
-            var->type_info = var->init->type_info;
+            var->type = var->init->type;
         }
 
         if (var->init && var->init->kind == AST_NULL) {
-            var->init->type_info = specified_type;
+            var->init->type = specified_type;
         }
     }
 
@@ -1635,8 +1635,8 @@ ERROR_BLOCK:
 
 void Resolver::resolve_param(Ast_Param *param) {
     if (!param->is_vararg) {
-        Ast_Type_Info *type_info = resolve_type(param->type_defn);
-        param->type_info = type_info;
+        Type *type = resolve_type(param->type_defn);
+        param->type = type;
     }
 }
 
@@ -1647,9 +1647,9 @@ void Resolver::register_global_declarations() {
     root->scope = global_scope;
 
     for (Builtin_Type_Kind builtin_type = BUILTIN_TYPE_VOID; builtin_type < BUILTIN_TYPE_COUNT; builtin_type = (Builtin_Type_Kind)(builtin_type + 1)) {
-        Ast_Type_Info *type_info = g_builtin_types[builtin_type];
-        if (type_info->name) {
-            Ast_Type_Decl *decl = ast_type_decl(type_info->name, type_info);
+        Type *type = g_builtin_types[builtin_type];
+        if (type->name) {
+            Ast_Type_Decl *decl = ast_type_decl(type->name, type);
             global_scope->declarations.push(decl);
         }
     }
@@ -1750,13 +1750,13 @@ void Resolver::resolve_overloaded_proc(Ast_Proc *proc) {
         Ast_Proc *other = static_cast<Ast_Proc*>(decl);
 
         b32 overloaded = true;
-        Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(proc->type_info);
-        Ast_Proc_Type_Info *other_type = static_cast<Ast_Proc_Type_Info*>(other->type_info);
+        Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
+        Proc_Type *other_type = static_cast<Proc_Type*>(other->type);
         if (proc_type->parameters.count == other_type->parameters.count) {
             b32 mismatch = false;
             for (int p = 0; p < proc_type->parameters.count; p++) {
-                Ast_Type_Info *p0 = proc_type->parameters[p];
-                Ast_Type_Info *p1 = other_type->parameters[p];
+                Type *p0 = proc_type->parameters[p];
+                Type *p1 = other_type->parameters[p];
 
                 if (!typecheck(p0, p1)) {
                     mismatch = true;

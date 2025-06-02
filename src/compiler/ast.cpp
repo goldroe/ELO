@@ -205,11 +205,11 @@ internal Scope *make_scope(Scope_Flags flags) {
     return result;
 }
 
-internal Ast_Type_Decl *ast_type_decl(Atom *name, Ast_Type_Info *type_info) {
+internal Ast_Type_Decl *ast_type_decl(Atom *name, Type *type) {
     Ast_Type_Decl *result = AST_NEW(Ast_Type_Decl);
     result->decl_flags |= DECL_FLAG_TYPE;
     result->name = name;
-    result->type_info = type_info;
+    result->type = type;
     return result;
 }
 
@@ -466,21 +466,21 @@ internal Ast_Return *ast_return(Ast_Expr *expr) {
     return result;
 }
 
-internal char *string_from_type(Ast_Type_Info *type_info) {
-    if (type_info == NULL) return "";
+internal char *string_from_type(Type *ty) {
+    if (ty == NULL) return "";
     cstring string = NULL;
-    for (Ast_Type_Info *type = type_info; type; type = type->base) {
+    for (Type *type = ty; type; type = type->base) {
         if (type->type_flags & TYPE_FLAG_STRUCT) {
-            Ast_Type_Info *struct_type = static_cast<Ast_Type_Info*>(type);
+            Type *struct_type = static_cast<Type*>(type);
             string = cstring_append(string, type->decl->name->data);
         } else if (type->type_flags & TYPE_FLAG_ENUM) {
-            Ast_Enum_Type_Info *enum_type = static_cast<Ast_Enum_Type_Info*>(type);
+            Enum_Type *enum_type = static_cast<Enum_Type*>(type);
             string = cstring_append(string, type->decl->name->data);
         } else if (type->type_flags & TYPE_FLAG_PROC) {
-            Ast_Proc_Type_Info *proc_type = static_cast<Ast_Proc_Type_Info*>(type);
+            Proc_Type *proc_type = static_cast<Proc_Type*>(type);
             string = cstring_append(string, "(");
             for (int i = 0; i < proc_type->parameters.count; i++) {
-                Ast_Type_Info *param = proc_type->parameters[i];
+                Type *param = proc_type->parameters[i];
                 cstring_append(string, string_from_type(param));
                 if (i != proc_type->parameters.count - 1) string = cstring_append(string, ",");
             }
@@ -512,7 +512,7 @@ internal char *string_from_expr(Ast_Expr *expr) {
     {
         Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
         cstring str = make_cstring("cast(");
-        str = cstring_append(str, string_from_type(cast->type_info));
+        str = cstring_append(str, string_from_type(cast->type));
         str = cstring_append(str, ")");
         str = cstring_append(str, string_from_expr(cast->elem));
         result = str;

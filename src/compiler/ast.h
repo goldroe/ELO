@@ -1,16 +1,19 @@
 #ifndef AST_H
 #define AST_H
 
+struct Type;
 struct Ast;
 struct Ast_Expr;
 struct Ast_Stmt;
 struct Ast_Decl;
 struct Ast_Block;
 struct Ast_Type_Defn;
-struct Ast_Type_Info;
-struct Scope;
 struct Ast_Ident;
 struct Ast_Operator_Proc;
+struct Scope;
+struct BE_Var;
+struct BE_Proc;
+struct BE_Struct;
 
 enum OP {
     OP_ERR = -1,
@@ -74,10 +77,10 @@ enum Ast_Kind {
     AST_SCOPE,
 
     AST_TYPE_DEFN,
-    AST_TYPE_INFO,
-    AST_ARRAY_TYPE_INFO,
-    AST_ENUM_TYPE_INFO,
-    AST_PROC_TYPE_INFO,
+    AST_TYPE,
+    AST_ARRAY_TYPE,
+    AST_ENUM_TYPE,
+    AST_PROC_TYPE,
 
     AST_EXPR,
     AST_NULL,
@@ -189,7 +192,7 @@ union Eval {
 struct Ast_Expr : Ast {
     Ast_Expr() { kind = AST_EXPR; }
     Expr_Flags expr_flags;
-    Ast_Type_Info *type_info;
+    Type *type;
     Eval eval;
 
     bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
@@ -248,7 +251,7 @@ struct Ast_Call : Ast_Expr {
 struct Ast_Ident : Ast_Expr {
     Ast_Ident() { kind = AST_IDENT; }
     Atom *name;
-    Ast_Decl *decl;
+    Ast_Decl *ref;
 };
 
 struct Ast_Unary : Ast_Expr {
@@ -307,8 +310,8 @@ struct Ast_Decl : Ast {
     Atom *name;
     Decl_Flags decl_flags;
     Resolve_State resolve_state = RESOLVE_UNSTARTED;
-    Ast_Type_Info *type_info;
-    void *backend_var;
+    Type *type;
+    BE_Var *backend_var;
 };
 
 struct Ast_Type_Decl : Ast_Decl {
@@ -331,12 +334,13 @@ struct Ast_Struct_Field : Ast {
     Ast_Struct_Field() { kind = AST_STRUCT_FIELD; }
     Atom *name;
     Ast_Type_Defn *type_defn;
-    Ast_Type_Info *type_info;
+    Type *type;
 };
 
 struct Ast_Struct : Ast_Decl {
     Ast_Struct() { kind = AST_STRUCT; }
     Auto_Array<Ast_Struct_Field*> fields;
+    BE_Struct *backend_struct;
 };
 
 struct Ast_Enum_Field : Ast {
@@ -362,6 +366,8 @@ struct Ast_Proc : Ast_Decl {
     b32 foreign;
     b32 has_varargs;
     b32 returns;
+
+    BE_Proc *backend_proc;
 };
 
 struct Ast_Operator_Proc : Ast_Proc {
@@ -467,7 +473,6 @@ struct Ast_Fallthrough : Ast_Stmt {
 #define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
 
 internal Ast *ast_alloc(u64 size, int alignment);
-internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base);
 internal char *string_from_operator(OP op);
 
 #endif // AST_H

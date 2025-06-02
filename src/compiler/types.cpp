@@ -1,73 +1,73 @@
-global Ast_Type_Info *g_builtin_types[BUILTIN_TYPE_COUNT];
+global Type *g_builtin_types[BUILTIN_TYPE_COUNT];
 
-global Ast_Type_Info *type_poison;
-global Ast_Type_Info *type_void;
-global Ast_Type_Info *type_null;
-global Ast_Type_Info *type_bool;
-global Ast_Type_Info *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
-global Ast_Type_Info *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
-global Ast_Type_Info *type_isize, *type_usize;
-global Ast_Type_Info *type_f32, *type_f64;
-global Ast_Type_Info *type_string;
+global Type *type_poison;
+global Type *type_void;
+global Type *type_null;
+global Type *type_bool;
+global Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
+global Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
+global Type *type_isize, *type_usize;
+global Type *type_f32, *type_f64;
+global Type *type_string;
 
-internal Ast_Type_Info *ast_type_info(Atom *name, Type_Info_Flags flags) {
-    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+internal Type *ast_type(Atom *name, Type_Flags flags) {
+    Type *result = AST_NEW(Type);
     result->name = name; 
     result->type_flags = flags;
     return result;
 }
 
-internal Ast_Type_Info *ast_pointer_type_info(Ast_Type_Info *base) {
-    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+internal Type *pointer_type(Type *base) {
+    Type *result = AST_NEW(Type);
     result->base = base;
     result->type_flags = TYPE_FLAG_POINTER;
     return result;
 }
 
-internal Struct_Field_Info struct_field_info(Atom *name, Ast_Type_Info *type_info) {
+internal Struct_Field_Info struct_field_info(Atom *name, Type *type) {
     Struct_Field_Info result = {};
     result.name = name;
-    result.type_info = type_info;
+    result.type = type;
     result.mem_offset = 0;
     return result;
 }
 
-internal Ast_Array_Type_Info *ast_array_type_info(Ast_Type_Info *base) {
-    Ast_Array_Type_Info *result = AST_NEW(Ast_Array_Type_Info);
+internal Array_Type *array_type(Type *base) {
+    Array_Type *result = AST_NEW(Array_Type);
     result->base = base;
     result->type_flags = TYPE_FLAG_ARRAY;
     result->aggregate.fields = {
-        struct_field_info(atom_create(str_lit("data")), ast_pointer_type_info(base)),
+        struct_field_info(atom_create(str_lit("data")), pointer_type(base)),
         struct_field_info(atom_create(str_lit("count")), type_i64)
     };
     return result;
 }
 
-internal Ast_Proc_Type_Info *ast_proc_type_info(Ast_Type_Info *return_type, Auto_Array<Ast_Type_Info*> parameters) {
-    Ast_Proc_Type_Info *result = AST_NEW(Ast_Proc_Type_Info);
+internal Proc_Type *proc_type(Type *return_type, Auto_Array<Type*> parameters) {
+    Proc_Type *result = AST_NEW(Proc_Type);
     result->type_flags = TYPE_FLAG_PROC;
     result->return_type = return_type;
     result->parameters = parameters;
     return result;
 }
 
-internal Ast_Type_Info *ast_struct_type_info(Auto_Array<Struct_Field_Info> fields) {
-    Ast_Type_Info *result = AST_NEW(Ast_Type_Info);
+internal Type *struct_type(Auto_Array<Struct_Field_Info> fields) {
+    Type *result = AST_NEW(Type);
     result->type_flags = TYPE_FLAG_STRUCT;
     result->aggregate.fields = fields;
     return result;
 }
 
-internal Ast_Enum_Type_Info *ast_enum_type_info(Auto_Array<Enum_Field_Info> fields) {
-    Ast_Enum_Type_Info *result = AST_NEW(Ast_Enum_Type_Info);
+internal Enum_Type *enum_type(Auto_Array<Enum_Field_Info> fields) {
+    Enum_Type *result = AST_NEW(Enum_Type);
     result->type_flags = TYPE_FLAG_ENUM;
     result->fields = fields;
     return result;
 }
 
-internal Ast_Type_Info *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8 name, int bytes, Type_Info_Flags flags) {
+internal Type *ast_builtin_type(Builtin_Type_Kind builtin_kind, String8 name, int bytes, Type_Flags flags) {
     Atom *atom = atom_create(name);
-    Ast_Type_Info *result = ast_type_info(atom, flags | TYPE_FLAG_BUILTIN);
+    Type *result = ast_type(atom, flags | TYPE_FLAG_BUILTIN);
     result->bytes = bytes;
     g_builtin_types[builtin_kind] = result;
     result->builtin_kind = builtin_kind;
@@ -104,7 +104,7 @@ internal void register_builtin_types() {
     {
         type_string = ast_builtin_type(BUILTIN_TYPE_STRING, str_lit("string"), 16, TYPE_FLAG_STRING);
         type_string->aggregate.fields = {
-            { atom_create(str_lit("data")), ast_pointer_type_info(type_u8) },
+            { atom_create(str_lit("data")), pointer_type(type_u8) },
             { atom_create(str_lit("count")), type_i32 }
         };
     }
@@ -112,7 +112,7 @@ internal void register_builtin_types() {
 
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
-internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
+internal bool typecheck(Type *t0, Type *t1) {
     Assert(t0 != NULL);
     Assert(t1 != NULL);
 
@@ -140,7 +140,7 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     }
 
     if (t0->is_indirection_type() && t1->is_indirection_type()) {
-        Ast_Type_Info *a = t0, *b = t1;
+        Type *a = t0, *b = t1;
         for (;;) {
             //@Note Bad indirection
             if ((a == NULL) != (b == NULL)) {
@@ -170,7 +170,7 @@ internal bool typecheck(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     return false;
 }
 
-internal bool typecheck_castable(Ast_Type_Info *t0, Ast_Type_Info *t1) {
+internal bool typecheck_castable(Type *t0, Type *t1) {
     Assert(t0 != NULL);
     Assert(t1 != NULL);
 
@@ -187,7 +187,7 @@ internal bool typecheck_castable(Ast_Type_Info *t0, Ast_Type_Info *t1) {
     return true;
 }
 
-bool Ast_Type_Info::is_struct_access() {
+bool Type::is_struct_access() {
     if (this->is_struct_type() ||
         (is_pointer_type() && this->base->is_struct_type())) {
         return true;

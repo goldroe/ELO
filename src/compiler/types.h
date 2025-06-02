@@ -24,7 +24,7 @@ enum Builtin_Type_Kind {
     BUILTIN_TYPE_COUNT
 };
 
-enum Type_Info_Flags {
+enum Type_Flags {
     TYPE_FLAG_VOID      = (1<<0),
     TYPE_FLAG_NULL      = (1<<1),
     TYPE_FLAG_BUILTIN   = (1<<2),
@@ -44,18 +44,18 @@ enum Type_Info_Flags {
     TYPE_FLAG_NUMERIC   = (TYPE_FLAG_INTEGER|TYPE_FLAG_BOOLEAN|TYPE_FLAG_ENUM|TYPE_FLAG_FLOAT|TYPE_FLAG_BOOLEAN|TYPE_FLAG_POINTER),
     TYPE_FLAG_AGGREGATE = (TYPE_FLAG_STRUCT|TYPE_FLAG_ARRAY|TYPE_FLAG_STRING),
 };
-EnumDefineFlagOperators(Type_Info_Flags);
+EnumDefineFlagOperators(Type_Flags);
 
 struct Struct_Field_Info {
     Atom *name;
-    Ast_Type_Info *type_info;
+    Type *type;
     int mem_offset;
 };
 
-struct Ast_Type_Info : Ast {
-    Ast_Type_Info() { kind = AST_TYPE_INFO; }
-    Ast_Type_Info *base;
-    Type_Info_Flags type_flags;
+struct Type : Ast {
+    Type() { kind = AST_TYPE; }
+    Type *base;
+    Type_Flags type_flags;
     Ast_Decl *decl;
     Atom *name;
     int bytes;
@@ -82,7 +82,7 @@ struct Ast_Type_Info : Ast {
     inline bool is_integral_type() { return type_flags & TYPE_FLAG_INTEGRAL; }
     inline bool is_float_type() { return type_flags & TYPE_FLAG_FLOAT; }
     inline bool is_signed() { return type_flags & TYPE_FLAG_SIGNED; }
-    inline Ast_Type_Info *deref() { return base; }
+    inline Type *deref() { return base; }
 };
 
 struct Enum_Field_Info {
@@ -90,22 +90,25 @@ struct Enum_Field_Info {
     s64 value;
 };
 
-struct Ast_Enum_Type_Info : Ast_Type_Info {
-    Ast_Enum_Type_Info() { kind = AST_ENUM_TYPE_INFO; }
+struct Enum_Type : Type {
+    Enum_Type() { kind = AST_ENUM_TYPE; }
     Auto_Array<Enum_Field_Info> fields;
 };
 
-struct Ast_Proc_Type_Info : Ast_Type_Info {
-    Ast_Proc_Type_Info() { kind = AST_PROC_TYPE_INFO; }
-    Auto_Array<Ast_Type_Info*> parameters;
-    Ast_Type_Info *return_type;
+struct Proc_Type : Type {
+    Proc_Type() { kind = AST_PROC_TYPE; }
+    Auto_Array<Type*> parameters;
+    Type *return_type;
 }; 
 
-struct Ast_Array_Type_Info : Ast_Type_Info {
-    Ast_Array_Type_Info() { kind = AST_ARRAY_TYPE_INFO; }
+struct Array_Type : Type {
+    Array_Type() { kind = AST_ARRAY_TYPE; }
     b32 is_dynamic;
     b32 is_fixed;
     u64 array_size;
 };
+
+
+internal Type *pointer_type(Type *base);
 
 #endif // TYPES_H

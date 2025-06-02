@@ -40,7 +40,7 @@ struct Resolver {
 
     Resolver(Parser *_parser);
 
-    Ast_Type_Info *resolve_type(Ast_Type_Defn *type_defn);
+    Type *resolve_type(Ast_Type_Defn *type_defn);
 
     bool in_global_scope();
     void add_entry(Ast_Decl *decl);
@@ -67,8 +67,8 @@ struct Resolver {
     void resolve_stmt(Ast_Stmt *stmt);
 
     Ast_Decl *lookup_overloaded(Atom *name, Auto_Array<Ast_Expr*> arguments, bool *overloaded);
-    Ast_Operator_Proc *lookup_user_defined_binary_operator(OP op, Ast_Type_Info *lhs, Ast_Type_Info *rhs);
-    Ast_Operator_Proc *lookup_user_defined_unary_operator(OP op, Ast_Type_Info *type);
+    Ast_Operator_Proc *lookup_user_defined_binary_operator(OP op, Type *lhs, Type *rhs);
+    Ast_Operator_Proc *lookup_user_defined_unary_operator(OP op, Type *type);
 
     void resolve_user_defined_binary_expr(Ast_Binary *expr);
     void resolve_builtin_binary_expr(Ast_Binary *expr);

@@ -39,8 +39,6 @@
 #include <llvm-c/TargetMachine.h>
 #pragma warning(pop)
 
-struct LLVM_Decl;
-
 struct LLVM_Value {
     llvm::Value *value;
     llvm::Type *type;
@@ -50,31 +48,21 @@ struct LLVM_Addr {
     llvm::Value *value;
 };
 
-enum LLVM_Decl_Kind {
-    LLVM_DECL_VAR,
-    LLVM_DECL_PROC,
-    LLVM_DECL_STRUCT
-};
-
-struct LLVM_Decl {
-    LLVM_Decl_Kind kind;
-};
-
-struct LLVM_Struct : LLVM_Decl {
+struct BE_Struct {
     Atom *name;
     llvm::Type* type;
     Auto_Array<llvm::Type*> element_types;
     Ast_Struct *decl;
 };
 
-struct LLVM_Var : LLVM_Decl {
+struct BE_Var {
     Atom *name;
     Ast_Decl *decl;
     llvm::Type* type;
     llvm::AllocaInst *alloca;
 };
 
-struct LLVM_Procedure : LLVM_Decl {
+struct BE_Proc {
     Atom *name;
     Ast_Proc *proc;
 
@@ -86,7 +74,7 @@ struct LLVM_Procedure : LLVM_Decl {
     llvm::IRBuilder<> *builder;
     llvm::BasicBlock *entry;
 
-    Auto_Array<LLVM_Var*> named_values;
+    Auto_Array<BE_Var*> named_values;
 
     llvm::AllocaInst *return_value;
     llvm::BasicBlock *exit_block;
@@ -99,12 +87,12 @@ struct LLVM_Backend {
     llvm::LLVMContext *Ctx;
     llvm::Module *Module;
 
-    llvm::IRBuilder<> *builder;
+    llvm::IRBuilder<> *Builder;
 
-    Auto_Array<LLVM_Procedure*> global_procedures;
-    Auto_Array<LLVM_Struct*> global_structs;
+    Auto_Array<BE_Proc*> global_procedures;
+    Auto_Array<BE_Struct*> global_structs;
 
-    LLVM_Procedure *current_proc = nullptr;
+    BE_Proc *current_proc = nullptr;
     llvm::BasicBlock *current_block = nullptr;
 
     llvm::StructType *builtin_string_type;
@@ -113,7 +101,7 @@ struct LLVM_Backend {
     
     void gen();
     
-    llvm::Type* get_type(Ast_Type_Info *type_info);
+    llvm::Type* get_type(Type *type_info);
     LLVM_Addr gen_addr(Ast_Expr *expr);
     llvm::Value* gen_condition(Ast_Expr *expr);
 
@@ -127,10 +115,10 @@ struct LLVM_Backend {
     void gen_param(Ast_Param *param);
     void gen_var(Ast_Var *var_node);
 
-    void set_procedure(LLVM_Procedure *procedure);
-    LLVM_Procedure *gen_procedure(Ast_Proc *proc);
-    void gen_procedure_body(LLVM_Procedure *procedure);
-    LLVM_Struct *gen_struct(Ast_Struct *struct_decl);
+    void set_procedure(BE_Proc *procedure);
+    BE_Proc *gen_procedure(Ast_Proc *proc);
+    void gen_procedure_body(BE_Proc *procedure);
+    void gen_struct(Ast_Struct *struct_decl);
     
     void gen_stmt(Ast_Stmt *stmt);
     void gen_if(Ast_If *if_stmt);
@@ -142,8 +130,8 @@ struct LLVM_Backend {
     llvm::BasicBlock *llvm_block_new(const char *s = "");
     void llvm_store(llvm::Value *value, llvm::Value *address);
 
-    LLVM_Procedure *lookup_proc(Atom *name);
-    LLVM_Struct *LLVM_Backend::lookup_struct(Atom *name);
+    BE_Proc *lookup_proc(Atom *name);
+    BE_Struct *LLVM_Backend::lookup_struct(Atom *name);
 
     void get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast_Expr*> *expr_list);
     void lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block);
