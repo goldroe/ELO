@@ -1,39 +1,31 @@
 #load "stdio.elo"
 
+Cmd :: #type () -> void
+
+Map :: struct {
+    name: *u8;
+    keys: [255]Cmd;
+}
+
+func :: (x: int, y: *u8) {
+    printf("%d %s\n", x, y);
+}
+
+SelfInsert :: () {
+    printf("self insert");
+}
+
 main :: () -> int {
-    x := 23;
-    y := 2000;
-    z := 100;
+    fp: (int, *u8);
+    fp = func;
+    fp(1020, "foo asdfjklasdjf dsajfkldsajzczv zxczzvcxhqq 1`23");
 
-    ifcase {
-    case x > 100:
-        printf("x\n");
-    case y > 1200:
-        printf("y\n");
-    case z > 100:
-         printf("z\n");
-         fallthrough;
-    case:
-        printf("default\n");
+    map: Map;
+    for i in 'a'..'z' {
+        map.keys[i] = SelfInsert;
     }
 
-    ifcase x {
-    case 0:
-        fallthrough;
-    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9: case 10:
-        printf("0..10\n");
-    case 21..30:
-         printf("21..30\n");
-         fallthrough;
-    case 11: case 12: case 13: case 14: case 15:
-         printf("11..15\n");
-    case 16: case 17: case 18: case 19: case 20:
-         printf("16..20\n");
-         fallthrough;
-    case:
-        printf("DEFAULT\n");
-        fallthrough;
-    }
+    map.keys['b']();
 
     return 0;
 }
