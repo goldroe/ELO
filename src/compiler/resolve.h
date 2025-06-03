@@ -100,6 +100,7 @@ struct Resolver {
     void resolve_param(Ast_Param *param);
     void resolve_decl(Ast_Decl *decl);
     void resolve_overloaded_proc(Ast_Proc *proc);
+    void resolve_type_decl(Ast_Type_Decl *type_decl);
 
     void register_global_declarations();
     void resolve();

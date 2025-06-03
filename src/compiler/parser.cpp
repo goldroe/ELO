@@ -27,7 +27,7 @@ void Parser::expect(Token_Kind token) {
 Ast_Compound_Literal *Parser::parse_compound_literal() {
     Source_Pos start = lexer->current().start;
 
-    Ast_Type_Defn *type_defn = parse_type();;
+    Ast_Type_Defn *type_defn = parse_type();
 
     expect(TOKEN_LBRACE);
 
@@ -795,13 +795,45 @@ Ast_Type_Defn *Parser::parse_type() {
             type = t;
             break;
         }
+
+        case TOKEN_LPAREN:
+        {
+            Token op = lexer->current();
+            lexer->next_token();
+
+            Ast_Type_Defn *t = ast_type_defn(TYPE_DEFN_PROC, type);
+
+            while (!lexer->match(TOKEN_RPAREN)) {
+                Ast_Type_Defn *param = parse_type();
+                if (!param) break;
+                t->proc.parameters.push(param);
+
+                if (!lexer->eat(TOKEN_COMMA)) {
+                    break;
+                }
+            }
+
+            expect(TOKEN_RPAREN);
+
+            if (lexer->eat(TOKEN_ARROW)) {
+                t->proc.return_type = parse_type();
+                if (!t->proc.return_type) {
+                    report_parser_error(lexer, "missing return type for procedure type.\n");
+                    t->poison();
+                }
+            }
+
+            type = t;
+            terminate = true;
+            break;
+        }
         }
     }
 
-    if (type && type->type_defn_kind != TYPE_DEFN_NAME) {
-        report_parser_error(lexer, "expected a type, got '%s'.\n", string_from_token(lexer->peek()));
-        type->poison();
-    }
+    // if (type && type->type_defn_kind != TYPE_DEFN_NAME) {
+    //     report_parser_error(lexer, "expected a type, got '%s'.\n", string_from_token(lexer->peek()));
+    //     type->poison();
+    // }
     return type;
 }
 
@@ -1027,6 +1059,28 @@ Ast_Enum *Parser::parse_enum(Token name) {
     return enum_decl;
 }
 
+Ast_Type_Decl *Parser::parse_type_decl(Token name) {
+    expect(TOKEN_TYPEDEF);
+
+    Ast_Type_Decl *type_decl = ast_type_decl(name.name, nullptr);
+
+    type_decl->mark_start(name.start);
+    type_decl->mark_end(name.end);
+
+    Ast_Type_Defn *type_defn = parse_type();
+    type_decl->type_defn = type_defn;
+
+    if (!type_defn) {
+        report_parser_error(lexer, "missing type after #type.\n");
+        type_decl->poison();
+        return type_decl;
+    }
+
+    type_decl->mark_end(type_defn->end);
+
+    return type_decl;
+}
+
 Ast_Decl *Parser::parse_decl() {
     Ast_Decl *decl = NULL;
     Token token = lexer->current();
@@ -1049,6 +1103,12 @@ Ast_Decl *Parser::parse_decl() {
             {
                 Ast_Proc *proc = parse_proc(token);
                 decl = proc;
+                break;
+            }
+            case TOKEN_TYPEDEF:
+            {
+                Ast_Type_Decl *type_decl = parse_type_decl(token);
+                decl = type_decl;
                 break;
             }
             }

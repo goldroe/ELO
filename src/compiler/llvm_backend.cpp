@@ -250,6 +250,17 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
         llvm::Type* element_type = get_type(type->base);
         llvm::PointerType* pointer_type = llvm::PointerType::get(element_type, 0);
         return pointer_type;
+    } else if (type->is_proc_type()) {
+        Proc_Type *proc_ty = static_cast<Proc_Type*>(type);
+        llvm::Type *return_type = get_type(proc_ty->return_type);
+        Auto_Array<llvm::Type*> parameter_types;
+        for (Type *param : proc_ty->parameters) {
+            llvm::Type *param_type = get_type(param);
+            parameter_types.push(param_type);
+        }
+        llvm::FunctionType *function_type = llvm::FunctionType::get(return_type, llvm::ArrayRef(parameter_types.data, parameter_types.count), false);
+        llvm::PointerType *pointer_type = llvm::PointerType::get(function_type, 0);
+        return pointer_type;
     } else {
         Assert(0);
         return nullptr;
@@ -267,21 +278,9 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
     case AST_IDENT:
     {
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
-        switch (ident->ref->kind) {
-        case AST_VAR:
-        {
-            BE_Var *var = ident->ref->backend_var;
-            Assert(var);
-            result.value = var->alloca;
-            break;
-        }
-        default:
-            Assert(0);
-            // case AST_PROC:
-            // BE_Proc *proc = ((Ast_Proc*)ident->ref)->backend_proc;
-            // result.value = proc->fn;
-            break;
-        }
+        BE_Var *var = ident->ref->backend_var;
+        Assert(var);
+        result.value = var->alloca;
         break;
     }
 
@@ -694,42 +693,96 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         LLVM_Value value;
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
         Assert(ident->ref);
-        BE_Var *var = ident->ref->backend_var;
-        Assert(var);
-        if (ident->type->is_array_type()) {
-            value.value = var->alloca;
-        } else {
-            llvm::LoadInst *load = Builder->CreateLoad(var->type, var->alloca);
-            value.value = load;
+        switch (ident->ref->kind) {
+        default:
+            Assert(0);
+            break;
+        case AST_VAR:
+        case AST_PARAM:
+        {
+            BE_Var *var = ident->ref->backend_var;
+            Assert(var);
+            if (ident->type->is_array_type()) {
+                value.value = var->alloca;
+            } else {
+                llvm::LoadInst *load = Builder->CreateLoad(var->type, var->alloca);
+                value.value = load;
+            }
+            value.type = var->type;
+            return value;
         }
-        value.type = var->type;
-        return value;
+        case AST_PROC:
+        {
+            Ast_Proc *proc = static_cast<Ast_Proc*>(ident->ref);
+            BE_Proc *backend_proc = proc->backend_proc;
+            value.value = backend_proc->fn;
+            value.type = backend_proc->type;
+            return value;
+        }
+        }
     }
 
     case AST_CALL:
     {
         Ast_Call *call = static_cast<Ast_Call*>(expr);
         LLVM_Value value = {};
+
+        llvm::Value *callee = nullptr;
+        llvm::FunctionType *fn_ty = nullptr;
+        llvm::Type *return_ty = nullptr;
+
         //@Todo Get address of this, instead of this
         // LLVM_Addr addr = gen_addr(call->elem);
         if (call->elem->kind == AST_IDENT) {
             Ast_Ident *ident = static_cast<Ast_Ident*>(call->elem);
-            if (ident->ref->kind == AST_PROC) {
+            switch (ident->ref->kind) {
+            case AST_PROC:
+            {
                 BE_Proc *procedure = ((Ast_Proc *)ident->ref)->backend_proc;
-
-                Auto_Array<llvm::Value*> args;
-                for (int i = 0; i < call->arguments.count; i++) {
-                    Ast_Expr *arg = call->arguments[i];
-                    LLVM_Value arg_value = gen_expr(arg);
-                    args.push(arg_value.value);
+                fn_ty = procedure->type;
+                callee = procedure->fn;
+                return_ty = procedure->return_type;
+                break;
+            }
+            case AST_VAR:
+            {
+                Proc_Type *proc_type = static_cast<Proc_Type*>(ident->type);
+                Auto_Array<llvm::Type*> parameter_types;
+                for (Type *param : proc_type->parameters) {
+                    llvm::Type *param_type = get_type(param);
+                    parameter_types.push(param_type);
                 }
-
-                llvm::CallInst *call = Builder->CreateCall(procedure->type, procedure->fn, llvm::ArrayRef(args.data, args.count));
-                value.value = call;
-                value.type = procedure->return_type;
+                return_ty = get_type(proc_type->return_type);
+                fn_ty = llvm::FunctionType::get(return_ty, llvm::ArrayRef(parameter_types.data, parameter_types.count), false);
+                callee = Builder->CreateLoad(Builder->getPtrTy(), ident->ref->backend_var->alloca);
+                break;
+            }
             }
         } else {
+            LLVM_Value call_value = gen_expr(call->elem);
+            Proc_Type *proc_type = static_cast<Proc_Type*>(call->elem->type);
+            Auto_Array<llvm::Type*> parameter_types;
+            for (Type *param : proc_type->parameters) {
+                llvm::Type *param_type = get_type(param);
+                parameter_types.push(param_type);
+            }
+            return_ty = get_type(proc_type->return_type);
+            fn_ty = llvm::FunctionType::get(return_ty, llvm::ArrayRef(parameter_types.data, parameter_types.count), false);
+            callee = call_value.value;
         }
+
+        Auto_Array<llvm::Value*> args;
+        for (int i = 0; i < call->arguments.count; i++) {
+            Ast_Expr *arg = call->arguments[i];
+            LLVM_Value arg_value = gen_expr(arg);
+
+            args.push(arg_value.value);
+        }
+
+        llvm::CallInst *call_inst = Builder->CreateCall(fn_ty, callee, llvm::ArrayRef(args.data, args.count));
+        value.value = call_inst;
+        value.type = return_ty;
+
         return value;
     }
     

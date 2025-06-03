@@ -109,4 +109,5 @@ internal void atom_init() {
     atom_directive(TOKEN_LOAD,      str_lit("#load"));
     atom_directive(TOKEN_IMPORT,    str_lit("#import"));
     atom_directive(TOKEN_FOREIGN,   str_lit("#foreign"));
+    atom_directive(TOKEN_TYPEDEF,      str_lit("#type"));
 }

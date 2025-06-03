@@ -39,6 +39,7 @@ enum Type_Flags {
     TYPE_FLAG_FLOAT     = (1<<11),
     TYPE_FLAG_BOOLEAN   = (1<<12),
     TYPE_FLAG_STRING    = (1<<13),
+    TYPE_FLAG_VARARGS   = (1<<14),
 
     TYPE_FLAG_INTEGRAL  = (TYPE_FLAG_INTEGER|TYPE_FLAG_BOOLEAN|TYPE_FLAG_ENUM),
     TYPE_FLAG_NUMERIC   = (TYPE_FLAG_INTEGER|TYPE_FLAG_BOOLEAN|TYPE_FLAG_ENUM|TYPE_FLAG_FLOAT|TYPE_FLAG_BOOLEAN|TYPE_FLAG_POINTER),
@@ -99,6 +100,7 @@ struct Proc_Type : Type {
     Proc_Type() { kind = AST_PROC_TYPE; }
     Auto_Array<Type*> parameters;
     Type *return_type;
+    b32 has_varargs;
 }; 
 
 struct Array_Type : Type {
@@ -107,7 +109,6 @@ struct Array_Type : Type {
     b32 is_fixed;
     u64 array_size;
 };
-
 
 internal Type *pointer_type(Type *base);
 

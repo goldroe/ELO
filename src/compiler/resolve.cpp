@@ -490,12 +490,14 @@ Type *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
             }
             break;
         }
+
         case TYPE_DEFN_POINTER:
         {
             Type *ptr = pointer_type(type);
             type = ptr;
             break;
         }
+
         case TYPE_DEFN_ARRAY:
         {
             Ast_Expr *array_size = t->array_size;
@@ -517,6 +519,23 @@ Type *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
             }
 
             type = array;
+            break;
+        }
+
+        case TYPE_DEFN_PROC:
+        {
+            Proc_Type *proc_ty = AST_NEW(Proc_Type);
+            proc_ty->type_flags = TYPE_FLAG_PROC;
+            for (Ast_Type_Defn *param : t->proc.parameters) {
+                Type *param_ty = resolve_type(param);
+                proc_ty->parameters.push(param_ty);
+            }
+            if (t->proc.return_type) {
+                proc_ty->return_type = resolve_type(t->proc.return_type);
+            } else {
+                proc_ty->return_type = type_void;
+            }
+            type = proc_ty;
             break;
         }
         }
@@ -1098,16 +1117,20 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         if (arg->invalid()) call->poison();
     }
 
-    Type *elem_type = NULL;
+    Ast_Expr *elem = call->elem;
+
+    Ast_Proc *proc = nullptr;
 
     if (call->elem->kind == AST_IDENT) {
+        Ast_Proc *proc = nullptr;
         Ast_Ident *name = static_cast<Ast_Ident*>(call->elem);
         bool overloaded = false;
         Ast_Decl *decl = lookup_overloaded(name->name, call->arguments, &overloaded);
         if (decl) {
             resolve_decl(decl);
             name->ref = decl;
-            elem_type = decl->type;
+            elem->type = decl->type;
+            proc = static_cast<Ast_Proc*>(decl);
         } else {
             if (overloaded) {
                 report_ast_error(name, "no overloaded procedure matches all argument types.\n");
@@ -1118,43 +1141,47 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         }
     } else {
         resolve_expr(call->elem);
-        elem_type = call->elem->type;
     }
 
-    if (elem_type) {
-        if (elem_type->is_proc_type()) {
-            Ast_Proc *proc = static_cast<Ast_Proc*>(elem_type->decl);
-            Proc_Type *proc_type = static_cast<Proc_Type*>(proc->type);
-            call->type = proc_type->return_type;
-            if (!proc->has_varargs && (call->arguments.count != proc_type->parameters.count)) {
-                report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(call->elem), call->arguments.count);
-                report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
+    Proc_Type *proc_type = nullptr;
+
+    if (elem->type->is_proc_type()) {
+        proc_type = static_cast<Proc_Type*>(elem->type);
+    } else {
+        report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
+        call->poison();
+        return;
+    }
+
+    if ((proc_type->has_varargs && (call->arguments.count < proc_type->parameters.count - 1))
+        || (!proc_type->has_varargs && (call->arguments.count != proc_type->parameters.count))) {
+        report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(elem), call->arguments.count);
+        if (proc) {
+            report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
+        }
+        call->poison();
+        return;
+    }
+
+    bool bad_arg = false;
+    for (int i = 0, param_idx = 0; i < call->arguments.count; i++) {
+        Type *param_type = proc_type->parameters[param_idx];
+        Ast_Expr *arg = call->arguments[i];
+        if (param_type == NULL) { //@Note @Fix this is a vararg type
+            if (arg->valid() && !typecheck(param_type, arg->type)) {
+                bad_arg = true;
+                report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type), string_from_type(param_type));
                 call->poison();
-                return;
             }
-
-            bool bad_arg = false;
-            for (int i = 0, param_idx = 0; i < call->arguments.count; i++) {
-                Ast_Param *param = proc->parameters[param_idx];
-                Ast_Expr *arg = call->arguments[i];
-                if (!param->is_vararg) {
-                    if (arg->valid() && !typecheck(param->type, arg->type)) {
-                        bad_arg = true;
-                        report_ast_error(arg, "incompatible argument of type '%s' for parameter of type '%s'.\n", string_from_type(arg->type), string_from_type(param->type));
-                        call->poison();
-                    }
-                    param_idx++;
-                }
-            }
-
-            if (bad_arg) {
-                report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
-            }
-        } else {
-            report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
-            call->poison();
+            param_idx++;
         }
     }
+    if (proc && bad_arg) {
+        report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
+        call->poison();
+    }
+
+    call->type = proc_type->return_type;
 }
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
@@ -1408,11 +1435,6 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
         resolve_range_expr(range);
         break;
     }
-
-    case AST_TERNARY:
-    {
-        break;
-    }
     }
 
     expr->visited = true;
@@ -1421,8 +1443,10 @@ void Resolver::resolve_expr(Ast_Expr *expr) {
 void Resolver::resolve_proc_header(Ast_Proc *proc) {
     Type *return_type = resolve_type(proc->return_type_defn);
     Auto_Array<Type*> parameters;
+    bool has_varargs = false;
     for (int i = 0; i < proc->parameters.count; i++) {
         Ast_Param *param = proc->parameters[i];
+        if (param->is_vararg) has_varargs = true;
         Type *type = resolve_type(param->type_defn);
         param->type = type;
         parameters.push(type);
@@ -1430,6 +1454,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
     if (return_type == NULL) return_type = type_void;
 
     Proc_Type *type = proc_type(return_type, parameters);
+    type->has_varargs = has_varargs;
     type->decl = proc;
     proc->type = type;
 
@@ -1660,6 +1685,7 @@ void Resolver::register_global_declarations() {
         if (type->name) {
             Ast_Type_Decl *decl = ast_type_decl(type->name, type);
             global_scope->declarations.push(decl);
+            decl->resolve_state = RESOLVE_DONE; //@Note Don't resolve for builtin
         }
     }
 
@@ -1681,6 +1707,11 @@ void Resolver::register_global_declarations() {
         }
 
     }
+}
+
+void Resolver::resolve_type_decl(Ast_Type_Decl *type_decl) {
+    Type *type = resolve_type(type_decl->type_defn);
+    type_decl->type = type;
 }
 
 void Resolver::resolve_decl(Ast_Decl *decl) {
@@ -1730,6 +1761,12 @@ void Resolver::resolve_decl(Ast_Decl *decl) {
     {
         Ast_Enum *enum_decl = static_cast<Ast_Enum*>(decl);
         resolve_enum(enum_decl);
+        break;
+    }
+    case AST_TYPE_DECL:
+    {
+        Ast_Type_Decl *type_decl = static_cast<Ast_Type_Decl*>(decl);
+        resolve_type_decl(type_decl);
         break;
     }
     }

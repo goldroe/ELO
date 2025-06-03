@@ -100,7 +100,6 @@ enum Ast_Kind {
     AST_ASSIGNMENT,
     AST_ACCESS,
     AST_RANGE,
-    AST_TERNARY,
 
     AST_DECL,
     AST_TYPE_DECL,
@@ -163,6 +162,7 @@ enum Type_Defn_Kind {
     TYPE_DEFN_NAME,
     TYPE_DEFN_POINTER,
     TYPE_DEFN_ARRAY,
+    TYPE_DEFN_PROC,
 };
 
 struct Ast_Type_Defn : Ast {
@@ -172,6 +172,10 @@ struct Ast_Type_Defn : Ast {
     union {
         Atom *name;
         Ast_Expr *array_size;
+        struct {
+            Auto_Array<Ast_Type_Defn*> parameters;
+            Ast_Type_Defn *return_type;
+        } proc;
     };
 };
 
@@ -316,6 +320,7 @@ struct Ast_Decl : Ast {
 
 struct Ast_Type_Decl : Ast_Decl {
     Ast_Type_Decl() { kind = AST_TYPE_DECL; }
+    Ast_Type_Defn *type_defn;
 };
 
 struct Ast_Param : Ast_Decl {
@@ -473,6 +478,7 @@ struct Ast_Fallthrough : Ast_Stmt {
 
 #define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
 
+internal inline Allocator ast_allocator();
 internal Ast *ast_alloc(u64 size, int alignment);
 internal char *string_from_operator(OP op);
 
