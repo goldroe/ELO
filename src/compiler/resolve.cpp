@@ -525,7 +525,7 @@ Type *Resolver::resolve_type(Ast_Type_Defn *type_defn) {
         case TYPE_DEFN_PROC:
         {
             Proc_Type *proc_ty = AST_NEW(Proc_Type);
-            proc_ty->type_flags = TYPE_FLAG_PROC;
+            proc_ty->id = TYPEID_PROC;
             for (Ast_Type_Defn *param : t->proc.parameters) {
                 Type *param_ty = resolve_type(param);
                 proc_ty->parameters.push(param_ty);
@@ -781,11 +781,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
             }
             expr->type = rhs->type;
         } else {
-            if (!lhs->type->is_arithmetic_type()) {
+            if (!lhs->type->is_numeric_type()) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type->is_arithmetic_type()) {
+            if (!rhs->type->is_numeric_type()) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
@@ -809,11 +809,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
             report_ast_error(lhs, "pointer can only be subtracted from another pointer.\n");
             expr->poison();
         } else {
-            if (!lhs->type->is_arithmetic_type()) {
+            if (!lhs->type->is_numeric_type()) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type->is_arithmetic_type()) {
+            if (!rhs->type->is_numeric_type()) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
@@ -825,11 +825,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_DIV:
     case OP_MOD:
         expr->type = lhs->type;
-        if (!lhs->type->is_arithmetic_type() || lhs->type->is_pointer_type()) {
+        if (!lhs->type->is_numeric_type() || lhs->type->is_pointer_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type->is_arithmetic_type() || rhs->type->is_pointer_type()) {
+        if (!rhs->type->is_numeric_type() || rhs->type->is_pointer_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -875,11 +875,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
         if (rhs->kind == AST_NULL) {
             rhs->type = lhs->type;
         }
-        if (!lhs->type->is_arithmetic_type()) {
+        if (!lhs->type->is_numeric_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type->is_arithmetic_type()) {
+        if (!rhs->type->is_numeric_type()) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -946,7 +946,7 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
 
     if (subscript->expr->valid()) {
         if (subscript->expr->type->is_indirection_type()) {
-            subscript->type = subscript->expr->type->deref();
+            subscript->type = subscript->expr->type->base;
         } else {
             report_ast_error(subscript->expr, "'%s' is not a pointer or array type.\n", string_from_expr(subscript->expr));
             subscript->poison();
@@ -1187,7 +1187,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     resolve_expr(deref->elem);
     if (deref->elem->type->is_indirection_type()) {
-        deref->type = deref->elem->type->deref();
+        deref->type = deref->elem->type->base;
     } else {
         report_ast_error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
         deref->poison();
@@ -1201,7 +1201,7 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
         return;
     }
 
-    if (access->parent->type->is_struct_access()) {
+    if (access->parent->type->is_struct_or_pointer()) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
         Type *struct_type = access->parent->type;
@@ -1247,7 +1247,7 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
             return;
         }
         access->type = struct_field->type;
-    } else if (access->parent->type->type_flags & TYPE_FLAG_STRING) {
+    } else if (access->parent->type->id == TYPEID_STRING) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
         Type *type = access->parent->type;
@@ -1469,7 +1469,7 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
         bool has_custom_type = false;
         for (int i = 0; i < type->parameters.count; i++) {
             Type *param = type->parameters[i];
-            if (!param->is_builtin_type()) {
+            if (param->is_user_defined_type()) {
                 has_custom_type = true;
             }
         }
@@ -1680,8 +1680,7 @@ void Resolver::register_global_declarations() {
     global_scope = new_scope(SCOPE_GLOBAL);
     root->scope = global_scope;
 
-    for (Builtin_Type_Kind builtin_type = BUILTIN_TYPE_VOID; builtin_type < BUILTIN_TYPE_COUNT; builtin_type = (Builtin_Type_Kind)(builtin_type + 1)) {
-        Type *type = g_builtin_types[builtin_type];
+    for (Type *type : g_builtin_types) {
         if (type->name) {
             Ast_Type_Decl *decl = ast_type_decl(type->name, type);
             global_scope->declarations.push(decl);

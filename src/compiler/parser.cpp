@@ -293,48 +293,6 @@ Ast_Expr *Parser::parse_unary_expr() {
     }
 }
 
-// internal int get_operator_precedence(Token_Kind op) {
-//     switch (op) {
-//     default:
-//         return -1;
-
-//     case TOKEN_STAR:
-//     case TOKEN_SLASH:
-//     case TOKEN_MOD:
-//         return 10000;
-
-//     case TOKEN_PLUS:
-//     case TOKEN_MINUS:
-//         return 9000;
-
-//     case TOKEN_LT:
-//     case TOKEN_GT:
-//     case TOKEN_LTEQ:
-//     case TOKEN_GTEQ:
-//         return 8000;
-
-//     case TOKEN_EQ2:
-//     case TOKEN_NEQ:
-//         return 7000;
-
-//     case TOKEN_AMPER:
-//         return 6000;
-
-//     case TOKEN_XOR:
-//         return 5000;
-        
-//     case TOKEN_BAR:
-//         return 4000;
-
-//     case TOKEN_AND:
-//     case TOKEN_OR:
-//         return 3000;
-
-//     case TOKEN_LSHIFT:
-//     case TOKEN_RSHIFT:
-//         return 2000;
-//     }
-// }
 
 Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
     for (;;) {

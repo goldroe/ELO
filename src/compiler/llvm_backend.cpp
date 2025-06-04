@@ -203,54 +203,60 @@ void LLVM_Backend::gen_struct(Ast_Struct *struct_decl) {
 }
 
 llvm::Type* LLVM_Backend::get_type(Type *type) {
-    if (type->type_flags & TYPE_FLAG_BUILTIN) {
-        switch (type->builtin_kind) {
-        default:
-            Assert(0);
-            return nullptr;
-        case BUILTIN_TYPE_NULL:
-            Assert(0); //@Note No expression should still have the null type, needs to have type of "owner"
-            return llvm::Type::getVoidTy(*Ctx);
-        case BUILTIN_TYPE_VOID:
-            return llvm::Type::getVoidTy(*Ctx);
-        case BUILTIN_TYPE_U8:
-        case BUILTIN_TYPE_BOOL:
-        case BUILTIN_TYPE_I8:
-            return llvm::Type::getInt8Ty(*Ctx);
-        case BUILTIN_TYPE_U16:
-        case BUILTIN_TYPE_I16:
-            return llvm::Type::getInt16Ty(*Ctx);
-        case BUILTIN_TYPE_U32:
-        case BUILTIN_TYPE_I32:
-        case BUILTIN_TYPE_INT:
-            return llvm::Type::getInt32Ty(*Ctx);
-        case BUILTIN_TYPE_U64:
-        case BUILTIN_TYPE_ISIZE:
-        case BUILTIN_TYPE_USIZE:
-        case BUILTIN_TYPE_I64:
-            return llvm::Type::getInt64Ty(*Ctx);
-        case BUILTIN_TYPE_F32:
-            return llvm::Type::getFloatTy(*Ctx);
-        case BUILTIN_TYPE_F64:
-            return llvm::Type::getDoubleTy(*Ctx);
-        case BUILTIN_TYPE_STRING:
-            return builtin_string_type;
-        }
-    } else if (type->is_enum_type()) {
+    switch (type->id) {
+    default:
+        Assert(0);
+        return nullptr;
+    case TYPEID_NULL:
+        Assert(0); //@Note No expression should still have the null type, needs to have type of "owner"
+        return llvm::Type::getVoidTy(*Ctx);
+    case TYPEID_VOID:
+        return llvm::Type::getVoidTy(*Ctx);
+    case TYPEID_UINT8:
+    case TYPEID_INT8:
+    case TYPEID_BOOL:
+        return llvm::Type::getInt8Ty(*Ctx);
+    case TYPEID_UINT16:
+    case TYPEID_INT16:
+        return llvm::Type::getInt16Ty(*Ctx);
+    case TYPEID_UINT32:
+    case TYPEID_INT32:
+    case TYPEID_INT:
+    case TYPEID_UINT:
+        return llvm::Type::getInt32Ty(*Ctx);
+    case TYPEID_UINT64:
+    case TYPEID_ISIZE:
+    case TYPEID_USIZE:
+    case TYPEID_INT64:
+        return llvm::Type::getInt64Ty(*Ctx);
+    case TYPEID_FLOAT32:
+        return llvm::Type::getFloatTy(*Ctx);
+    case TYPEID_FLOAT64:
+        return llvm::Type::getDoubleTy(*Ctx);
+    case TYPEID_STRING:
+        return builtin_string_type;
+    case TYPEID_ENUM:
         return get_type(type->base);
-    } else if (type->is_struct_type()) {
+    case TYPEID_STRUCT:
+    {
         BE_Struct *be_struct = ((Ast_Struct*)type->decl)->backend_struct;
         return be_struct->type;
-    } else if (type->is_array_type()) {
+    }
+    case TYPEID_ARRAY:
+    {
         Array_Type *array_type = static_cast<Array_Type*>(type);
         llvm::Type* element_type = get_type(array_type->base);
         llvm::ArrayType *array_typeref = llvm::ArrayType::get(element_type, array_type->array_size);
         return array_typeref;
-    } else if (type->is_pointer_type()) {
+    }
+    case TYPEID_POINTER:
+    {
         llvm::Type* element_type = get_type(type->base);
         llvm::PointerType* pointer_type = llvm::PointerType::get(element_type, 0);
         return pointer_type;
-    } else if (type->is_proc_type()) {
+    }
+    case TYPEID_PROC:
+    {
         Proc_Type *proc_ty = static_cast<Proc_Type*>(type);
         llvm::Type *return_type = get_type(proc_ty->return_type);
         Auto_Array<llvm::Type*> parameter_types;
@@ -261,9 +267,7 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
         llvm::FunctionType *function_type = llvm::FunctionType::get(return_type, llvm::ArrayRef(parameter_types.data, parameter_types.count), false);
         llvm::PointerType *pointer_type = llvm::PointerType::get(function_type, 0);
         return pointer_type;
-    } else {
-        Assert(0);
-        return nullptr;
+    }
     }
 }
 
@@ -288,14 +292,22 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
     {
         Ast_Access *access = static_cast<Ast_Access*>(expr);
 
-        if (access->parent->type->is_struct_type()) {
+        switch (access->parent->type->id) {
+        default:
+            Assert(0);
+            break;
+        case TYPEID_STRUCT:
+        {
             LLVM_Addr addr = gen_addr(access->parent);
             Ast_Struct *struct_node = static_cast<Ast_Struct*>(access->parent->type->decl);
             BE_Struct *be_struct = struct_node->backend_struct;
             unsigned idx = llvm_get_struct_field_index(struct_node, access->name->name);
             llvm::Value* access_ptr_value = Builder->CreateStructGEP(be_struct->type, addr.value, idx);
             result.value = access_ptr_value;
-        } else if (access->parent->type->is_pointer_type()) {
+            break;
+        }
+        case TYPEID_POINTER:
+        {
             LLVM_Addr addr = gen_addr(access->parent);
             Type *struct_type = access->parent->type->base;
             Ast_Struct *struct_node = static_cast<Ast_Struct*>(struct_type->decl);
@@ -306,10 +318,16 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
             llvm::Value *base_addr = Builder->CreateLoad(ptr_type, addr.value);
             llvm::Value *access_ptr = Builder->CreateStructGEP(be_struct->type, base_addr, field_idx);
             result.value = access_ptr;
-        } else if (access->parent->type->is_enum_type()) {
+            break;
+        }
+        case TYPEID_ENUM:
+        {
             llvm::Constant *constant = llvm_const_int(get_type(access->parent->type->base), access->eval.int_val);
             result.value = constant;
-        } else if (access->parent->type->type_flags & TYPE_FLAG_STRING) {
+            break;
+        }
+        case TYPEID_STRING:
+        {
             LLVM_Addr addr = gen_addr(access->parent);
             if (atoms_match(access->name->name, atom_create(str_lit("data")))) {
                 llvm::Value *access_ptr = Builder->CreateStructGEP(builtin_string_type, addr.value, 0);
@@ -318,8 +336,8 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
                 llvm::Value *access_ptr = Builder->CreateStructGEP(builtin_string_type, addr.value, 1);
                 result.value = access_ptr;
             }
-        } else {
-            Assert(0);
+            break;
+        }
         }
         break;
     }

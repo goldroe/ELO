@@ -470,19 +470,20 @@ internal char *string_from_type(Type *ty) {
     if (ty == NULL) return "";
     cstring string = NULL;
     for (Type *type = ty; type; type = type->base) {
-        if (type->type_flags & TYPE_FLAG_STRUCT) {
-            Type *struct_type = static_cast<Type*>(type);
-            string = cstring_append(string, type->decl->name->data);
-        } else if (type->type_flags & TYPE_FLAG_ENUM) {
-            Enum_Type *enum_type = static_cast<Enum_Type*>(type);
-            string = cstring_append(string, type->decl->name->data);
-        } else if (type->type_flags & TYPE_FLAG_PROC) {
+        switch (type->id) {
+        case TYPEID_POINTER:
+            string = cstring_append(string, "*");
+            break;
+        case TYPEID_ARRAY:
+            string = cstring_append(string, "[..]");
+            break;
+        case TYPEID_PROC:
+        {
             Proc_Type *proc_type = static_cast<Proc_Type*>(type);
             string = cstring_append(string, "(");
-            for (int i = 0; i < proc_type->parameters.count; i++) {
-                Type *param = proc_type->parameters[i];
+            for (Type *param : proc_type->parameters) {
                 cstring_append(string, string_from_type(param));
-                if (i != proc_type->parameters.count - 1) string = cstring_append(string, ",");
+                if (param == proc_type->parameters.back()) string = cstring_append(string, ",");
             }
             string = cstring_append(string, ")");
             if (proc_type->return_type) {
@@ -490,14 +491,11 @@ internal char *string_from_type(Type *ty) {
                 string = cstring_append(string, string_from_type(proc_type->return_type));
                 string = cstring_append(string, ")");
             }
-        } else if (type->type_flags & TYPE_FLAG_ARRAY) {
-            string = cstring_append(string, "[..]");
-        } else if (type->type_flags & TYPE_FLAG_POINTER) {
-            string = cstring_append(string, "*");
-        } else if (type->type_flags & TYPE_FLAG_BUILTIN) {
-            string = cstring_append(string, type->name->data);
-        } else {
-            Assert(0);
+            break;
+        }
+        default:
+            string = cstring_append(string, type->decl->name->data);
+            break;
         }
     }
     return string;
