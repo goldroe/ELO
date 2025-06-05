@@ -1109,7 +1109,7 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
         }
     }
 
-    if (ifcase->switch_jumptable) {
+    if (ifcase->switchy) {
         gen_ifcase_switch(ifcase);
     } else {
         gen_ifcase_if_else(ifcase);
@@ -1120,7 +1120,7 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
     llvm::BasicBlock *case_block = nullptr;
     for (Ast_Case_Label *label : ifcase->cases) {
         //@Note Skip default to ensure default is last on if-else
-        if (!ifcase->switch_jumptable && label->is_default) {
+        if (!ifcase->switchy && label->is_default) {
             continue;
         }
 
@@ -1137,7 +1137,7 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
         gen_branch(next_block);
     }
 
-    if (!ifcase->switch_jumptable && ifcase->default_case) {
+    if (!ifcase->switchy && ifcase->default_case) {
         emit_block((llvm::BasicBlock *)ifcase->default_case->backend_block);
         for (Ast_Stmt *stmt : ifcase->default_case->block->statements) {
             gen_stmt(stmt);
