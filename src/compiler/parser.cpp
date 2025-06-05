@@ -521,7 +521,7 @@ Ast_Case_Label *Parser::parse_case_label(Ast_Ifcase *ifcase) {
         for (Ast_Stmt *stmt : label->block->statements) {
             if (stmt->kind == AST_FALLTHROUGH) {
                 if (stmt != label->block->statements.back()) {
-                    report_parser_error(stmt, "illegal fallthrough, must be placed at end of a case block.\n");
+                    report_ast_error(stmt, "illegal fallthrough, must be placed at end of a case block.\n");
                 }
                 Ast_Fallthrough *fallthrough = static_cast<Ast_Fallthrough*>(stmt);
                 fallthrough->target = label;
@@ -548,6 +548,10 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
 
     Ast_Expr *cond = parse_expr();
     ifcase->cond = cond;
+
+    if (lexer->eat(TOKEN_COMPLETE)) {
+        ifcase->check_enum_complete = true;
+    }
 
     expect(TOKEN_LBRACE);
 

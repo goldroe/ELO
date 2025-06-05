@@ -414,7 +414,8 @@ struct Ast_Ifcase : Ast_Stmt {
     Ast_Expr *cond;
     Ast_Case_Label *default_case;
     Auto_Array<Ast_Case_Label*> cases;
-    b32 switch_jumptable;
+    b32 switchy;
+    b32 check_enum_complete;
 
     void *exit_block;
 };

@@ -241,7 +241,7 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
 
 void Resolver::resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough) {
     if (!fallthrough->target) {
-        report_parser_error(fallthrough, "illegal fallthrough, must be placed at end of a case block.\n");
+        report_ast_error(fallthrough, "illegal fallthrough, must be placed at end of a case block.\n");
     }
 }
 
@@ -297,14 +297,14 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
 void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
     resolve_expr(ifcase->cond);
 
-    ifcase->switch_jumptable = true;
+    ifcase->switchy = true;
 
     if (ifcase->cond) {
         if (!ifcase->cond->type->is_integral_type()) {
-            ifcase->switch_jumptable = false;
+            ifcase->switchy = false;
         }
     } else {
-        ifcase->switch_jumptable = false;
+        ifcase->switchy = false;
     }
 
     breakcont_stack.push(ifcase);
@@ -314,7 +314,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
 
         if (case_label->cond) {
             if (!case_label->cond->is_constant()) {
-                ifcase->switch_jumptable = false;
+                ifcase->switchy = false;
             }
         } else {
             case_label->is_default = true;
@@ -345,31 +345,47 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
 
     breakcont_stack.pop();
 
-    if (ifcase->switch_jumptable) {
-        std::unordered_set<u64> switch_constants;
-
+    if (ifcase->switchy) {
+        std::unordered_set<u64> enum_values;
         for (Ast_Case_Label *label : ifcase->cases) {
             if (label->cond && label->cond->kind == AST_RANGE) {
                 Ast_Range *range = static_cast<Ast_Range*>(label->cond);
                 u64 min = range->lhs->eval.int_val;
                 u64 max = range->rhs->eval.int_val;
                 for (u64 c = min; c <= max; c++) {
-                    if (switch_constants.find(c) != switch_constants.end()) {
+                    if (enum_values.find(c) != enum_values.end()) {
                         ifcase->poison();
                         report_ast_error(label, "case value '%llu' in range '%s' already used.\n", c, string_from_expr(label->cond));
                         break;
                     } else {
-                        switch_constants.insert(c);
+                        enum_values.insert(c);
                     }
                 }
             } else if (label->cond) {
                 u64 c = label->cond->eval.int_val;
-                auto find = switch_constants.find(c);
-                if (find != switch_constants.end()) {
+                auto find = enum_values.find(c);
+                if (find != enum_values.end()) {
                     report_ast_error(label, "case value '%llu' already used.\n", c);
                     ifcase->poison();
                 } else {
-                    switch_constants.insert(c);
+                    enum_values.insert(c);
+                }
+            }
+        }
+
+        if (ifcase->check_enum_complete && ifcase->cond->type->is_enum_type()) {
+            Auto_Array<Ast_Enum_Field*> unused;
+            Ast_Enum *enum_decl = static_cast<Ast_Enum*>(ifcase->cond->type->decl);
+            for (Ast_Enum_Field *field : enum_decl->fields) {
+                if (enum_values.find(field->value) == enum_values.end()) {
+                    unused.push(field);
+                }
+            }
+
+            if (!unused.empty()) {
+                report_ast_error(ifcase, "unhandled ifcase enumerations:\n");
+                for (Ast_Enum_Field *field : unused) {
+                    report_line("\t%s", (char *)field->name->data);
                 }
             }
         }
@@ -980,7 +996,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         Type *struct_type = specified_type;
         if (struct_type->aggregate.fields.count < literal->elements.count) {
             report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
-            report_note(struct_type->decl->start, literal->file, "see declaration of '%s'.\n", struct_type->decl->name->data);
+            report_note(struct_type->decl->start, "see declaration of '%s'.\n", struct_type->decl->name->data);
             literal->poison();
         }
 
@@ -1157,7 +1173,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         || (!proc_type->has_varargs && (call->arguments.count != proc_type->parameters.count))) {
         report_ast_error(call, "'%s' does not take %d arguments.\n", string_from_expr(elem), call->arguments.count);
         if (proc) {
-            report_note(proc->start, call->file, "see declaration of '%s'.\n", proc->name->data);
+            report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
         }
         call->poison();
         return;
@@ -1177,7 +1193,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         }
     }
     if (proc && bad_arg) {
-        report_note(proc->start, proc->file, "see declaration of '%s'.\n", proc->name->data);
+        report_note(proc->start, "see declaration of '%s'.\n", proc->name->data);
         call->poison();
     }
 
@@ -1483,7 +1499,6 @@ void Resolver::resolve_proc_header(Ast_Proc *proc) {
 void Resolver::resolve_proc(Ast_Proc *proc) {
     resolve_proc_header(proc);
     if (in_global_scope() && proc->block) {
-        // printf("RESOLVING '%s'\n", proc->name->data);
         Scope *scope = new_scope(SCOPE_PROC);
         proc->scope = scope;
         current_proc = proc;
@@ -1509,6 +1524,7 @@ void Resolver::resolve_struct(Ast_Struct *struct_decl) {
         field_info.mem_offset = 0;
         struct_fields.push(field_info);
     }
+
     Type *type = struct_type(struct_fields);
     struct_decl->type = type;
     type->decl = struct_decl;
@@ -1683,8 +1699,9 @@ void Resolver::register_global_declarations() {
     for (Type *type : g_builtin_types) {
         if (type->name) {
             Ast_Type_Decl *decl = ast_type_decl(type->name, type);
-            global_scope->declarations.push(decl);
             decl->resolve_state = RESOLVE_DONE; //@Note Don't resolve for builtin
+            type->decl = decl;
+            global_scope->declarations.push(decl);
         }
     }
 
