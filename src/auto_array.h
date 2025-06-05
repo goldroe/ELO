@@ -61,7 +61,7 @@ public:
         return data[index];
     }
 
-    bool is_empty() { return count == 0; }
+    bool empty() { return count == 0; }
 
     void clear() {
         if (data) free(data);
