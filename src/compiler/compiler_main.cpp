@@ -145,21 +145,6 @@ int main(int argc, char **argv) {
     resolver->resolve();
 
     //@Note Print reports
-    for (Source_File *file = source_file_map.first; file; file = file->next) {
-        quick_sort(file->reports.data, Report*, file->reports.count, report_sort_compare);
-
-        for (int report_idx = 0; report_idx < file->reports.count; report_idx++) {
-            Report *report = file->reports[report_idx];
-
-#if !defined(BUILD_DEBUG)
-            print_report(report, file);
-            for (int i = 0; i < report->children.count; i++) {
-                Report *child = report->children[i];
-                print_report(child, file);
-            }
-#endif
-        }
-    }
 
     if (g_error_count > 0) {
         printf("%d error(s).\n", g_error_count);
