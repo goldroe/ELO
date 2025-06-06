@@ -109,6 +109,8 @@ enum Token_Kind {
     TOKEN_CAST,
     TOKEN_OPERATOR,
     TOKEN_IN,
+    TOKEN_SIZEOF,
+    TOKEN_TYPEOF,
     TOKEN_KEYWORD_END,
 
     //@Note Directives
