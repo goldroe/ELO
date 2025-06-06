@@ -59,7 +59,7 @@ struct Parser {
     Ast_Proc *parse_proc(Token name);
     Ast_Decl *parse_decl();
 
-    void parse_load_directive();
+    void Parser::parse_load_or_import();
 
     void parse();
 };

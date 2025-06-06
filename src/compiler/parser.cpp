@@ -65,6 +65,17 @@ Ast_Expr *Parser::parse_primary_expr() {
         return compound;
     }
 
+    case TOKEN_SIZEOF:
+    {
+        lexer->next_token();
+        Ast_Sizeof *size_of = AST_NEW(Ast_Sizeof);
+        size_of->mark_start(token.start);
+        expect(TOKEN_LPAREN);
+        size_of->mark_end(lexer->current().end);
+        expect(TOKEN_RPAREN);
+        return size_of;
+    }
+
     case TOKEN_LPAREN:
     {
         lexer->next_token();
@@ -711,6 +722,14 @@ Ast_Stmt *Parser::parse_stmt() {
     return stmt;
 }
 
+// TLIST := T
+// TLIST  | T ',' TLIST
+
+// T := NAME
+// T  | '*' T
+// T  | '[' expr ']' T
+// T  | '(' TLIST? ')' ( '->' T )?
+
 Ast_Type_Defn *Parser::parse_type() {
     Ast_Type_Defn *type = NULL;
 
@@ -725,8 +744,8 @@ Ast_Type_Defn *Parser::parse_type() {
         {
             Token name = lexer->current();
             lexer->next_token();
-            
             Ast_Type_Defn *t = ast_type_defn(TYPE_DEFN_NAME, type);
+
             t->name = name.name;
             t->mark_range(name.start, name.end);
             type = t;
@@ -1073,6 +1092,17 @@ Ast_Decl *Parser::parse_decl() {
                 decl = type_decl;
                 break;
             }
+            default:
+            {
+                Ast_Expr *expr = parse_expr();
+                if (expr) {
+                    Ast_Var *var = ast_var(token.name, expr, NULL);
+                    var->mark_range(token.start, expr->end);
+                    var->decl_flags |= DECL_FLAG_CONST;
+                    decl = var;
+                }
+                break;
+            }
             }
         } else if (lexer->match(TOKEN_COLON)) {
             Ast_Var *var = parse_var(token.name);
@@ -1128,19 +1158,35 @@ ERROR_BLOCK:
     return err;
 }
 
-void Parser::parse_load_directive() {
+void Parser::parse_load_or_import() {
+    Token tok = lexer->current();
     lexer->next_token();
+
     if (lexer->match(TOKEN_STRLIT)) {
         String8 file_path = lexer->current().strlit;
         lexer->next_token();
 
-        if (path_is_relative(file_path)) {
-            String8 current_dir = path_dir_name(lexer->source_file->path);
-            file_path = path_join(heap_allocator(), current_dir, file_path);
+        Source_File *file = nullptr;
+
+        if (tok.kind == TOKEN_LOAD) {
+            if (path_is_relative(file_path)) {
+                String8 current_dir = path_dir_name(lexer->source_file->path);
+                file_path = path_join(heap_allocator(), current_dir, file_path);
+            }
+            file = source_file_create(file_path);
+        } else if (tok.kind == TOKEN_IMPORT) {
+            String8 import_path = os_exe_path(heap_allocator());
+            import_path = normalize_path(heap_allocator(), import_path);
+            import_path = path_join(heap_allocator(), import_path, str_lit("core"));
+            import_path = path_join(heap_allocator(), import_path, file_path);
+            file = source_file_create(import_path);
         }
 
-        Source_File *file = source_file_create(file_path);
-        add_source_file(file);
+        if (file) {
+            add_source_file(file);
+        } else {
+            report_line("path does not exit: %s", file_path.data);
+        }
     } else {
         report_parser_error(lexer, "expected filename.\n");
     }
@@ -1177,9 +1223,10 @@ void Parser::parse() {
             break;
         }
 
+        case TOKEN_IMPORT:
         case TOKEN_LOAD:
         {
-            parse_load_directive();
+            parse_load_or_import();
             break;
         }
         }
