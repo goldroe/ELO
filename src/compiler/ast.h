@@ -100,6 +100,7 @@ enum Ast_Kind {
     AST_ASSIGNMENT,
     AST_ACCESS,
     AST_RANGE,
+    AST_SIZEOF,
 
     AST_DECL,
     AST_TYPE_DECL,
@@ -297,6 +298,11 @@ struct Ast_Binary : Ast_Expr {
     Ast_Expr *rhs;
 };
 
+struct Ast_Sizeof : Ast_Expr {
+    Ast_Sizeof() { kind = AST_SIZEOF; }
+    Ast_Expr *elem;
+};
+
 enum Resolve_State {
     RESOLVE_UNSTARTED,
     RESOLVE_STARTED,
@@ -306,6 +312,8 @@ enum Resolve_State {
 enum Decl_Flags {
     DECL_FLAG_NIL = 0,
     DECL_FLAG_TYPE = (1<<0),
+    DECL_FLAG_CONST = (1<<1),
+    DECL_FLAG_GLOBAL = (1<<2),
 };
 EnumDefineFlagOperators(Decl_Flags);
 

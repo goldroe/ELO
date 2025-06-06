@@ -105,6 +105,8 @@ internal void atom_init() {
     atom_keyword(TOKEN_CAST,        str_lit("cast"));
     atom_keyword(TOKEN_OPERATOR,    str_lit("operator"));
     atom_keyword(TOKEN_IN,          str_lit("in"));
+    atom_keyword(TOKEN_SIZEOF,      str_lit("size_of"));
+    atom_keyword(TOKEN_TYPEOF,      str_lit("type_of"));
 
     atom_directive(TOKEN_LOAD,      str_lit("#load"));
     atom_directive(TOKEN_IMPORT,    str_lit("#import"));
