@@ -28,6 +28,7 @@
 #include "llvm_backend.h"
 
 global bool compiler_dump_IR;
+global Auto_Array<String8> compiler_link_libraries;
 
 #include "source_file.cpp"
 #include "report.cpp"
@@ -66,18 +67,17 @@ internal void compiler_exit() {
 internal void compiler_process_args(int argc, char **args) {
     for (int i = 0; i < argc; i++) {
         String8 arg = str8_cstring(args[i]);
-        switch (arg.data[0]) {
-        case '-':
-        {
-            if (arg.count == 0) {
-                break;
-            }
+        if (arg.count < 2) continue;
 
-            if (str8_match(arg, str_lit("-dump_ir"), StringMatchFlag_CaseInsensitive)) {
+        if (arg.data[0] == '-') {
+            arg.data++; arg.count--;
+            if (arg.data[0] == 'l') {
+                String8 lib = arg;
+                lib.count--; lib.data++;
+               compiler_link_libraries.push(lib);
+            } else if (str8_match(arg, str_lit("dump_ir"), StringMatchFlag_CaseInsensitive)) {
                 compiler_dump_IR = true;
             }
-            break;
-        }
         }
     }
 }
