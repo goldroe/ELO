@@ -122,6 +122,10 @@ struct Type : Ast {
     inline bool is_indirection_type() {
         return is_pointer_type() || is_array_type();
     }
+
+    inline bool is_pointer_like_type() {
+        return is_pointer_type() || is_array_type() || is_proc_type();
+    }
 };
 
 struct Enum_Field_Info {
