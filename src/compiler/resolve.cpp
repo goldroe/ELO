@@ -700,11 +700,6 @@ void Resolver::resolve_assignment_expr(Ast_Assignment *assignment) {
     resolve_expr(lhs);
     resolve_expr(rhs);
 
-    //@Note Give null expr type of lhs
-    if (rhs->kind == AST_NULL) {
-        rhs->type = lhs->type;
-    }
-
     if (lhs->valid() && !(lhs->expr_flags & EXPR_FLAG_LVALUE)) {
         report_ast_error(lhs, "cannot assign to '%s', is not an l-value.\n", string_from_expr(lhs));
         assignment->poison();
@@ -729,6 +724,7 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
             report_ast_error(elem, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
             expr->poison();
         }
+        break;
     case OP_UNARY_MINUS:
         if (elem->type->is_numeric_type() && !elem->type->is_pointer_type()) {
             expr->type = elem->type;
@@ -736,7 +732,15 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
             report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
             expr->poison();
         }
+        break;
     case OP_NOT:
+        if (elem->type->is_numeric_type()) {
+            expr->type = type_bool;
+        } else {
+            report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
+            expr->poison();
+        }
+        break;
     case OP_BIT_NOT:
         if (elem->type->is_numeric_type()) {
             expr->type = elem->type;
@@ -887,10 +891,6 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_OR:
     case OP_AND:
         expr->type = type_bool;
-        //@Note Give null expr type of lhs
-        if (rhs->kind == AST_NULL) {
-            rhs->type = lhs->type;
-        }
         if (!lhs->type->is_numeric_type()) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
@@ -1113,7 +1113,7 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
         resolve_decl(found);
         ident->type = found->type;
 
-        if (!(found->decl_flags & DECL_FLAG_TYPE)) {
+        if (!(found->decl_flags & DECL_FLAG_TYPE) && !(found->decl_flags & DECL_FLAG_CONST)) {
             ident->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
@@ -1667,13 +1667,9 @@ void Resolver::resolve_var(Ast_Var *var) {
         } else {
             var->type = var->init->type;
         }
-
-        if (var->init && var->init->kind == AST_NULL) {
-            var->init->type = specified_type;
-        }
     }
 
-    if (current_proc) {
+    if (!(var->decl_flags & DECL_FLAG_GLOBAL) && current_proc) {
         current_proc->local_vars.push(var);
     }
 
@@ -1707,6 +1703,7 @@ void Resolver::register_global_declarations() {
 
     for (int i = 0; i < root->declarations.count; i++) {
         Ast_Decl *decl = root->declarations[i];
+        decl->decl_flags |= DECL_FLAG_GLOBAL;
         Assert(decl->name);
 
         Ast_Decl *found = NULL;
@@ -1721,7 +1718,6 @@ void Resolver::register_global_declarations() {
         } else {
             report_redeclaration(decl);
         }
-
     }
 }
 

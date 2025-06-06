@@ -71,9 +71,7 @@ internal Type *builtin_type_create(Type_ID type_id, String8 name, int bytes, Typ
 internal void register_builtin_types() {
     int system_max_bytes = 8;
     type_poison = builtin_type_create(TYPEID_POISON, str_lit("builtin(poison)"), 0);//, TYPE_FLAG_POISON);
-    type_void   = builtin_type_create(TYPEID_VOID,   str_lit("void"), 0);//, TYPE_FLAG_VOID);
-    type_null   = builtin_type_create(TYPEID_NULL,   str_lit("builtin(null)"), 0);//, TYPE_FLAG_NULL);
-
+    type_void   = builtin_type_create(TYPEID_VOID,    str_lit("void"),   0);//, TYPE_FLAG_VOID);
     type_u8    = builtin_type_create(TYPEID_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
     type_u16   = builtin_type_create(TYPEID_UINT16,   str_lit("u16"),    2);//, TYPE_FLAG_INTEGER);
     type_u32   = builtin_type_create(TYPEID_UINT32,   str_lit("u32"),    4);//, TYPE_FLAG_INTEGER);
@@ -89,6 +87,7 @@ internal void register_builtin_types() {
     type_isize = builtin_type_create(TYPEID_ISIZE,    str_lit("isize"),  8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_f32   = builtin_type_create(TYPEID_FLOAT32,  str_lit("f32"),    4);//, TYPE_FLAG_FLOAT);
     type_f64   = builtin_type_create(TYPEID_FLOAT64,  str_lit("f64"),    8);//, TYPE_FLAG_FLOAT);
+    type_null = pointer_type(type_void);
 
     {
         type_string = builtin_type_create(TYPEID_STRING, str_lit("string"), 16);
@@ -160,19 +159,20 @@ internal bool typecheck(Type *t0, Type *t1) {
 }
 
 internal bool typecheck_castable(Type *t0, Type *t1) {
-    Assert(t0 != NULL);
-    Assert(t1 != NULL);
+    Assert(t0 && t1);
 
-    if (t0->is_indirection_type() != t1->is_indirection_type()) {
-        return false; 
+    if (t0 == t1) return true;
+
+    if (t0->is_numeric_type() && t1->is_numeric_type()) {
+        return true;
+    } else if (t0->is_integer_type()) {
+        return t1->is_pointer_like_type();
+    } else if (t1->is_integer_type()) {
+        return t0->is_pointer_like_type();
+    } else if (t0->is_pointer_like_type() && t1->is_pointer_like_type()) {
+        return true;
+    } else {
+        return false;
     }
-
-    if (!t0->is_indirection_type() && !t1->is_indirection_type()) {
-        if (t0->is_struct_type() != t1->is_struct_type()) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
