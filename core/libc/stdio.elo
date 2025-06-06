@@ -1,0 +1,11 @@
+FILE :: struct
+
+printf :: (format: *u8, ..) -> int #foreign
+puts   :: (str: *u8) -> int #foreign
+putchar :: (ch: int) -> int #foreign
+getchar :: () -> int #foreign
+
+fopen :: (filename: *u8, mode: *u8) -> *FILE #foreign
+fclose :: (stream: *FILE) -> int #foreign
+fprintf :: (stream: *FILE, format: *u8, ..) -> int #foreign
+fputc :: (c: int, stream: *FILE) -> int #foreign
