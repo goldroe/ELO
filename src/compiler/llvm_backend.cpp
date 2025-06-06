@@ -167,9 +167,7 @@ void LLVM_Backend::gen_procedure_body(BE_Proc *procedure) {
     gen_block(proc->block);
 
     //@Note Do not branch to exit block if already branch to exit block
-    // if (!llvm_get_last_instruction(procedure->fn)->isTerminator()) {
-        gen_branch(procedure->exit_block);
-    // }
+    gen_branch(procedure->exit_block);
 
     emit_block(procedure->exit_block);
     if (procedure->return_type->isVoidTy()) {
@@ -284,7 +282,11 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast_Expr *expr) {
         Ast_Ident *ident = static_cast<Ast_Ident*>(expr);
         BE_Var *var = ident->ref->backend_var;
         Assert(var);
-        result.value = var->alloca;
+        if (var->decl->decl_flags & DECL_FLAG_GLOBAL) {
+            result.value = var->global_variable;
+        } else {
+            result.value = var->alloca;
+        }
         break;
     }
 
@@ -718,15 +720,29 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
         case AST_VAR:
         case AST_PARAM:
         {
-            BE_Var *var = ident->ref->backend_var;
-            Assert(var);
-            if (ident->type->is_array_type()) {
-                value.value = var->alloca;
+            BE_Var *be_var = ident->ref->backend_var;
+            if (ident->ref->decl_flags & DECL_FLAG_CONST) {
+                Ast_Var *var = static_cast<Ast_Var*>(ident->ref);
+                value = gen_expr(var->init);
+            } else if (ident->ref->decl_flags & DECL_FLAG_GLOBAL) {
+                Ast_Var *var = static_cast<Ast_Var*>(ident->ref);
+                if (ident->type->is_array_type()) {
+                    value.value = be_var->global_variable;
+                } else {
+                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->global_variable);
+                    value.value = load;
+                }
+                value.type = be_var->type;
             } else {
-                llvm::LoadInst *load = Builder->CreateLoad(var->type, var->alloca);
-                value.value = load;
+                Assert(be_var);
+                if (ident->type->is_array_type()) {
+                    value.value = be_var->alloca;
+                } else {
+                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->alloca);
+                    value.value = load;
+                }
+                value.type = be_var->type;
             }
-            value.type = var->type;
             return value;
         }
         case AST_PROC:
@@ -819,6 +835,7 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
 
     case AST_CAST:
     {
+        char *s = (char *)31252;
         Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
         Ast_Expr *elem = cast->elem;
         LLVM_Value expr_value = gen_expr(cast->elem);
@@ -835,6 +852,10 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
             else value.value = Builder->CreateIntCast(expr_value.value, dest_type, cast->type->is_signed());
         } else if (cast->type->is_pointer_type() && elem->type->is_pointer_type()) {
             value.value = Builder->CreatePointerCast(expr_value.value, dest_type);
+        } else if (cast->type->is_pointer_type() && elem->type->is_integer_type()) {
+            value.value = Builder->CreateIntToPtr(expr_value.value, dest_type);
+        } else if (cast->type->is_integer_type() && elem->type->is_pointer_type()) {
+            value.value = Builder->CreatePtrToInt(expr_value.value, dest_type);
         } else {
             // Assert(0);
             value.value = expr_value.value;
@@ -1235,67 +1256,92 @@ void LLVM_Backend::gen_for(Ast_For *for_stmt) {
 }
 
 void LLVM_Backend::gen_var(Ast_Var *var_node) {
-    BE_Var *var = var_node->backend_var;
-    Assert(var);
+    //@Note Don't generate backend value if variable is a constant expression
+    if (var_node->decl_flags & DECL_FLAG_CONST) return;
 
-    // var->name = var_node->name;
-    // var->decl = var_node;
-    // var->type = get_type(var_node->type);
-    // var->alloca = Builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine(var->name->data));
-    // current_proc->named_values.push(var);
+    if (var_node->decl_flags & DECL_FLAG_GLOBAL) {
+        BE_Var *var = llvm_alloc(BE_Var);
+        var->name = var_node->name;
+        var->decl = var_node;
+        var->type = get_type(var_node->type);
 
-    if (!var_node->init) {
-        llvm::Constant *null_value = llvm::Constant::getNullValue(var->type);
-        Builder->CreateStore(null_value, var->alloca);
-    }
+        var->alloca = nullptr;
+        llvm::GlobalVariable *global_variable = new llvm::GlobalVariable(*Module, var->type, false, llvm::GlobalValue::ExternalLinkage, nullptr, (char *)var->name->data);
 
-    if (var_node->init) {
-        Ast_Expr *init = var_node->init;
-        if (init->kind == AST_COMPOUND_LITERAL) {
-            Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(init);
-            if (var_node->type->is_struct_type()) {
-                BE_Struct *be_struct = ((Ast_Struct*)var_node->type->decl)->backend_struct;
-                for (int i = 0; i < literal->elements.count; i++) {
-                    Ast_Expr *elem = literal->elements[i];
-                    LLVM_Value value = gen_expr(elem);
-                    llvm::Value* field_addr = Builder->CreateStructGEP(be_struct->type, var->alloca, (unsigned)i);
-                    Builder->CreateStore(value.value, field_addr);
-                }
-            } else if (var_node->type->is_array_type()) {
-                llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(var_node->type));
-                llvm::Type* element_type = array_type->getElementType();
-
-                //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
-                int i = 0;
-                for (Ast_Expr *elem : literal->elements) {
-                    LLVM_Value value = gen_expr(elem);
-
-                    llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (u64)i);
-                    llvm::ArrayRef<llvm::Value*> indices = {
-                        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
-                        idx
-                    };
-                    llvm::Value *ptr = Builder->CreateGEP(array_type, var->alloca, indices);
-                    Builder->CreateStore(value.value, ptr);
-                    i++;
-                }
-            }
-        } else if (init->kind == AST_RANGE) {
-            Ast_Range *range = static_cast<Ast_Range*>(init);
-            LLVM_Value init_value = gen_expr(range->lhs);
-            Builder->CreateStore(init_value.value, var->alloca);
-        } else if (init->type->is_array_type()) {
-            LLVM_Value value = gen_expr(init);
-            llvm::ArrayRef<llvm::Value*> indices = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0)
-            };
-            llvm::Value *ptr = Builder->CreateGEP(value.type, value.value, indices);
-            Builder->CreateStore(ptr, var->alloca);
+        llvm::Constant *initializer = nullptr;
+        if (var_node->init) {
+            LLVM_Value const_value = gen_expr(var_node->init);
+            initializer = static_cast<llvm::Constant*>(const_value.value);
         } else {
-            LLVM_Value init_value = gen_expr(init);
-            Builder->CreateStore(init_value.value, var->alloca);
+            initializer = llvm::Constant::getNullValue(var->type);
         }
+         global_variable->setInitializer(initializer);
+
+        var->global_variable = global_variable;
+        var_node->backend_var = var;
+    } else {
+        // var->name = var_node->name;
+        // var->decl = var_node;
+        // var->type = get_type(var_node->type);
+        // var->alloca = Builder->CreateAlloca(var->type, 0, nullptr, llvm::Twine(var->name->data));
+        // current_proc->named_values.push(var);
+        BE_Var *var = var_node->backend_var;
+        Assert(var);
+
+        if (!var_node->init) {
+            llvm::Constant *null_value = llvm::Constant::getNullValue(var->type);
+            Builder->CreateStore(null_value, var->alloca);
+        }
+
+        if (var_node->init) {
+            Ast_Expr *init = var_node->init;
+            if (init->kind == AST_COMPOUND_LITERAL) {
+                Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(init);
+                if (var_node->type->is_struct_type()) {
+                    BE_Struct *be_struct = ((Ast_Struct*)var_node->type->decl)->backend_struct;
+                    for (int i = 0; i < literal->elements.count; i++) {
+                        Ast_Expr *elem = literal->elements[i];
+                        LLVM_Value value = gen_expr(elem);
+                        llvm::Value* field_addr = Builder->CreateStructGEP(be_struct->type, var->alloca, (unsigned)i);
+                        Builder->CreateStore(value.value, field_addr);
+                    }
+                } else if (var_node->type->is_array_type()) {
+                    llvm::ArrayType* array_type = static_cast<llvm::ArrayType*>(get_type(var_node->type));
+                    llvm::Type* element_type = array_type->getElementType();
+
+                    //@Todo Have to infer if array is filled with constants to just use llvm::ConstantDataArray
+                    int i = 0;
+                    for (Ast_Expr *elem : literal->elements) {
+                        LLVM_Value value = gen_expr(elem);
+
+                        llvm::Value *idx = llvm::ConstantInt::get(llvm::IntegerType::get(*Ctx, 32), (u64)i);
+                        llvm::ArrayRef<llvm::Value*> indices = {
+                            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                            idx
+                        };
+                        llvm::Value *ptr = Builder->CreateGEP(array_type, var->alloca, indices);
+                        Builder->CreateStore(value.value, ptr);
+                        i++;
+                    }
+                }
+            } else if (init->kind == AST_RANGE) {
+                Ast_Range *range = static_cast<Ast_Range*>(init);
+                LLVM_Value init_value = gen_expr(range->lhs);
+                Builder->CreateStore(init_value.value, var->alloca);
+            } else if (init->type->is_array_type()) {
+                LLVM_Value value = gen_expr(init);
+                llvm::ArrayRef<llvm::Value*> indices = {
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0),
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*Ctx), 0)
+                };
+                llvm::Value *ptr = Builder->CreateGEP(value.type, value.value, indices);
+                Builder->CreateStore(ptr, var->alloca);
+            } else {
+                LLVM_Value init_value = gen_expr(init);
+                Builder->CreateStore(init_value.value, var->alloca);
+            }
+        }
+
     }
 }
 
@@ -1463,6 +1509,12 @@ void LLVM_Backend::gen_stmt(Ast_Stmt *stmt) {
 
 void LLVM_Backend::gen_decl(Ast_Decl *decl) {
     switch (decl->kind) {
+    case AST_VAR:
+    {
+        Ast_Var *var = static_cast<Ast_Var*>(decl);
+        gen_var(var);
+        break;
+    }
     case AST_PROC:
     {
         Ast_Proc *proc = static_cast<Ast_Proc*>(decl);
@@ -1482,6 +1534,7 @@ void LLVM_Backend::gen_decl(Ast_Decl *decl) {
 void LLVM_Backend::gen() {
     Ctx = new llvm::LLVMContext();
     Module = new llvm::Module("Main", *Ctx);
+    Builder = new llvm::IRBuilder<>(*Ctx);
 
     for (int decl_idx = 0; decl_idx < ast_root->declarations.count; decl_idx++) {
         Ast_Decl *decl = ast_root->declarations[decl_idx];
@@ -1538,8 +1591,15 @@ void LLVM_Backend::gen() {
         return;
     }
 
-    char *linker_args = "msvcrt.lib legacy_stdio_definitions.lib";
+    compiler_link_libraries.push(str8_lit("msvcrt.lib"));
+    compiler_link_libraries.push(str8_lit("legacy_stdio_definitions.lib"));
+    char *linker_args = NULL;
+    for (String8 lib : compiler_link_libraries) {
+        linker_args = cstring_append_fmt(linker_args, "%S ", lib);
+    }
     char *linker_command = cstring_fmt("link.exe %s %s", (char *)object_file_name.data, linker_args);
+
+    printf("LINK COMMAND: %s\n", linker_command);
 
     system(linker_command);
 }

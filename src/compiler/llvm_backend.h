@@ -60,6 +60,7 @@ struct BE_Var {
     Ast_Decl *decl;
     llvm::Type* type;
     llvm::AllocaInst *alloca;
+    llvm::GlobalVariable *global_variable;
 };
 
 struct BE_Proc {
