@@ -1,0 +1,52 @@
+#import "win32/win32.elo"
+#import "libc/stdio.elo"
+
+window_should_close: bool;
+
+win32_proc :: (hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
+    result : LRESULT = cast(LRESULT)0;
+
+    ifcase Msg {
+    case:
+        result = DefWindowProcA(hWnd, Msg, wParam, lParam);
+    case WM_CLOSE:
+        PostQuitMessage(0);
+    case WM_CREATE:
+        break;
+    }
+
+    return result;
+}
+
+main :: () -> int {
+    hInstance := GetModuleHandleA(null);
+    class_name := "hwnd_class_demo";
+    window_class: WNDCLASSA;
+    window_class.style = CS_HREDRAW | CS_VREDRAW;
+    window_class.lpfnWndProc = win32_proc;
+    window_class.lpszClassName = class_name;
+    window_class.hInstance = hInstance;
+    window_class.hbrBackground = cast(HBRUSH)(COLOR_WINDOW + 1);
+    window_class.hCursor = LoadCursorA(null, cast(LPCSTR)cast(ULONG_PTR)cast(WORD)32512);
+    if !RegisterClassA(*window_class) {
+        puts("RegisterClassA failed.");
+    }
+
+    hWnd := CreateWindowExA(0, class_name, "Window", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, null, null);
+
+    while !window_should_close {
+        message: MSG;
+        while PeekMessageA(*message, null, 0, 0, PM_REMOVE) {
+            if (message.message == WM_QUIT) {
+                window_should_close = true;
+            }
+            TranslateMessage(*message);
+            DispatchMessageA(*message);
+        }
+
+        Sleep(1);
+    }
+
+
+    return 0;
+}
