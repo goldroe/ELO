@@ -1,0 +1,35 @@
+#load "stdio.elo";
+
+Fruit_Kind :: enum {
+    Apple  = 0,
+    Orange = 0,
+    Banana = 1,
+    Grape  = 3,
+    Mango  = 4,
+    Watermelon,
+    Melon,
+}
+
+Fruit :: struct {
+    kind: Fruit_Kind;
+    calories: int;
+}
+
+main :: () -> int {
+    apple: Fruit;
+    apple.kind = Fruit_Kind.Apple;
+    apple.calories = 40;
+    printf("%d\n", Fruit_Kind.Apple);
+    printf("%d\n", Fruit_Kind.Orange);
+    printf("%d\n", Fruit_Kind.Banana);
+    printf("%d\n", Fruit_Kind.Grape);
+    printf("%d\n", Fruit_Kind.Mango);
+    printf("%d\n", Fruit_Kind.Watermelon);
+    printf("%d\n", Fruit_Kind.Melon);
+
+    ifcase apple.kind {
+    case:
+        puts("FOO");
+    }
+    return 0;
+}

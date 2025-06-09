@@ -1,31 +1,65 @@
-#load "stdio.elo"
+#import "libc/stdio.elo";
 
-Cmd :: #type () -> void
+g: int;
 
-Map :: struct {
-    name: *u8;
-    keys: [255]Cmd;
+VALUE :: 10;
+VALUE1 :: VALUE;
+
+A :: struct {
+    x: int;
+    y: int;
 }
 
-func :: (x: int, y: *u8) {
-    printf("%d %s\n", x, y);
-}
+test :: () {
+    // exo : struct {
+    //     x: int;
+    //     y: int;
+    //     z: int;
+    // };
 
-SelfInsert :: () {
-    printf("self insert");
+    // exo.x = 0;
+    // exo.y = 10;
+    // exo.z = 100;
+    // exo.c = -1;
 }
 
 main :: () -> int {
-    fp: (int, *u8);
-    fp = func;
-    fp(1020, "foo asdfjklasdjf dsajfkldsajzczv zxczzvcxhqq 1`23");
 
-    map: Map;
-    for i in 'a'..'z' {
-        map.keys[i] = SelfInsert;
+    a: A;
+    a.x = 20;
+    a.y = 10;
+    a.x = printf("%d\n", a.x + a.y);
+
+
+    A :: struct {
+        a: f32;
+        b: f32;
     }
 
-    map.keys['b']();
 
+
+    {
+        aa: A;
+        aa.a = 10.0;
+        aa.b = 2394.0;
+        printf("%f\n", cast(f64)(aa.a + aa.b));
+    }
+
+    // {
+    //     a : struct {
+    //         a: int;
+    //         b: int;
+    //     };
+    // }
+
+    // {
+    //     a, b := 0, 1;
+    // }
+    // {
+    //     a := 0;
+    // }
+    // {
+    //     a: int = 0;
+    // }
     return 0;
 }

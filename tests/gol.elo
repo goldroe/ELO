@@ -1,4 +1,4 @@
-#load "stdio.elo"
+#import "libc/stdio.elo";
 
 main :: () -> int {
     cells: [32][32]int;

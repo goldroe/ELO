@@ -1,4 +1,4 @@
-#load "stdio.elo"
+#import "libc/stdio.elo";
 
 ifcase_nonconst :: () {
     y := 10;
