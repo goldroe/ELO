@@ -208,8 +208,10 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
     case TYPEID_NULL:
         Assert(0); //@Note No expression should still have the null type, needs to have type of "owner"
         return llvm::Type::getVoidTy(*Ctx);
+
     case TYPEID_VOID:
         return llvm::Type::getVoidTy(*Ctx);
+
     case TYPEID_UINT8:
     case TYPEID_INT8:
     case TYPEID_BOOL:
@@ -227,34 +229,43 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
     case TYPEID_USIZE:
     case TYPEID_INT64:
         return llvm::Type::getInt64Ty(*Ctx);
+
     case TYPEID_FLOAT32:
         return llvm::Type::getFloatTy(*Ctx);
     case TYPEID_FLOAT64:
         return llvm::Type::getDoubleTy(*Ctx);
+
     case TYPEID_STRING:
         return builtin_string_type;
+
     case TYPEID_ENUM:
         return get_type(type->base);
-    case TYPEID_STRUCT:
-    {
-        BE_Struct *be_struct = ((Ast_Struct*)type->decl)->backend_struct;
+
+    case TYPEID_STRUCT: {
+        Ast_Struct *struct_node = (Ast_Struct *)type->decl;
+        BE_Struct *be_struct = struct_node->backend_struct;
+        bool is_anon = struct_node->name == nullptr;
+        if (!be_struct) {
+            gen_struct(struct_node);
+            be_struct = struct_node->backend_struct;
+        }
         return be_struct->type;
     }
-    case TYPEID_ARRAY:
-    {
+
+    case TYPEID_ARRAY: {
         Array_Type *array_type = static_cast<Array_Type*>(type);
         llvm::Type* element_type = get_type(array_type->base);
         llvm::ArrayType *array_typeref = llvm::ArrayType::get(element_type, array_type->array_size);
         return array_typeref;
     }
-    case TYPEID_POINTER:
-    {
+
+    case TYPEID_POINTER: {
         llvm::Type* element_type = get_type(type->base);
         llvm::PointerType* pointer_type = llvm::PointerType::get(element_type, 0);
         return pointer_type;
     }
-    case TYPEID_PROC:
-    {
+
+    case TYPEID_PROC: {
         Proc_Type *proc_ty = static_cast<Proc_Type*>(type);
         llvm::Type *return_type = get_type(proc_ty->return_type);
         Auto_Array<llvm::Type*> parameter_types;
@@ -956,9 +967,14 @@ LLVM_Value LLVM_Backend::gen_expr(Ast_Expr *expr) {
     return {};
 }
 
-void LLVM_Backend::gen_statement_list(Auto_Array<Ast_Stmt*> statement_list) {
-    for (Ast_Stmt *stmt : statement_list) {
-        gen_stmt(stmt);
+void LLVM_Backend::gen_statement_list(Auto_Array<Ast*> statement_list) {
+    for (Ast *stmt : statement_list) {
+        if (stmt->is_stmt()) {
+            gen_stmt((Ast_Stmt *)stmt);
+        }
+        else if (stmt->is_decl()) {
+            gen_decl((Ast_Decl *)stmt);
+        }
     }
 }
 
@@ -1160,8 +1176,12 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
 
     if (!ifcase->switchy && ifcase->default_case) {
         emit_block((llvm::BasicBlock *)ifcase->default_case->backend_block);
-        for (Ast_Stmt *stmt : ifcase->default_case->block->statements) {
-            gen_stmt(stmt);
+        for (Ast *stmt : ifcase->default_case->block->statements) {
+            if (stmt->is_stmt()) {
+                gen_stmt((Ast_Stmt *)stmt);
+            } else if (stmt->is_decl()) {
+                gen_decl((Ast_Decl *)stmt);
+            }
         }
         gen_branch(switch_exit);
     }

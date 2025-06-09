@@ -344,23 +344,23 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
     }
 }
 
-Ast_Expr *Parser::parse_assignment_expr() {
-    Ast_Expr *expr = parse_unary_expr();
-    if (expr) {
-        Token op_tok = lexer->current();
-        OP op = get_binary_operator(op_tok.kind);
-        if (is_assignment_op(op)) {
-            lexer->next_token();
-            Ast_Expr *rhs = parse_expr();
-            expr = ast_assignment_expr(op, expr, rhs);
-            if (rhs == NULL) {
-                report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
-                expr->poison();
-            }
-        }
-    }
-    return expr;
-}
+// Ast_Expr *Parser::parse_assignment_expr() {
+//     Ast_Expr *expr = parse_unary_expr();
+//     if (expr) {
+//         Token op_tok = lexer->current();
+//         OP op = get_binary_operator(op_tok.kind);
+//         if (is_assignment_op(op)) {
+//             lexer->next_token();
+//             Ast_Expr *rhs = parse_expr();
+//             expr = ast_assignment_expr(op, expr, rhs);
+//             if (rhs == NULL) {
+//                 report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
+//                 expr->poison();
+//             }
+//         }
+//     }
+//     return expr;
+// }
 
 Ast_Expr *Parser::parse_range_expr() {
     Ast_Expr *lhs = parse_expr();
@@ -382,46 +382,11 @@ Ast_Expr *Parser::parse_range_expr() {
 }
 
 Ast_Expr *Parser::parse_expr() {
-    Ast_Expr *expr = parse_assignment_expr();
+    Ast_Expr *expr = parse_unary_expr();
     if (expr) {
         expr = parse_binary_expr(expr, 0);
     }
     return expr;
-}
-
-Ast_Decl_Stmt *Parser::parse_init_stmt(Ast_Expr *lhs) {
-    Ast_Decl_Stmt *stmt = NULL;
-    if (lhs->kind == AST_IDENT) {
-        Ast_Ident *ident = (Ast_Ident *)lhs;
-        Ast_Var *var = parse_var(ident->name);
-        var->mark_start(ident->start);
-        stmt = ast_decl_stmt(var);
-    } else {
-        report_parser_error(lexer, "cannot assign to lhs.\n");
-        stmt = ast_decl_stmt(NULL);
-        stmt->poison();
-    }
-    return stmt;
-}
-
-Ast_Stmt *Parser::parse_simple_stmt() {
-    Ast_Stmt *stmt = NULL;
-    Ast_Expr *expr = parse_expr();
-
-    if (lexer->match(TOKEN_COLON) || lexer->match(TOKEN_COLON_EQ)) {
-        Ast_Decl_Stmt *decl_stmt = parse_init_stmt(expr);
-        stmt = decl_stmt;
-    } else if (expr) {
-        Ast_Expr_Stmt *expr_stmt = ast_expr_stmt(expr);
-        stmt = expr_stmt;
-    }
-
-    if (stmt &&
-        (!expr || expr->invalid())) {
-        stmt->poison();
-    }
-
-    return stmt;
 }
 
 Ast_If *Parser::parse_if_stmt() {
@@ -524,12 +489,12 @@ Ast_Case_Label *Parser::parse_case_label(Ast_Ifcase *ifcase) {
         label->cond = cond;
 
         for (;;) {
-            Ast_Stmt *stmt = parse_stmt();
+            Ast *stmt = parse_stmt();
             if (!stmt) break;
             label->block->statements.push(stmt);
         }
 
-        for (Ast_Stmt *stmt : label->block->statements) {
+        for (Ast *stmt : label->block->statements) {
             if (stmt->kind == AST_FALLTHROUGH) {
                 if (stmt != label->block->statements.back()) {
                     report_ast_error(stmt, "illegal fallthrough, must be placed at end of a case block.\n");
@@ -544,8 +509,8 @@ Ast_Case_Label *Parser::parse_case_label(Ast_Ifcase *ifcase) {
     }
 
     if (label->block->statements.count > 0) {
-        Ast_Stmt *first = label->block->statements.front();
-        Ast_Stmt *last = label->block->statements.back();
+        Ast *first = label->block->statements.front();
+        Ast *last = label->block->statements.back();
         label->block->mark_range(first->start, last->end);
     }
     return label;
@@ -585,141 +550,6 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
 
     ifcase->mark_range(token.start, end);
     return ifcase;
-}
-
-Ast_Return *Parser::parse_return_stmt() {
-    Source_Pos start = lexer->current().start;
-    expect(TOKEN_RETURN);
-    Ast_Expr *expr = parse_expr();
-    Source_Pos end = lexer->current().end;
-    expect(TOKEN_SEMI);
-    Ast_Return *return_stmt = ast_return(expr);
-    return_stmt->mark_range(start, end);
-    return return_stmt;
-}
-
-Ast_Continue *Parser::parse_continue_stmt() {
-    Ast_Continue *continue_stmt = AST_NEW(Ast_Continue);
-    continue_stmt->mark_range(lexer->current().start, lexer->current().end);
-    expect(TOKEN_CONTINUE);
-    expect(TOKEN_SEMI);
-    return continue_stmt;
-}
-
-Ast_Stmt *Parser::parse_stmt() {
-    Ast_Stmt *stmt = nullptr;
-    bool stmt_error = false;
-
-    switch (lexer->peek()) {
-    default:
-    {
-        stmt = parse_simple_stmt();
-        if (stmt) {
-            if (!lexer->eat(TOKEN_SEMI)) {
-                report_parser_error(lexer, "expected ';', got '%s'.\n", string_from_token(lexer->peek()));
-                stmt_error = true;
-            }
-        }
-        break;
-    }
-
-    case TOKEN_FALLTHROUGH:
-    {
-        Token token = lexer->current();
-        lexer->next_token();
-        stmt = AST_NEW(Ast_Fallthrough);
-        stmt->mark_range(token.start, token.end);
-        expect(TOKEN_SEMI);
-        break;
-    }
-
-    case TOKEN_SEMI:
-    {
-        lexer->next_token(); 
-        stmt = AST_NEW(Ast_Stmt);
-        break;
-    }
-
-    case TOKEN_LBRACE:
-    {
-        Ast_Block *block = parse_block();
-        stmt = block;
-        break;
-    }
-
-    case TOKEN_IFCASE:
-    {
-        Ast_Ifcase *ifcase = parse_ifcase_stmt();
-        stmt = ifcase;
-        break;
-    }
-
-    case TOKEN_IF:
-    {
-        Ast_If *if_stmt = parse_if_stmt();
-        stmt = if_stmt;
-        break;
-    }
-    case TOKEN_ELSE:
-    {
-        report_parser_error(lexer, "illegal else without matching if.\n");
-        stmt_error = true;
-        break;
-    }
-
-    case TOKEN_WHILE:
-    {
-        Ast_While *while_stmt = parse_while_stmt();
-        stmt = while_stmt;
-        break;
-    }
-
-    case TOKEN_FOR:
-    {
-        Ast_For *for_stmt = parse_for_stmt();
-        stmt = for_stmt;
-        break;
-    }
-
-    case TOKEN_BREAK:
-    {
-        Ast_Break *break_stmt = AST_NEW(Ast_Break);
-        break_stmt->mark_range(lexer->current().start, lexer->current().end);
-        lexer->next_token();
-        stmt = break_stmt;
-        break;
-    }
-
-    case TOKEN_CONTINUE:
-    {
-        Ast_Continue *continue_stmt = parse_continue_stmt();
-        stmt = continue_stmt;
-        break;
-    }
-
-    case TOKEN_RETURN:
-    {
-        Ast_Return *return_stmt = parse_return_stmt();
-        stmt = return_stmt;
-        break;
-    }
-    }
-
-    //@Note Try to setup the next statement to parse or get to end of the block
-    if (stmt_error) {
-        while (!lexer->eof()) {
-            if (lexer->eat(TOKEN_SEMI)) {
-                break;
-            }
-            if (lexer->match(TOKEN_RBRACE)) {
-                break;
-            }
-
-            lexer->next_token();
-        }
-    }
-
-    return stmt;
 }
 
 // TLIST := T
@@ -842,7 +672,7 @@ Ast_Block *Parser::parse_block() {
     Ast_Block *block = AST_NEW(Ast_Block);
     expect(TOKEN_LBRACE);
     while (!lexer->match(TOKEN_RBRACE)) {
-        Ast_Stmt *stmt = parse_stmt();
+        Ast *stmt = parse_stmt();
         if (stmt == NULL) break;
         block->statements.push(stmt);
     }
@@ -852,7 +682,7 @@ Ast_Block *Parser::parse_block() {
     return block;
 }
 
-Ast_Proc *Parser::parse_proc(Token name) {
+Ast_Proc *Parser::parse_proc(Atom *name) {
     bool has_varargs = false;
     Auto_Array<Ast_Param*> parameters;
     expect(TOKEN_LPAREN);
@@ -889,10 +719,10 @@ Ast_Proc *Parser::parse_proc(Token name) {
     }
     Source_Pos end = lexer->current().start;
     
-    Ast_Proc *proc = ast_proc(name.name, parameters, return_type, block);
+    Ast_Proc *proc = ast_proc(name, parameters, return_type, block);
     proc->foreign = is_foreign;
     proc->has_varargs = has_varargs;
-    proc->mark_range(name.start, end);
+    proc->mark_end(end);
     return proc;
 }
 
@@ -977,7 +807,7 @@ Ast_Struct_Field *Parser::parse_struct_field() {
     return field;
 }
 
-Ast_Struct *Parser::parse_struct(Token name) {
+Ast_Struct *Parser::parse_struct(Atom *name) {
     expect(TOKEN_STRUCT);
 
     Source_Pos end = {};
@@ -993,8 +823,8 @@ Ast_Struct *Parser::parse_struct(Token name) {
         expect(TOKEN_RBRACE);
     }
 
-    Ast_Struct *struct_decl = ast_struct(name.name, fields);
-    struct_decl->mark_range(name.start, end);
+    Ast_Struct *struct_decl = ast_struct(name, fields);
+    struct_decl->mark_end(end);
     return struct_decl;
 }
 
@@ -1014,7 +844,7 @@ Ast_Enum_Field *Parser::parse_enum_field() {
     return field;
 }
 
-Ast_Enum *Parser::parse_enum(Token name) {
+Ast_Enum *Parser::parse_enum(Atom *name) {
     lexer->eat(TOKEN_ENUM);
 
     Source_Pos end = {};
@@ -1035,18 +865,15 @@ Ast_Enum *Parser::parse_enum(Token name) {
         expect(TOKEN_RBRACE);
     }
 
-    Ast_Enum *enum_decl = ast_enum(name.name, fields);
-    enum_decl->mark_range(name.start, end);
+    Ast_Enum *enum_decl = ast_enum(name, fields);
+    enum_decl->mark_end(end);
     return enum_decl;
 }
 
-Ast_Type_Decl *Parser::parse_type_decl(Token name) {
+Ast_Type_Decl *Parser::parse_type_decl(Atom *name) {
     expect(TOKEN_TYPEDEF);
 
-    Ast_Type_Decl *type_decl = ast_type_decl(name.name, nullptr);
-
-    type_decl->mark_start(name.start);
-    type_decl->mark_end(name.end);
+    Ast_Type_Decl *type_decl = ast_type_decl(name, nullptr);
 
     Ast_Type_Defn *type_defn = parse_type();
     type_decl->type_defn = type_defn;
@@ -1068,27 +895,32 @@ Ast_Decl *Parser::parse_decl() {
     if (lexer->eat(TOKEN_IDENT)) {
         if (lexer->eat(TOKEN_COLON2)) {
             switch (lexer->peek()) {
+            case TOKEN_UNION:
             case TOKEN_STRUCT:
             {
-                Ast_Struct *struct_decl = parse_struct(token);
+                Ast_Struct *struct_decl = parse_struct(token.name);
+                struct_decl->mark_start(token.start);
                 decl = struct_decl;
                 break;
             }
             case TOKEN_ENUM:
             {
-                Ast_Enum *enum_decl = parse_enum(token);
+                Ast_Enum *enum_decl = parse_enum(token.name);
+                enum_decl->mark_start(token.start);
                 decl = enum_decl;
                 break;
             }
             case TOKEN_LPAREN:
             {
-                Ast_Proc *proc = parse_proc(token);
+                Ast_Proc *proc = parse_proc(token.name);
+                proc->mark_start(token.start);
                 decl = proc;
                 break;
             }
             case TOKEN_TYPEDEF:
             {
-                Ast_Type_Decl *type_decl = parse_type_decl(token);
+                Ast_Type_Decl *type_decl = parse_type_decl(token.name);
+                type_decl->mark_range(token.start, token.end);
                 decl = type_decl;
                 break;
             }
@@ -1104,7 +936,7 @@ Ast_Decl *Parser::parse_decl() {
                 break;
             }
             }
-        } else if (lexer->match(TOKEN_COLON)) {
+        } else if (lexer->match(TOKEN_COLON) || lexer->match(TOKEN_COLON_EQ)) {
             Ast_Var *var = parse_var(token.name);
             var->mark_start(token.start);
             expect(TOKEN_SEMI);
@@ -1158,39 +990,373 @@ ERROR_BLOCK:
     return err;
 }
 
-void Parser::parse_load_or_import() {
-    Token tok = lexer->current();
-    lexer->next_token();
-
-    if (lexer->match(TOKEN_STRLIT)) {
-        String8 file_path = lexer->current().strlit;
-        lexer->next_token();
-
-        Source_File *file = nullptr;
-
-        if (tok.kind == TOKEN_LOAD) {
-            if (path_is_relative(file_path)) {
-                String8 current_dir = path_dir_name(lexer->source_file->path);
-                file_path = path_join(heap_allocator(), current_dir, file_path);
-            }
-            file = source_file_create(file_path);
-        } else if (tok.kind == TOKEN_IMPORT) {
-            String8 import_path = os_exe_path(heap_allocator());
-            import_path = normalize_path(heap_allocator(), import_path);
-            import_path = path_join(heap_allocator(), import_path, str_lit("core"));
-            import_path = path_join(heap_allocator(), import_path, file_path);
-            file = source_file_create(import_path);
-        }
-
-        if (file) {
-            add_source_file(file);
-        } else {
-            report_line("path does not exit: %s", file_path.data);
-        }
-    } else {
-        report_parser_error(lexer, "expected filename.\n");
+Ast *Parser::parse_load_stmt() {
+    expect(TOKEN_LOAD);
+    if (!lexer->match(TOKEN_STRLIT)) {
+        report_parser_error(lexer, "missing filename after '#load'.\n");
+        return ast_bad_stmt(lexer->current(), lexer->current());
     }
 
+    String8 file_path = lexer->current().strlit;
+    lexer->next_token();
+
+    if (path_is_relative(file_path)) {
+        String8 current_dir = path_dir_name(lexer->source_file->path);
+        file_path = path_join(heap_allocator(), current_dir, file_path);
+    }
+    Source_File *file = source_file_create(file_path);
+
+    if (!file) {
+        report_line("path does not exit: %s", file_path.data);
+        return ast_bad_stmt(lexer->current(), lexer->current());
+    }
+
+    expect(TOKEN_SEMI);
+
+    add_source_file(file);
+    Ast_Load *load_stmt = ast_load_stmt(file_path);
+    return load_stmt;
+}
+
+Ast *Parser::parse_import_stmt() {
+    expect(TOKEN_IMPORT);
+    if (!lexer->match(TOKEN_STRLIT)) {
+        report_parser_error(lexer, "missing filename after '#import'.\n");
+        return ast_bad_stmt(lexer->current(), lexer->current());
+    }
+
+    String8 file_path = lexer->current().strlit;
+    lexer->next_token();
+
+    String8 import_path = os_exe_path(heap_allocator());
+    import_path = normalize_path(heap_allocator(), import_path);
+    import_path = path_join(heap_allocator(), import_path, str_lit("core"));
+    import_path = path_join(heap_allocator(), import_path, file_path);
+    Source_File *file = source_file_create(import_path);
+
+    if (!file) {
+        report_line("path does not exit: %s", file_path.data);
+        return ast_bad_stmt(lexer->current(), lexer->current());
+    }
+
+    expect(TOKEN_SEMI);
+
+    add_source_file(file);
+    Ast_Import *import_stmt = ast_import_stmt(file_path);
+    return import_stmt;
+}
+
+Auto_Array<Ast_Expr*> Parser::parse_expr_list() {
+    Auto_Array<Ast_Expr*> list;
+
+    Ast_Expr *expr = parse_expr();
+    if (!expr) {
+        return list;
+    }
+    list.push(expr);
+    while (lexer->eat(TOKEN_COMMA)) {
+        expr = parse_expr();
+        if (!expr) {
+            report_parser_error(lexer, "expected expression after ','.\n");
+            break;
+        }
+        list.push(expr);
+    }
+    
+    return list;
+}
+
+Ast *Parser::parse_operand(Atom *name) {
+    Token token = lexer->current();
+    switch (token.kind) {
+    default:
+    {
+        return parse_expr();
+    }
+    case TOKEN_LPAREN:
+    {
+        Ast_Proc *proc = parse_proc(name);
+        return proc;
+    }
+
+    case TOKEN_UNION:
+    case TOKEN_STRUCT:
+    {
+        Ast_Struct *struct_decl = parse_struct(name);
+        return struct_decl;
+    }
+
+    case TOKEN_ENUM:
+    {
+        Ast_Enum *enum_decl = parse_enum(name);
+        return enum_decl;
+    }
+
+    case TOKEN_TYPEDEF:
+    {
+        Ast_Type_Decl *type_decl = parse_type_decl(name);
+        return type_decl;
+    }
+    }
+}
+
+Ast *Parser::parse_decl_or_value(Ast_Expr *name) {
+    Token token = lexer->current();
+
+    if (name->kind != AST_IDENT) {
+        report_parser_error(lexer, "cannot assign to lhs.\n");
+        return ast_bad_stmt(token, token);
+    }
+
+    Ast_Ident *ident = (Ast_Ident *)name;
+
+
+    if (token.kind == TOKEN_EQ) {
+        expect(TOKEN_EQ);
+        Ast_Expr *rhs = parse_expr();
+        if (!rhs) {
+            report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
+            return ast_bad_stmt(lexer->current(), lexer->current());
+        }
+
+        expect(TOKEN_SEMI);
+
+        Ast_Var *var = ast_var(ident->name, rhs, nullptr);
+        var->mark_start(ident->start);
+        return var;
+    }
+
+    if (token.kind == TOKEN_COLON) {
+        expect(TOKEN_COLON);
+
+        Ast *operand = parse_operand(ident->name);
+
+        if (!operand) {
+            report_parser_error(lexer, "expected operand, got '%s'.\n", string_from_token(lexer->peek()));
+            return ast_bad_stmt(lexer->current(), lexer->current());
+        }
+
+        if (operand->is_expr()) {
+            Ast_Expr *rhs = (Ast_Expr *)operand;
+            expect(TOKEN_SEMI);
+            Ast_Var *var = ast_var(ident->name, rhs, nullptr);
+            var->decl_flags |= DECL_FLAG_CONST;
+            var->mark_start(ident->start);
+            return var;
+        } else {
+            Assert(operand->is_decl());
+            return operand;
+        }
+    }
+
+
+    Ast_Type_Defn *type_defn = parse_type();
+    if (!type_defn) {
+        report_parser_error(lexer, "expected type after '%s', got '%s'.\n", string_from_token(token.kind), string_from_token(lexer->peek()));
+        return ast_bad_stmt(lexer->current(), lexer->current());
+    }
+
+    Ast_Expr *rhs = nullptr;
+    if (lexer->eat(TOKEN_EQ)) {
+        rhs = parse_expr();
+        if (!rhs) {
+            report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
+            return ast_bad_stmt(lexer->current(), lexer->current());
+        }
+    }
+    expect(TOKEN_SEMI);
+    Ast_Var *var = ast_var(ident->name, rhs, type_defn);
+    return var;
+}
+
+Ast *Parser::parse_simple_stmt() {
+    Auto_Array<Ast_Expr*> lhs = parse_expr_list();
+
+    if (lhs.count == 0) return nullptr;
+    
+    Token token = lexer->current();
+    switch (lexer->peek()) {
+    case TOKEN_EQ:
+    case TOKEN_PLUS_EQ:
+    case TOKEN_MINUS_EQ:
+    case TOKEN_STAR_EQ:
+    case TOKEN_SLASH_EQ:
+    case TOKEN_MOD_EQ:
+    case TOKEN_XOR_EQ:
+    case TOKEN_BAR_EQ:
+    case TOKEN_AMPER_EQ:
+    case TOKEN_LSHIFT_EQ:
+    case TOKEN_RSHIFT_EQ: {
+        lexer->next_token();
+        OP op = get_binary_operator(token.kind);
+        Auto_Array<Ast_Expr*> rhs = parse_expr_list();
+        if (rhs.count == 0) {
+            report_parser_error(lexer, "missing rhs in assignment statement.\n");
+            return ast_bad_stmt(token, lexer->current());
+        }
+        expect(TOKEN_SEMI);
+        Ast_Assignment *assignment = ast_assignment_expr(op, lhs.front(), rhs.front());
+        return ast_expr_stmt(assignment);
+    }
+
+    case TOKEN_COLON: {
+        expect(TOKEN_COLON);
+        Ast *value_decl = parse_decl_or_value(lhs.front());
+        return value_decl;
+    }
+    }
+
+    if (lhs.count > 1) {
+        report_parser_error(lexer, "expected just one expression.\n");
+    }
+    Ast_Expr_Stmt *expr_stmt = ast_expr_stmt(lhs.front());
+    expect(TOKEN_SEMI);
+    return expr_stmt;
+
+
+    // switch (token.kind) {
+    // default:
+    // {
+    //     Ast_Expr *expr = parse_expr();
+    //     if (expr) {
+    //         Ast_Var *var = ast_var(token.name, expr, NULL);
+    //         var->mark_range(token.start, expr->end);
+    //         var->decl_flags |= DECL_FLAG_CONST;
+    //         decl = var;
+    //     }
+    //     break;
+    // }
+
+    // }
+
+    // Token lookahead = lexer->lookahead(1);
+    // if (lexer->match(TOKEN_IDENT) && (lookahead.kind == TOKEN_COLON || lookahead.kind == TOKEN_COLON2 || lookahead.kind == TOKEN_COLON_EQ)) {
+    //     Ast_Decl *decl = parse_decl();
+    //     Ast_Decl_Stmt *decl_stmt = ast_decl_stmt(decl);
+    //     return decl_stmt;
+    // }
+
+    // Ast_Expr *expr = parse_expr();
+    // if (expr) {
+    //     if (lexer->match(TOKEN_COLON)) ;
+    //     Ast_Expr *expr_stmt = ast_expr_stmt(expr);
+    //     return expr_stmt;
+    // }
+
+    // if (expr && expr->kind == AST_IDENT) {
+    //     switch (lexer->current().kind) {
+    //     case TOKEN_COLON:
+    //     case TOKEN_COLON_EQ:
+    //     {
+    //         Ast_Decl_Stmt *decl_stmt = parse_init_stmt(expr);
+    //         stmt = decl_stmt;
+    //         break;
+    //     }
+
+    //     case TOKEN_COLON2:
+    //     {
+    //         Ast_Decl *parse_decl();
+    //         break;
+    //     }
+    //     default:
+    //         if (expr) {
+    //             Ast_Expr_Stmt *expr_stmt = ast_expr_stmt(expr);
+    //             stmt = expr_stmt;
+    //         }
+    //         break;
+    //     }
+    // } else if (expr) {
+    //     Ast_Expr_Stmt *expr_stmt = ast_expr_stmt(expr);
+    //     stmt = expr_stmt;
+    // }
+
+    // if (stmt &&
+    //     (!expr || expr->invalid())) {
+    //     stmt->poison();
+    // }
+}
+
+
+
+Ast *Parser::parse_stmt() {
+    Ast *stmt = nullptr;
+
+    Token token = lexer->current();
+    switch (token.kind) {
+    default:
+    {
+        stmt = parse_simple_stmt();
+        return stmt;
+        // if (stmt) {
+        //     if (!lexer->eat(TOKEN_SEMI)) {
+        //         report_parser_error(lexer, "expected ';', got '%s'.\n", string_from_token(lexer->peek()));
+        //     }
+        // }
+    }
+
+    case TOKEN_IMPORT:
+        return parse_import_stmt();
+
+    case TOKEN_LOAD:
+        return parse_load_stmt();
+
+    case TOKEN_IF:
+        stmt = parse_if_stmt();
+        return stmt;
+    case TOKEN_ELSE:
+        report_parser_error(lexer, "illegal else without matching if.\n");
+        return ast_bad_stmt(token, token);
+
+    case TOKEN_IFCASE:
+        stmt = parse_ifcase_stmt();
+        return stmt;
+
+    case TOKEN_DO:
+        return nullptr;
+
+    case TOKEN_WHILE:
+        stmt = parse_while_stmt();
+        return stmt;
+
+    case TOKEN_FOR:
+        stmt = parse_for_stmt();
+        return stmt;
+
+    case TOKEN_RETURN: {
+        expect(TOKEN_RETURN);
+        Ast_Expr *expr = parse_expr();
+        stmt = ast_return_stmt(expr);
+        stmt->mark_range(token.start, lexer->current().end);
+        expect(TOKEN_SEMI);
+        return stmt;
+    }
+
+    case TOKEN_CONTINUE:
+        stmt = ast_continue_stmt(token);
+        expect(TOKEN_CONTINUE);
+        expect(TOKEN_SEMI);
+        return stmt;
+    case TOKEN_BREAK:
+        stmt = ast_break_stmt(token);
+        expect(TOKEN_BREAK);
+        expect(TOKEN_SEMI);
+        return stmt;
+    case TOKEN_FALLTHROUGH:
+        stmt = ast_fallthrough_stmt(token);
+        expect(TOKEN_FALLTHROUGH);
+        expect(TOKEN_SEMI);
+        return stmt;
+
+    case TOKEN_LBRACE:
+        stmt = parse_block();
+        return stmt;
+
+    case TOKEN_SEMI:
+        stmt = ast_empty_stmt(token);
+        expect(TOKEN_SEMI);
+        return stmt;
+    }
+    // return stmt;
 }
 
 void Parser::parse() {
@@ -1203,32 +1369,34 @@ void Parser::parse() {
             }
         }
 
-        switch (lexer->peek()) {
-        default:
-        {
-            Ast_Decl *decl = parse_decl();
-            if (decl) {
-                root->declarations.push(decl);
-            } else {
-                printf("recovering from decl, curr: %s.\n", string_from_token(lexer->peek()));
-                while (!lexer->eof()) {
-                    Token token = lexer->current();
-                    if (token.kind == TOKEN_RBRACE && token.start.col == 0) {
-                        lexer->next_token();
-                        break;
-                    }
-                    lexer->next_token();
-                }
-            }
-            break;
-        }
+        Ast *stmt = parse_stmt();
 
-        case TOKEN_IMPORT:
-        case TOKEN_LOAD:
-        {
-            parse_load_or_import();
-            break;
-        }
-        }
+        if (stmt->is_decl()) {
+            Ast_Decl *decl = static_cast<Ast_Decl*>(stmt);
+            root->declarations.push(decl);
+        } 
+            
+
+        // switch (lexer->peek()) {
+        // default:
+        // {
+        //     Ast_Decl *decl = parse_decl();
+        //     if (decl) {
+        //         root->declarations.push(decl);
+        //     } else {
+        //         printf("recovering from decl, curr: %s.\n", string_from_token(lexer->peek()));
+        //         while (!lexer->eof()) {
+        //             Token token = lexer->current();
+        //             if (token.kind == TOKEN_RBRACE && token.start.col == 0) {
+        //                 lexer->next_token();
+        //                 break;
+        //             }
+        //             lexer->next_token();
+        //         }
+        //     }
+        //     break;
+        // }
+
+        // }
     }
 }

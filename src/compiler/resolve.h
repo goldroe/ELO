@@ -55,7 +55,7 @@ struct Resolver {
     void resolve_control_path_flow(Ast_Proc *proc);
     void resolve_for_stmt(Ast_For *for_stmt);
     void resolve_while_stmt(Ast_While *while_stmt);
-    void resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt);
+    void resolve_decl_stmt(Ast_Decl *decl);
     void resolve_if_stmt(Ast_If *if_stmt);
     void resolve_ifcase_stmt(Ast_Ifcase *ifcase);
 

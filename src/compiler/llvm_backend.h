@@ -126,7 +126,8 @@ struct LLVM_Backend {
     void gen_while(Ast_While *while_stmt);
     void gen_for(Ast_For *for_stmt);
     void gen_block(Ast_Block *block);
-    void gen_statement_list(Auto_Array<Ast_Stmt*> statement_list);
+
+    void gen_statement_list(Auto_Array<Ast*> statement_list);
 
     llvm::BasicBlock *llvm_block_new(const char *s = "");
     void llvm_store(llvm::Value *value, llvm::Value *address);

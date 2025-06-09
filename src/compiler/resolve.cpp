@@ -245,9 +245,7 @@ void Resolver::resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough) {
     }
 }
 
-void Resolver::resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt) {
-    Ast_Decl *decl = decl_stmt->decl;
-
+void Resolver::resolve_decl_stmt(Ast_Decl *decl) {
     Ast_Decl *found = lookup_local(decl->name);
     if (found == NULL) {
         if (current_scope->parent && (current_scope->parent->scope_flags & SCOPE_PROC)) {
@@ -257,8 +255,8 @@ void Resolver::resolve_decl_stmt(Ast_Decl_Stmt *decl_stmt) {
             }
         }
 
-        resolve_decl(decl_stmt->decl);
-        add_entry(decl_stmt->decl);
+        resolve_decl(decl);
+        add_entry(decl);
     } else {
         report_redeclaration(decl);
         decl->poison();
@@ -404,8 +402,7 @@ void Resolver::resolve_stmt(Ast_Stmt *stmt) {
     }
     case AST_DECL_STMT:
     {
-        Ast_Decl_Stmt *decl_stmt = static_cast<Ast_Decl_Stmt*>(stmt);
-        resolve_decl_stmt(decl_stmt);
+        Assert(0);
         break;
     }
 
@@ -475,8 +472,13 @@ void Resolver::resolve_block(Ast_Block *block) {
     scope->block = block;
     block->scope = scope;
 
-    for (Ast_Stmt *stmt : block->statements) {
-        resolve_stmt(stmt);
+    for (Ast *stmt : block->statements) {
+        if (stmt->is_stmt()) {
+            resolve_stmt((Ast_Stmt *)stmt);
+        }
+        if (stmt->is_decl()) {
+            resolve_decl_stmt((Ast_Decl *)stmt);
+        }
         if (stmt->kind == AST_BLOCK) {
             Ast_Block *b = static_cast<Ast_Block*>(stmt);
             if (b->returns) block->returns = true;
