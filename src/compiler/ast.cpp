@@ -155,7 +155,8 @@ internal inline int get_operator_precedence(OP op) {
     case OP_AND_ASSIGN:
     case OP_OR_ASSIGN:
     case OP_XOR_ASSIGN:
-        return 1000;
+        return -1;
+        // return 1000;
     }
 }
 
@@ -202,6 +203,36 @@ Ast_Decl *Scope::lookup(Atom *name) {
 internal Scope *make_scope(Scope_Flags flags) {
     Scope *result = (Scope*)ast_alloc(sizeof(Scope), alignof(Scope));
     result->scope_flags = flags;
+    return result;
+}
+
+internal Ast_Continue *ast_continue_stmt(Token t) {
+    Ast_Continue *result = AST_NEW(Ast_Continue);
+    result->mark_range(t.start, t.end);
+    return result;
+}
+
+internal Ast_Break *ast_break_stmt(Token t) {
+    Ast_Break *result = AST_NEW(Ast_Break);
+    result->mark_range(t.start, t.end);
+    return result;
+}
+
+internal Ast_Fallthrough *ast_fallthrough_stmt(Token t) {
+    Ast_Fallthrough *result = AST_NEW(Ast_Fallthrough);
+    result->mark_range(t.start, t.end);
+    return result;
+}
+
+internal Ast_Return *ast_return_stmt(Ast_Expr *expr) {
+    Ast_Return *result = AST_NEW(Ast_Return);
+    result->expr = expr;
+    return result;
+}
+
+internal Ast_Empty_Stmt *ast_empty_stmt(Token t) {
+    Ast_Empty_Stmt *result = AST_NEW(Ast_Empty_Stmt);
+    result->mark_range(t.start, t.end);
     return result;
 }
 
@@ -387,6 +418,25 @@ internal Ast_Expr *ast_error_expr() {
     return result;
 }
 
+internal Ast_Bad_Stmt *ast_bad_stmt(Token start, Token end) {
+    Ast_Bad_Stmt *result = AST_NEW(Ast_Bad_Stmt);
+    result->poison();
+    result->mark_range(start.start, end.end);
+    return result;
+}
+
+internal Ast_Load *ast_load_stmt(String8 file_path) {
+    Ast_Load *result = AST_NEW(Ast_Load);
+    result->rel_path = file_path;
+    return result;
+}
+
+internal Ast_Import *ast_import_stmt(String8 file_path) {
+    Ast_Import *result = AST_NEW(Ast_Import);
+    result->rel_path = file_path;
+    return result;
+}
+
 internal Ast_Binary *ast_binary_expr(OP op, Ast_Expr *lhs, Ast_Expr *rhs) {
     Ast_Binary *result = AST_NEW(Ast_Binary);
     result->op = op;
@@ -459,12 +509,6 @@ internal Ast_For *ast_for_stmt(Atom *name, Ast_Expr *iterator, Ast_Block *block)
     result->block = block;
     return result;
 } 
-
-internal Ast_Return *ast_return(Ast_Expr *expr) {
-    Ast_Return *result = AST_NEW(Ast_Return);
-    result->expr = expr;
-    return result;
-}
 
 internal char *string_from_type(Type *ty) {
     if (ty == NULL) return "";

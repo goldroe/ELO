@@ -187,6 +187,7 @@ void Lexer::rewind(Token token) {
 }
 
 Token Lexer::lookahead(int n) {
+    Assert(n >= 0);
     Token curr = current();
 
     for (int i = 0; i < n; i++) {
@@ -699,13 +700,13 @@ lex_start:
     {
         token.kind = TOKEN_COLON;
         eat_char();
-        if (*stream == '=') {
-            token.kind = TOKEN_COLON_EQ;
-            eat_char();
-        } else if (*stream == ':') {
-            token.kind = TOKEN_COLON2;
-            eat_char();
-        }
+        // if (*stream == '=') {
+        //     token.kind = TOKEN_COLON_EQ;
+        //     eat_char();
+        // } else if (*stream == ':') {
+        //     token.kind = TOKEN_COLON2;
+        //     eat_char();
+        // }
         break;
     }
     }

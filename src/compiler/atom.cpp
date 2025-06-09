@@ -90,12 +90,14 @@ internal void atom_init() {
     atom_keyword(TOKEN_NULL,        str_lit("null"));
     atom_keyword(TOKEN_ENUM,        str_lit("enum"));
     atom_keyword(TOKEN_STRUCT,      str_lit("struct"));
+    atom_keyword(TOKEN_UNION,       str_lit("union"));
     atom_keyword(TOKEN_TRUE,        str_lit("true"));
     atom_keyword(TOKEN_FALSE,       str_lit("false"));
     atom_keyword(TOKEN_IF,          str_lit("if"));
     atom_keyword(TOKEN_ELSE,        str_lit("else"));
     atom_keyword(TOKEN_IFCASE,      str_lit("ifcase"));
     atom_keyword(TOKEN_CASE,        str_lit("case"));
+    atom_keyword(TOKEN_DO,          str_lit("do"));
     atom_keyword(TOKEN_WHILE,       str_lit("while"));
     atom_keyword(TOKEN_FOR,         str_lit("for"));
     atom_keyword(TOKEN_BREAK,       str_lit("break"));

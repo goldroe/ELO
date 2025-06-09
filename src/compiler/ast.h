@@ -82,6 +82,10 @@ enum Ast_Kind {
     AST_ENUM_TYPE,
     AST_PROC_TYPE,
 
+
+    //@Note Exprs
+    AST_EXPR_BEGIN,
+
     AST_EXPR,
     AST_NULL,
     AST_PAREN,
@@ -102,24 +106,41 @@ enum Ast_Kind {
     AST_RANGE,
     AST_SIZEOF,
 
+    AST_EXPR_END,
+
+
+    //@Note Decls
+
+    AST_DECL_BEGIN,
+
     AST_DECL,
     AST_TYPE_DECL,
     AST_PARAM,
     AST_VAR,
     AST_STRUCT,
+    AST_UNION,
     AST_ENUM,
     AST_STRUCT_FIELD,
     AST_ENUM_FIELD,
-
     AST_PROC,
     AST_OPERATOR_PROC,
 
+    AST_DECL_END,
+
+
+    //@Note Stmts
+
+    AST_STMT_BEGIN,
+
     AST_STMT,
+    AST_EMPTY_STMT,
+    AST_BAD_STMT,
     AST_EXPR_STMT,
     AST_DECL_STMT,
     AST_IF,
     AST_IFCASE,
     AST_CASE_LABEL,
+    AST_DO_WHILE,
     AST_WHILE,
     AST_FOR,
     AST_BLOCK,
@@ -127,6 +148,10 @@ enum Ast_Kind {
     AST_CONTINUE,
     AST_BREAK,
     AST_FALLTHROUGH,
+    AST_LOAD_STMT,
+    AST_IMPORT_STMT,
+
+    AST_STMT_END,
 
     AST_COUNT
 };
@@ -150,6 +175,10 @@ struct Ast {
     bool invalid() { return is_poisoned; }
     bool valid() { return !is_poisoned; }
     void poison() { is_poisoned = true; }
+
+    bool is_decl() { return AST_DECL_BEGIN <= kind && kind <= AST_DECL_END; }
+    bool is_expr() { return AST_EXPR_BEGIN <= kind && kind <= AST_EXPR_END; }
+    bool is_stmt() { return AST_STMT_BEGIN <= kind && kind <= AST_STMT_END; }
 };
 
 struct Ast_Root : Ast {
@@ -164,6 +193,7 @@ enum Type_Defn_Kind {
     TYPE_DEFN_POINTER,
     TYPE_DEFN_ARRAY,
     TYPE_DEFN_PROC,
+    TYPE_DEFN_STRUCT,
 };
 
 struct Ast_Type_Defn : Ast {
@@ -343,6 +373,14 @@ struct Ast_Var : Ast_Decl {
     Ast_Expr *init;
 };
 
+// struct Ast_Struct_Member : Ast_Decl {
+//     Ast_Struct_Member() { kind = 
+// };
+
+struct Ast_Union : Ast_Decl {
+    Ast_Union() { kind = AST_UNION; }
+};
+
 struct Ast_Struct_Field : Ast {
     Ast_Struct_Field() { kind = AST_STRUCT_FIELD; }
     Atom *name;
@@ -398,6 +436,14 @@ struct Ast_Stmt : Ast {
     Stmt_Flags stmt_flags;
 };
 
+struct Ast_Empty_Stmt : Ast_Stmt {
+    Ast_Empty_Stmt() { kind = AST_EMPTY_STMT; }
+};
+
+struct Ast_Bad_Stmt : Ast_Stmt {
+    Ast_Bad_Stmt() { kind = AST_BAD_STMT; }
+};
+
 struct Ast_If : Ast_Stmt {
     Ast_If() { kind = AST_IF; }
     Ast_Expr *cond;
@@ -437,6 +483,14 @@ struct Ast_While : Ast_Stmt {
     void *exit_block;
 };
 
+struct Ast_Do_While : Ast_Stmt {
+    Ast_Do_While() { kind = AST_DO_WHILE; }
+    Ast_Expr *cond;
+    Ast_Block *block;
+    // void *entry_block;
+    // void *exit_block;
+};
+
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }
     Ast_Var *var;
@@ -458,9 +512,19 @@ struct Ast_Decl_Stmt : Ast_Stmt {
     Ast_Decl *decl;
 };
 
+struct Ast_Load : Ast_Stmt {
+    Ast_Load() { kind = AST_LOAD_STMT; }
+    String8 rel_path;
+};
+
+struct Ast_Import : Ast_Stmt {
+    Ast_Import() { kind = AST_IMPORT_STMT; }
+    String8 rel_path;
+};
+
 struct Ast_Block : Ast_Stmt {
     Ast_Block() { kind = AST_BLOCK; }
-    Auto_Array<Ast_Stmt*> statements;
+    Auto_Array<Ast*> statements;
     Scope *scope = nullptr;
     b32 returns;
 };
