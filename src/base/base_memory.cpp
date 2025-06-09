@@ -72,6 +72,11 @@ ALLOCATOR_PROC(heap_allocator_proc) {
         if (old_mem) free(old_mem);
         break;
     }
+    case ALLOCATION_FREE_ALL:
+    {
+        if (old_mem) free(old_mem);
+        break;
+    }
     }
     return NULL;
 }
