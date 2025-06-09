@@ -1,5 +1,5 @@
-#import "win32/win32.elo"
-#import "libc/stdio.elo"
+#import "win32/win32.elo";
+#import "libc/stdio.elo";
 
 window_should_close: bool;
 
@@ -18,7 +18,7 @@ win32_proc :: (hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT
     return result;
 }
 
-main :: () -> int {
+main :: (argc: int, argv: **u8) -> int {
     hInstance := GetModuleHandleA(null);
     class_name := "hwnd_class_demo";
     window_class: WNDCLASSA;
