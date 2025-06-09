@@ -1,7 +1,5 @@
-
-#load "stdlib.elo"
-#load "stdio.elo"
-
+#load "stdlib.elo";
+#load "stdio.elo";
 
 main :: () -> int {
     num := 20;
