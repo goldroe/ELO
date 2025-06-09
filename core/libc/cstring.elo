@@ -1,0 +1,17 @@
+
+strcpy :: (dest: *u8, src: *u8) -> *u8 #foreign
+strncpy :: (dest: *u8, src: *u8, count: usize) -> *u8 #foreign
+strcat :: (dest: *u8, src: *u8) -> *u8 #foreign
+strcat :: (dest: *u8, src: *u8, count: usize) -> *u8 #foreign
+strdup :: (src: *u8) -> *u8 #foreign
+strndup :: (src: *u8, size: usize) -> *u8 #foreign
+
+strlen :: (str: *u8) -> usize #foreign
+strcmp :: (lhs: *u8, rhs: *u8) -> int #foreign
+strncmp :: (lhs: *u8, rhs: *u8, count: usize) -> int #foreign
+
+memcmp :: (lhs: *void, rhs: *void, count: usize) -> int #foreign
+memset :: (dest: *void, ch: int, count: usize) -> *void #foreign
+memcpy :: (dest: *void, src: *void, count: usize) -> *void #foreign
+
+memmove :: (dest: *void, src: *void, count: usize) -> *void #foreign
