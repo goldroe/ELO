@@ -48,7 +48,7 @@ struct Parser {
     Ast_Decl_Stmt *parse_init_stmt(Ast_Expr *lhs);
     Ast *parse_operand(Atom *name);
 
-    Ast *parse_decl_or_value(Ast_Expr *name);
+    Ast *parse_value_decl(Ast_Expr *name);
     Ast *parse_simple_stmt();
     Ast *parse_stmt();
 
@@ -58,7 +58,8 @@ struct Parser {
     Ast_Enum_Field *parse_enum_field();
     Ast_Enum *parse_enum(Atom *name);
 
-    Ast_Struct_Field *parse_struct_field();
+    Ast_Decl *Parser::parse_struct_member();
+    // Ast_Struct_Field *parse_struct_field();
     Ast_Struct *parse_struct(Atom *name);
     Ast_Type_Decl *parse_type_decl(Atom *name);
     Ast_Var *parse_var(Atom *name);

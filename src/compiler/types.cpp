@@ -20,7 +20,6 @@ internal Struct_Field_Info struct_field_info(Atom *name, Type *type) {
     Struct_Field_Info result = {};
     result.name = name;
     result.type = type;
-    result.mem_offset = 0;
     return result;
 }
 

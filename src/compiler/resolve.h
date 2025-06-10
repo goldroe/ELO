@@ -5,6 +5,8 @@ enum Scope_Flags {
     SCOPE_GLOBAL  = (1<<0),
     SCOPE_PROC    = (1<<1),
     SCOPE_BLOCK   = (1<<2),
+    SCOPE_STRUCT  = (1<<3),
+    SCOPE_ENUM    = (1<<4),
 };
 EnumDefineFlagOperators(Scope_Flags);
 

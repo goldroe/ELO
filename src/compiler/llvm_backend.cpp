@@ -7,15 +7,18 @@ internal void *llvm_backend_alloc(u64 size, int alignment) {
     return result;
 }
 
-internal unsigned llvm_get_struct_field_index(Ast_Struct *struct_decl, Atom *name) {
-    for (unsigned i = 0; i < struct_decl->fields.count; i++) {
-        Ast_Struct_Field *field = struct_decl->fields[i];
-        if (atoms_match(field->name, name)) {
-            return i;
+internal unsigned llvm_get_struct_field_index(Ast_Struct *struct_node, Atom *name) {
+    unsigned index = 0;
+    for (Ast_Decl *member : struct_node->members) {
+        if (member->kind == AST_VAR) {
+            if (atoms_match(member->name, name)) {
+                return index;
+            }
+            index++;
         }
     }
     Assert(0);
-    return 0;
+    return (unsigned)-1;
 } 
 
 llvm::BasicBlock *LLVM_Backend::llvm_block_new(const char *s) {
@@ -180,24 +183,24 @@ void LLVM_Backend::gen_procedure_body(BE_Proc *procedure) {
     current_block = nullptr;
 }
 
-void LLVM_Backend::gen_struct(Ast_Struct *struct_decl) {
+void LLVM_Backend::gen_struct(Ast_Struct *struct_node) {
     BE_Struct *be_struct = llvm_alloc(BE_Struct);
-    be_struct->name = struct_decl->name;
+    struct_node->backend_struct = be_struct;
+    be_struct->name = struct_node->name;
 
     llvm::StructType *struct_type = llvm::StructType::create(*Ctx, be_struct->name->data);
     be_struct->type = struct_type;
 
-    if (struct_decl->fields.count) {
-        be_struct->element_types.reserve(struct_decl->fields.count);
-        for (int i = 0; i < struct_decl->fields.count; i++) {
-            Ast_Struct_Field *field = struct_decl->fields[i];
-            llvm::Type* field_type = get_type(field->type);
-            be_struct->element_types.push(field_type);
+    for (Ast_Decl *member : struct_node->members) {
+        if (member->kind == AST_VAR) {
+            llvm::Type* member_type = get_type(member->type);
+            be_struct->element_types.push(member_type);
         }
-        struct_type->setBody(llvm::ArrayRef(be_struct->element_types.data, be_struct->element_types.count), false);
+        // else {
+        //     gen_decl(member);
+        // }
     }
-
-    struct_decl->backend_struct = be_struct;
+    struct_type->setBody(llvm::ArrayRef(be_struct->element_types.data, be_struct->element_types.count), false);
 }
 
 llvm::Type* LLVM_Backend::get_type(Type *type) {

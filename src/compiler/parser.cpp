@@ -344,24 +344,6 @@ Ast_Expr *Parser::parse_binary_expr(Ast_Expr *lhs, int current_prec) {
     }
 }
 
-// Ast_Expr *Parser::parse_assignment_expr() {
-//     Ast_Expr *expr = parse_unary_expr();
-//     if (expr) {
-//         Token op_tok = lexer->current();
-//         OP op = get_binary_operator(op_tok.kind);
-//         if (is_assignment_op(op)) {
-//             lexer->next_token();
-//             Ast_Expr *rhs = parse_expr();
-//             expr = ast_assignment_expr(op, expr, rhs);
-//             if (rhs == NULL) {
-//                 report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
-//                 expr->poison();
-//             }
-//         }
-//     }
-//     return expr;
-// }
-
 Ast_Expr *Parser::parse_range_expr() {
     Ast_Expr *lhs = parse_expr();
 
@@ -559,6 +541,7 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
 // T  | '*' T
 // T  | '[' expr ']' T
 // T  | '(' TLIST? ')' ( '->' T )?
+// T  | '.' T
 
 Ast_Type_Defn *Parser::parse_type() {
     Ast_Type_Defn *type = NULL;
@@ -569,9 +552,23 @@ Ast_Type_Defn *Parser::parse_type() {
         default:
             terminate = true;
             break;
+
+        // case TOKEN_DOT: {
+        //     expecT(TOKEN_DOT);
+
+        //     Token name = lexer->current();
+
+        //     if (name.kind != TOKEN_NAME) {
+        //         report_parser_error("expected name after '.', got '%s'\n", string_from_token(name.kind));
+        //         return nullptr;
+        //     }
+
+        //     Ast_Type_Defn *t = ast_type_defn(TYPE_DEFN_NAME, type);
             
-        case TOKEN_IDENT:
-        {
+        //     break;
+        // }
+            
+        case TOKEN_IDENT: {
             Token name = lexer->current();
             lexer->next_token();
             Ast_Type_Defn *t = ast_type_defn(TYPE_DEFN_NAME, type);
@@ -584,8 +581,7 @@ Ast_Type_Defn *Parser::parse_type() {
             break;
         }
 
-        case TOKEN_STAR:
-        {
+        case TOKEN_STAR: {
             Token op = lexer->current();
             lexer->next_token();
             Ast_Type_Defn *t = ast_type_defn(TYPE_DEFN_POINTER, type);
@@ -594,8 +590,7 @@ Ast_Type_Defn *Parser::parse_type() {
             break;
         }
 
-        case TOKEN_LBRACKET:
-        {
+        case TOKEN_LBRACKET: {
             Token op = lexer->current();
             lexer->next_token();
             Ast_Expr *array_size = parse_expr();
@@ -607,8 +602,7 @@ Ast_Type_Defn *Parser::parse_type() {
             break;
         }
 
-        case TOKEN_LPAREN:
-        {
+        case TOKEN_LPAREN: {
             Token op = lexer->current();
             lexer->next_token();
 
@@ -794,36 +788,49 @@ ERROR_HANDLE:
     return NULL;
 }
 
-Ast_Struct_Field *Parser::parse_struct_field() {
-    Ast_Struct_Field *field = NULL;
-    Token name = lexer->current();
-    if (lexer->eat(TOKEN_IDENT)) {
-        expect(TOKEN_COLON);
-        Ast_Type_Defn *type_defn = parse_type();
-        expect(TOKEN_SEMI);
-        field = ast_struct_field(name.name, type_defn);
-        field->mark_range(name.start, type_defn->end);
+// Ast_Struct_Field *Parser::parse_struct_field() {
+//     Ast_Struct_Field *field = NULL;
+//     Token name = lexer->current();
+//     if (lexer->eat(TOKEN_IDENT)) {
+//         expect(TOKEN_COLON);
+//         Ast_Type_Defn *type_defn = parse_type();
+//         expect(TOKEN_SEMI);
+//         field = ast_struct_field(name.name, type_defn);
+//         field->mark_range(name.start, type_defn->end);
+//     }
+//     return field;
+// }
+
+Ast_Decl *Parser::parse_struct_member() {
+    Auto_Array<Ast_Expr*> lhs = parse_expr_list();
+    if (lhs.empty()) return nullptr;
+    if (!lexer->eat(TOKEN_COLON)) {
+        report_parser_error(lexer, "missing ':' after field list.\n");
+        return ast_bad_decl(lexer->current(), lexer->current());
     }
-    return field;
+
+    Ast *decl = parse_value_decl(lhs.front());
+    Assert(decl->is_decl());
+    return (Ast_Decl *)decl;
 }
 
 Ast_Struct *Parser::parse_struct(Atom *name) {
     expect(TOKEN_STRUCT);
 
     Source_Pos end = {};
-    Auto_Array<Ast_Struct_Field*> fields;
+    Auto_Array<Ast_Decl*> members;
     if (lexer->eat(TOKEN_LBRACE)) {
         while (!lexer->match(TOKEN_RBRACE)) {
-            Ast_Struct_Field *field = parse_struct_field();
-            if (field == NULL) break;
-            fields.push(field);
+            Ast_Decl *member = parse_struct_member();
+            if (!member) break;
+            members.push(member);
         }
 
         end = lexer->current().end;
         expect(TOKEN_RBRACE);
     }
 
-    Ast_Struct *struct_decl = ast_struct(name, fields);
+    Ast_Struct *struct_decl = ast_struct(name, members);
     struct_decl->mark_end(end);
     return struct_decl;
 }
@@ -887,66 +894,6 @@ Ast_Type_Decl *Parser::parse_type_decl(Atom *name) {
     type_decl->mark_end(type_defn->end);
 
     return type_decl;
-}
-
-Ast_Decl *Parser::parse_decl() {
-    Ast_Decl *decl = NULL;
-    Token token = lexer->current();
-    if (lexer->eat(TOKEN_IDENT)) {
-        if (lexer->eat(TOKEN_COLON2)) {
-            switch (lexer->peek()) {
-            case TOKEN_UNION:
-            case TOKEN_STRUCT:
-            {
-                Ast_Struct *struct_decl = parse_struct(token.name);
-                struct_decl->mark_start(token.start);
-                decl = struct_decl;
-                break;
-            }
-            case TOKEN_ENUM:
-            {
-                Ast_Enum *enum_decl = parse_enum(token.name);
-                enum_decl->mark_start(token.start);
-                decl = enum_decl;
-                break;
-            }
-            case TOKEN_LPAREN:
-            {
-                Ast_Proc *proc = parse_proc(token.name);
-                proc->mark_start(token.start);
-                decl = proc;
-                break;
-            }
-            case TOKEN_TYPEDEF:
-            {
-                Ast_Type_Decl *type_decl = parse_type_decl(token.name);
-                type_decl->mark_range(token.start, token.end);
-                decl = type_decl;
-                break;
-            }
-            default:
-            {
-                Ast_Expr *expr = parse_expr();
-                if (expr) {
-                    Ast_Var *var = ast_var(token.name, expr, NULL);
-                    var->mark_range(token.start, expr->end);
-                    var->decl_flags |= DECL_FLAG_CONST;
-                    decl = var;
-                }
-                break;
-            }
-            }
-        } else if (lexer->match(TOKEN_COLON) || lexer->match(TOKEN_COLON_EQ)) {
-            Ast_Var *var = parse_var(token.name);
-            var->mark_start(token.start);
-            expect(TOKEN_SEMI);
-            decl = var;
-        }
-    } else if (lexer->match(TOKEN_OPERATOR)) {
-        Ast_Operator_Proc *proc = parse_operator_proc();
-        decl = proc;
-    }
-    return decl;
 }
 
 Ast_Var *Parser::parse_var(Atom *name) {
@@ -1070,37 +1017,25 @@ Ast *Parser::parse_operand(Atom *name) {
     Token token = lexer->current();
     switch (token.kind) {
     default:
-    {
         return parse_expr();
-    }
-    case TOKEN_LPAREN:
-    {
-        Ast_Proc *proc = parse_proc(name);
-        return proc;
-    }
 
-    case TOKEN_UNION:
-    case TOKEN_STRUCT:
-    {
-        Ast_Struct *struct_decl = parse_struct(name);
-        return struct_decl;
-    }
+    case TOKEN_LPAREN:
+        return parse_proc(name);
+
+    // case TOKEN_UNION:
+    case TOKEN_STRUCT: {
+        return parse_struct(name);
 
     case TOKEN_ENUM:
-    {
-        Ast_Enum *enum_decl = parse_enum(name);
-        return enum_decl;
-    }
+        return parse_enum(name);
 
     case TOKEN_TYPEDEF:
-    {
-        Ast_Type_Decl *type_decl = parse_type_decl(name);
-        return type_decl;
+        return parse_type_decl(name);
     }
     }
 }
 
-Ast *Parser::parse_decl_or_value(Ast_Expr *name) {
+Ast *Parser::parse_value_decl(Ast_Expr *name) {
     Token token = lexer->current();
 
     if (name->kind != AST_IDENT) {
@@ -1109,7 +1044,6 @@ Ast *Parser::parse_decl_or_value(Ast_Expr *name) {
     }
 
     Ast_Ident *ident = (Ast_Ident *)name;
-
 
     if (token.kind == TOKEN_EQ) {
         expect(TOKEN_EQ);
@@ -1173,7 +1107,7 @@ Ast *Parser::parse_simple_stmt() {
     Auto_Array<Ast_Expr*> lhs = parse_expr_list();
 
     if (lhs.count == 0) return nullptr;
-    
+
     Token token = lexer->current();
     switch (lexer->peek()) {
     case TOKEN_EQ:
@@ -1201,7 +1135,7 @@ Ast *Parser::parse_simple_stmt() {
 
     case TOKEN_COLON: {
         expect(TOKEN_COLON);
-        Ast *value_decl = parse_decl_or_value(lhs.front());
+        Ast *value_decl = parse_value_decl(lhs.front());
         return value_decl;
     }
     }

@@ -114,13 +114,14 @@ enum Ast_Kind {
     AST_DECL_BEGIN,
 
     AST_DECL,
+    AST_BAD_DECL,
     AST_TYPE_DECL,
     AST_PARAM,
     AST_VAR,
     AST_STRUCT,
     AST_UNION,
     AST_ENUM,
-    AST_STRUCT_FIELD,
+    // AST_STRUCT_FIELD,
     AST_ENUM_FIELD,
     AST_PROC,
     AST_OPERATOR_PROC,
@@ -373,36 +374,33 @@ struct Ast_Var : Ast_Decl {
     Ast_Expr *init;
 };
 
-// struct Ast_Struct_Member : Ast_Decl {
-//     Ast_Struct_Member() { kind = 
-// };
-
 struct Ast_Union : Ast_Decl {
     Ast_Union() { kind = AST_UNION; }
 };
 
-struct Ast_Struct_Field : Ast {
-    Ast_Struct_Field() { kind = AST_STRUCT_FIELD; }
-    Atom *name;
-    Ast_Type_Defn *type_defn;
-    Type *type;
-};
+// struct Ast_Struct_Field : Ast {
+//     Ast_Struct_Field() { kind = AST_STRUCT_FIELD; }
+//     Atom *name;
+//     Ast_Type_Defn *type_defn;
+//     Type *type;
+// };
 
 struct Ast_Struct : Ast_Decl {
     Ast_Struct() { kind = AST_STRUCT; }
-    Auto_Array<Ast_Struct_Field*> fields;
+    Scope *scope;
+    Auto_Array<Ast_Decl*> members;
     BE_Struct *backend_struct;
 };
 
-struct Ast_Enum_Field : Ast {
+struct Ast_Enum_Field : Ast_Decl {
     Ast_Enum_Field() { kind = AST_ENUM_FIELD; }
-    Atom *name;
     Ast_Expr *expr;
     s64 value;
 };
 
 struct Ast_Enum : Ast_Decl {
     Ast_Enum() { kind = AST_ENUM; }
+    Scope *scope;
     Auto_Array<Ast_Enum_Field*> fields;
 };
 
@@ -442,6 +440,11 @@ struct Ast_Empty_Stmt : Ast_Stmt {
 
 struct Ast_Bad_Stmt : Ast_Stmt {
     Ast_Bad_Stmt() { kind = AST_BAD_STMT; }
+};
+
+
+struct Ast_Bad_Decl : Ast_Decl {
+    Ast_Bad_Decl() { kind = AST_BAD_DECL; }
 };
 
 struct Ast_If : Ast_Stmt {

@@ -271,20 +271,20 @@ internal Ast_Operator_Proc *ast_operator_proc(OP op, Auto_Array<Ast_Param*> para
     return result;
 }
 
-internal Ast_Struct *ast_struct(Atom *name, Auto_Array<Ast_Struct_Field*> fields) {
+internal Ast_Struct *ast_struct(Atom *name, Auto_Array<Ast_Decl*> members) {
     Ast_Struct *result = AST_NEW(Ast_Struct);
     result->decl_flags |= DECL_FLAG_TYPE;
     result->name = name;
-    result->fields = fields;
+    result->members = members;
     return result;
 }
 
-internal Ast_Struct_Field *ast_struct_field(Atom *name, Ast_Type_Defn *type_defn) {
-    Ast_Struct_Field *result = AST_NEW(Ast_Struct_Field);
-    result->name = name;
-    result->type_defn = type_defn;
-    return result;
-}
+// internal Ast_Struct_Field *ast_struct_field(Atom *name, Ast_Type_Defn *type_defn) {
+//     Ast_Struct_Field *result = AST_NEW(Ast_Struct_Field);
+//     result->name = name;
+//     result->type_defn = type_defn;
+//     return result;
+// }
 
 internal Ast_Enum *ast_enum(Atom *name, Auto_Array<Ast_Enum_Field*> fields) {
     Ast_Enum *result = AST_NEW(Ast_Enum);
@@ -296,6 +296,7 @@ internal Ast_Enum *ast_enum(Atom *name, Auto_Array<Ast_Enum_Field*> fields) {
 
 internal Ast_Enum_Field *ast_enum_field(Atom *name) {
     Ast_Enum_Field *result = AST_NEW(Ast_Enum_Field);
+    result->decl_flags |= DECL_FLAG_CONST;
     result->name = name;
     return result;
 }
@@ -420,6 +421,13 @@ internal Ast_Expr *ast_error_expr() {
 
 internal Ast_Bad_Stmt *ast_bad_stmt(Token start, Token end) {
     Ast_Bad_Stmt *result = AST_NEW(Ast_Bad_Stmt);
+    result->poison();
+    result->mark_range(start.start, end.end);
+    return result;
+}
+
+internal Ast_Bad_Decl *ast_bad_decl(Token start, Token end) {
+    Ast_Bad_Decl *result = AST_NEW(Ast_Bad_Decl);
     result->poison();
     result->mark_range(start.start, end.end);
     return result;

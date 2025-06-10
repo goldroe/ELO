@@ -52,7 +52,6 @@ EnumDefineFlagOperators(Type_Flags);
 struct Struct_Field_Info {
     Atom *name;
     Type *type;
-    int mem_offset;
 };
 
 struct Type : Ast {

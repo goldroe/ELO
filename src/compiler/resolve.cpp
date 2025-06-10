@@ -1108,20 +1108,41 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
     }
 }
 
+internal Eval eval_from_decl(Ast_Decl *decl) {
+    Eval eval = {};
+    switch (decl->kind) {
+    case AST_ENUM_FIELD: {
+        Ast_Enum_Field *field = (Ast_Enum_Field *)decl;
+        eval.int_val = field->value;
+        return eval;
+    }
+    case AST_VAR: {
+        Ast_Var *var = (Ast_Var *)decl;
+        return var->init->eval;
+    }
+    }
+    Assert(0);
+    return eval;
+}
+
 void Resolver::resolve_ident(Ast_Ident *ident) {
-    Ast_Decl *found = lookup(ident->name);
+    Ast_Decl *ref = lookup(ident->name);
 
-    if (found) {
-        resolve_decl(found);
-        ident->type = found->type;
+    if (ref) {
+        resolve_decl(ref);
+        ident->ref = ref;
+        ident->type = ref->type;
 
-        if (!(found->decl_flags & DECL_FLAG_TYPE) && !(found->decl_flags & DECL_FLAG_CONST)) {
+        if (!(ref->decl_flags & DECL_FLAG_TYPE) && !(ref->decl_flags & DECL_FLAG_CONST)) {
             ident->expr_flags |= EXPR_FLAG_LVALUE;
         }
 
-        ident->ref = found;
+        if (ref->decl_flags & DECL_FLAG_CONST) {
+            ident->expr_flags |= EXPR_FLAG_CONSTANT;
+            ident->eval = eval_from_decl(ref);
+        }
 
-        if (found->invalid()) ident->poison();
+        if (ref->invalid()) ident->poison();
     } else {
         report_undeclared(ident);
         ident->poison();
@@ -1218,7 +1239,7 @@ void Resolver::resolve_access_expr(Ast_Access *access) {
         access->poison();
         return;
     }
-
+    
     if (access->parent->type->is_struct_or_pointer()) {
         access->expr_flags |= EXPR_FLAG_LVALUE;
 
@@ -1514,36 +1535,41 @@ void Resolver::resolve_proc(Ast_Proc *proc) {
     }
 }
 
-void Resolver::resolve_struct(Ast_Struct *struct_decl) {
-    Auto_Array<Struct_Field_Info> struct_fields;
-    for (int i = 0; i < struct_decl->fields.count; i++) {
-        Ast_Struct_Field *field = struct_decl->fields[i];
-        field->type = resolve_type(field->type_defn);
+void Resolver::resolve_struct(Ast_Struct *struct_node) {
+    struct_node->scope = new_scope(SCOPE_STRUCT);
 
-        Struct_Field_Info field_info = {};
-        field_info.name = field->name;
-        field_info.type = field->type;
-        field_info.mem_offset = 0;
-        struct_fields.push(field_info);
+    Auto_Array<Struct_Field_Info> struct_fields;
+    for (Ast_Decl *member : struct_node->members) {
+        resolve_decl(member);
+
+        add_entry(member);
+
+        if (member->kind == AST_VAR) {
+            Struct_Field_Info field_info = struct_field_info(member->name, member->type);
+            struct_fields.push(field_info);
+        }
     }
 
     Type *type = struct_type(struct_fields);
-    struct_decl->type = type;
-    type->decl = struct_decl;
-    type->name = struct_decl->name;
+    struct_node->type = type;
+    type->decl = struct_node;
+    type->name = struct_node->name;
+
+    exit_scope();
 }
 
 void Resolver::resolve_enum(Ast_Enum *enum_decl) {
+    enum_decl->scope = new_scope(SCOPE_ENUM);
     Auto_Array<Enum_Field_Info> enum_fields;
     s64 value = 0;
-    for (int i = 0; i < enum_decl->fields.count; i++) {
-        Ast_Enum_Field *field = enum_decl->fields[i];
+    for (Ast_Enum_Field *field : enum_decl->fields) {
+        add_entry(field);
         if (field->expr) {
             resolve_expr(field->expr);
             if (field->expr->is_constant()) {
                 value = field->expr->eval.int_val;
             } else {
-                report_ast_error(field, "expression does not resolve to a constant.\n");
+                report_ast_error(field->expr, "expression does not resolve to a constant.\n");
             }
         }
 
@@ -1569,6 +1595,8 @@ void Resolver::resolve_enum(Ast_Enum *enum_decl) {
     type->decl = enum_decl;
     type->name = enum_decl->name;
     type->base = type_i32;
+
+    exit_scope();
 }
 
 void Resolver::resolve_var(Ast_Var *var) {
