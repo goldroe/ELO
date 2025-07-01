@@ -1,5 +1,5 @@
 global Auto_Array<Type*> g_builtin_types;
-global Type *type_poison;
+global Type *type_invalid;
 global Type *type_void;
 global Type *type_null;
 global Type *type_bool;
@@ -9,58 +9,52 @@ global Type *type_isize, *type_usize;
 global Type *type_f32, *type_f64;
 global Type *type_string;
 
-internal Type *pointer_type(Type *base) {
-    Type *result = AST_NEW(Type);
-    result->base = base;
-    result->id = TYPEID_POINTER;
-    return result;
+internal Pointer_Type *pointer_type_create(Type *elem) {
+    Pointer_Type *type = TYPE_NEW(Pointer_Type);
+    type->base = elem;
+    return type;
 }
 
-internal Struct_Field_Info struct_field_info(Atom *name, Type *type) {
-    Struct_Field_Info result = {};
-    result.name = name;
-    result.type = type;
-    return result;
+internal Array_Type *array_type_create(Type *elem) {
+    Array_Type *type = TYPE_NEW(Array_Type);
+    type->base = elem;
+    return type;
 }
 
-internal Array_Type *array_type(Type *base) {
-    Array_Type *result = AST_NEW(Array_Type);
-    result->base = base;
-    result->id = TYPEID_ARRAY;
-    result->aggregate.fields = {
-        struct_field_info(atom_create(str_lit("data")), pointer_type(base)),
-        struct_field_info(atom_create(str_lit("count")), type_i64)
-    };
-    return result;
+internal Tuple_Type *tuple_type_create(Auto_Array<Type*> types) {
+    Tuple_Type *type = TYPE_NEW(Tuple_Type);
+    type->types = types;
+    return type;
 }
 
-internal Proc_Type *proc_type(Type *return_type, Auto_Array<Type*> parameters) {
-    Proc_Type *result = AST_NEW(Proc_Type);
-    result->id = TYPEID_PROC;
-    result->return_type = return_type;
-    result->parameters = parameters;
-    return result;
+internal Proc_Type *proc_type_create(Auto_Array<Type*> params, Auto_Array<Type*> results) {
+    Proc_Type *type = TYPE_NEW(Proc_Type);
+    type->params = tuple_type_create(params);
+    type->results = tuple_type_create(results);
+    return type;
 }
 
-internal Type *struct_type(Auto_Array<Struct_Field_Info> fields) {
-    Type *result = AST_NEW(Type);
-    result->id = TYPEID_STRUCT;
-    result->aggregate.fields = fields;
-    return result;
+internal Struct_Type *struct_type_create(Atom *name, Auto_Array<Decl*> members, Scope *scope) {
+    Struct_Type *type = TYPE_NEW(Struct_Type);
+    type->name = name;
+    type->members = members;
+    type->scope = scope;
+    return type;
 }
 
-internal Enum_Type *enum_type(Auto_Array<Enum_Field_Info> fields) {
-    Enum_Type *result = AST_NEW(Enum_Type);
-    result->id = TYPEID_ENUM;
-    result->fields = fields;
-    return result;
+internal Enum_Type *enum_type_create(Type *base_type, Auto_Array<Decl*> fields, Scope *scope) {
+    Enum_Type *type = TYPE_NEW(Enum_Type);
+    type->base_type = type;
+    type->fields = fields;
+    type->scope = scope;
+    return type;
 }
 
-internal Type *builtin_type_create(Type_ID type_id, String8 name, int bytes, Type_Flags flags = (Type_Flags)0) {
+internal Type *builtin_type_create(Type_Kind kind, String8 name, int bytes, Type_Flags flags = (Type_Flags)0) {
     Atom *atom = atom_create(name);
-    Type *type = AST_NEW(Type);
+    Type *type = TYPE_NEW(Type);
     type->name = atom;
-    type->id = type_id;
+    type->kind = kind;
     type->type_flags = flags;
     type->bytes = bytes;
     g_builtin_types.push(type);
@@ -69,47 +63,47 @@ internal Type *builtin_type_create(Type_ID type_id, String8 name, int bytes, Typ
 
 internal void register_builtin_types() {
     int system_max_bytes = 8;
-    type_poison = builtin_type_create(TYPEID_POISON, str_lit("builtin(poison)"), 0);//, TYPE_FLAG_POISON);
-    type_void   = builtin_type_create(TYPEID_VOID,    str_lit("void"),   0);//, TYPE_FLAG_VOID);
-    type_u8    = builtin_type_create(TYPEID_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
-    type_u16   = builtin_type_create(TYPEID_UINT16,   str_lit("u16"),    2);//, TYPE_FLAG_INTEGER);
-    type_u32   = builtin_type_create(TYPEID_UINT32,   str_lit("u32"),    4);//, TYPE_FLAG_INTEGER);
-    type_u64   = builtin_type_create(TYPEID_UINT64,   str_lit("u64"),    8);//, TYPE_FLAG_INTEGER);
-    type_i8    = builtin_type_create(TYPEID_INT8,     str_lit("i8"),     1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i16   = builtin_type_create(TYPEID_INT16,    str_lit("i16"),    2);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i32   = builtin_type_create(TYPEID_INT32,    str_lit("i32"),    4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i64   = builtin_type_create(TYPEID_INT64,    str_lit("i64"),    8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_uint  = builtin_type_create(TYPEID_UINT,     str_lit("uint"),   4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_int   = builtin_type_create(TYPEID_INT,      str_lit("int"),    4);//, TYPE_FLAG_INTEGER);
-    type_bool  = builtin_type_create(TYPEID_BOOL,     str_lit("bool"),   1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
-    type_usize = builtin_type_create(TYPEID_USIZE,    str_lit("usize"),  8);//, TYPE_FLAG_INTEGER);
-    type_isize = builtin_type_create(TYPEID_ISIZE,    str_lit("isize"),  8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_f32   = builtin_type_create(TYPEID_FLOAT32,  str_lit("f32"),    4);//, TYPE_FLAG_FLOAT);
-    type_f64   = builtin_type_create(TYPEID_FLOAT64,  str_lit("f64"),    8);//, TYPE_FLAG_FLOAT);
-    type_null = pointer_type(type_void);
+    type_invalid = builtin_type_create(TYPE_INVALID, str_lit("builtin(invalid)"), 0);
+    type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);//, TYPE_FLAG_VOID);
+    type_u8    = builtin_type_create(TYPE_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
+    type_u16   = builtin_type_create(TYPE_UINT16,   str_lit("u16"),    2);//, TYPE_FLAG_INTEGER);
+    type_u32   = builtin_type_create(TYPE_UINT32,   str_lit("u32"),    4);//, TYPE_FLAG_INTEGER);
+    type_u64   = builtin_type_create(TYPE_UINT64,   str_lit("u64"),    8);//, TYPE_FLAG_INTEGER);
+    type_i8    = builtin_type_create(TYPE_INT8,     str_lit("i8"),     1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_i16   = builtin_type_create(TYPE_INT16,    str_lit("i16"),    2);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_i32   = builtin_type_create(TYPE_INT32,    str_lit("i32"),    4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_i64   = builtin_type_create(TYPE_INT64,    str_lit("i64"),    8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_uint  = builtin_type_create(TYPE_UINT,     str_lit("uint"),   4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_int   = builtin_type_create(TYPE_INT,      str_lit("int"),    4);//, TYPE_FLAG_INTEGER);
+    type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
+    type_usize = builtin_type_create(TYPE_USIZE,    str_lit("usize"),  8);//, TYPE_FLAG_INTEGER);
+    type_isize = builtin_type_create(TYPE_ISIZE,    str_lit("isize"),  8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_f32   = builtin_type_create(TYPE_FLOAT32,  str_lit("f32"),    4);//, TYPE_FLAG_FLOAT);
+    type_f64   = builtin_type_create(TYPE_FLOAT64,  str_lit("f64"),    8);//, TYPE_FLAG_FLOAT);
+    type_null  = pointer_type_create(type_void);
 
+    type_string = builtin_type_create(TYPE_STRING, str_lit("string"), 16);
     {
-        type_string = builtin_type_create(TYPEID_STRING, str_lit("string"), 16);
-        type_string->aggregate.fields = {
-            { atom_create(str_lit("data")), pointer_type(type_u8) },
-            { atom_create(str_lit("count")), type_i32 }
-        };
+    //     type_string->aggregate.fields = {
+    //         { atom_create(str_lit("data")), pointer_type(type_u8) },
+    //         { atom_create(str_lit("count")), type_i32 }
+    //     };
     }
 }
 
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
-internal bool typecheck(Type *t0, Type *t1) {
+internal bool is_convertible(Type *t0, Type *t1) {
     Assert(t0 != NULL);
     Assert(t1 != NULL);
 
     if (t0 == t1) return true;
 
     //@Note Any results of poisoned types, just okay it
-    if (t0->is_poisoned || t1->is_poisoned) return true;
+    // if (t0->is_poisoned || t1->is_poisoned) return true;
 
     //@Note Nullable types
-    if (t1->id == TYPEID_NULL) {
+    if (t1->kind == TYPE_NULL) {
         if (t0->is_indirection_type()) {
             return true;
         } else {
@@ -173,5 +167,90 @@ internal bool typecheck_castable(Type *t0, Type *t1) {
     } else {
         return false;
     }
+}
+
+
+internal Type *type_deref(Type *t) {
+    if (t) {
+        if (t->base) {
+            return t->base;
+        }
+    }
+    return t;
+}
+
+
+internal char *string_from_type(Type *ty) {
+    cstring string = NULL;
+    if (ty == NULL) return "";
+
+    for (Type *type = ty; type; type = type->base) {
+        switch (type->kind) {
+        case TYPE_POINTER:
+            cstring_append(&string, "*");
+            break;
+
+        case TYPE_ARRAY:
+            cstring_append(&string, "[..]");
+            break;
+
+        case TYPE_TUPLE: {
+            Tuple_Type *tuple_type = (Tuple_Type *)type;
+            for (Type *type : tuple_type->types) {
+                cstring_append(&string, string_from_type(type));
+                if (type == tuple_type->types.back()) cstring_append(&string, ",");
+            }
+            break;
+        }
+
+        case TYPE_PROC: {
+            Proc_Type *proc_type = static_cast<Proc_Type*>(type);
+            cstring_append(&string, "(");
+
+            cstring_append(&string, ")");
+
+            if (proc_type->results) {
+                cstring_append(&string, "->");
+                cstring_append(&string, string_from_type(proc_type->results));
+            }
+            break;
+        }
+
+        case TYPE_ENUM: {
+            Enum_Type *enum_type = static_cast<Enum_Type*>(type);
+            if (enum_type->name) {
+                cstring_append(&string, enum_type->name->data);
+            } else {
+                cstring_append(&string, "<anon enum>");
+            }
+            break;
+        }
+
+        case TYPE_STRUCT: {
+            Struct_Type *struct_type = static_cast<Struct_Type*>(type);
+            if (struct_type->name) {
+                cstring_append(&string, struct_type->name->data);
+            } else {
+                cstring_append(&string, "<anon struct>");
+            }
+            break;
+        }
+
+        case TYPE_UNION: {
+            Union_Type *union_type = static_cast<Union_Type*>(type);
+            if (union_type->name) {
+                cstring_append(&string, union_type->name->data);
+            } else {
+                cstring_append(&string, "<anon union>");
+            }
+            break;
+        }
+
+        default:
+            cstring_append(&string, type->name->data);
+            break;
+        }
+    }
+    return string;
 }
 
