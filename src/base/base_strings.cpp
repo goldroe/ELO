@@ -182,6 +182,41 @@ internal cstring cstring__append(cstring string, const char *s) {
     return result;
 }
 
+internal cstring cstring__prepend(cstring string, const char *s) {
+    cstring result = string;
+    cstring_header *old_header = string ? CSTRING_HEADER(string) : nullptr;
+    u64 len = old_header ? old_header->len : 0;
+    u64 s_len = s ? strlen(s) : 0;
+    u64 new_len = len + s_len;
+    u64 cap = old_header ? old_header->cap : 0;
+    u64 new_cap = cap;
+    if (len + s_len > cap) {
+        new_cap = new_len * 2 + 1;
+        cstring_header *new_header = (cstring_header *)realloc(old_header, offsetof(cstring_header, data) + new_cap + 1);
+        result = (cstring)new_header->data;
+    }
+
+    cstring__set_len(result, new_len);
+    cstring__set_cap(result, new_cap);
+
+    if (string) {
+        char *buffer = (char *)malloc(len);
+        MemoryCopy(buffer, string, len);
+        MemoryCopy(result, s, s_len);
+        MemoryCopy(result + s_len, buffer, len);
+        free(buffer);
+    } else {
+        MemoryCopy(result, s, s_len);
+    }
+
+    result[new_len] = 0;
+    return result;
+}
+
+internal void cstring_prepend(cstring *string, const char *s) {
+    *string = cstring__prepend(*string, s);
+}
+
 internal cstring cstring_append(cstring string, const char *s) {
     cstring result;
     if (string) {
