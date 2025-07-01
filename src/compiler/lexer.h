@@ -14,147 +14,129 @@ struct Source_Pos {
     u64 index;
 };
 
+#define TOKEN_KINDS \
+    TOKEN_KIND(TOKEN_UNKNOWN, "Unknown"), \
+    TOKEN_KIND(TOKEN_EOF, "EOF"), \
+    TOKEN_KIND(TOKEN_IDENT, "Ident"), \
+    TOKEN_KIND(TOKEN_INTEGER, "Integer"), \
+    TOKEN_KIND(TOKEN_FLOAT, "Float"), \
+    TOKEN_KIND(TOKEN_STRING, "String"), \
+    TOKEN_KIND(TOKEN_SEMI, ";"), \
+    TOKEN_KIND(TOKEN_COLON, ":"), \
+    TOKEN_KIND(TOKEN_COMMA, ","), \
+    TOKEN_KIND(TOKEN_ARROW, "->"), \
+    TOKEN_KIND(TOKEN_OPERATOR_BEGIN, "Operator__Begin"), \
+    TOKEN_KIND(TOKEN_DOT, "."), \
+    TOKEN_KIND(TOKEN_ELLIPSIS, ".."), \
+    TOKEN_KIND(TOKEN_PLUS, "+"), \
+    TOKEN_KIND(TOKEN_MINUS, "-"), \
+    TOKEN_KIND(TOKEN_STAR, "*"), \
+    TOKEN_KIND(TOKEN_SLASH, "/"), \
+    TOKEN_KIND(TOKEN_MOD, "%"), \
+    TOKEN_KIND(TOKEN_ASSIGN_BEGIN, "Assign__Begin"), \
+    TOKEN_KIND(TOKEN_EQ, "="), \
+    TOKEN_KIND(TOKEN_PLUS_EQ, "+="), \
+    TOKEN_KIND(TOKEN_MINUS_EQ, "-="), \
+    TOKEN_KIND(TOKEN_STAR_EQ, "*="), \
+    TOKEN_KIND(TOKEN_SLASH_EQ, "/="), \
+    TOKEN_KIND(TOKEN_MOD_EQ, "%="), \
+    TOKEN_KIND(TOKEN_XOR_EQ, "^="), \
+    TOKEN_KIND(TOKEN_BAR_EQ, "|="), \
+    TOKEN_KIND(TOKEN_AMPER_EQ, "&="), \
+    TOKEN_KIND(TOKEN_LSHIFT_EQ, "<<="), \
+    TOKEN_KIND(TOKEN_RSHIFT_EQ, ">>="), \
+    TOKEN_KIND(TOKEN_ASSIGN_END, "Assign__End"), \
+    TOKEN_KIND(TOKEN_EQ2, "=="), \
+    TOKEN_KIND(TOKEN_NEQ, "!="), \
+    TOKEN_KIND(TOKEN_LT, "<"), \
+    TOKEN_KIND(TOKEN_LTEQ, "<="), \
+    TOKEN_KIND(TOKEN_GT, ">"), \
+    TOKEN_KIND(TOKEN_GTEQ, ">="), \
+    TOKEN_KIND(TOKEN_BANG, "!"), \
+    TOKEN_KIND(TOKEN_AMPER, "&"), \
+    TOKEN_KIND(TOKEN_BAR, "|"), \
+    TOKEN_KIND(TOKEN_AND, "&&"), \
+    TOKEN_KIND(TOKEN_OR, "||"), \
+    TOKEN_KIND(TOKEN_XOR, "^"), \
+    TOKEN_KIND(TOKEN_SQUIGGLE, "~"), \
+    TOKEN_KIND(TOKEN_LSHIFT, "<<"), \
+    TOKEN_KIND(TOKEN_RSHIFT, ">>"), \
+    TOKEN_KIND(TOKEN_LBRACKET, "["), \
+    TOKEN_KIND(TOKEN_RBRACKET, "]"), \
+    TOKEN_KIND(TOKEN_DOT_STAR, ".*"), \
+    TOKEN_KIND(TOKEN_OPERATOR_END, "Operator__End"), \
+    TOKEN_KIND(TOKEN_LPAREN, "("), \
+    TOKEN_KIND(TOKEN_RPAREN, ")"), \
+    TOKEN_KIND(TOKEN_LBRACE, "{"), \
+    TOKEN_KIND(TOKEN_RBRACE, "}"), \
+    TOKEN_KIND(TOKEN_KEYWORD_BEGIN, "Keyword__Begin"), \
+    TOKEN_KIND(TOKEN_ENUM, "enum"), \
+    TOKEN_KIND(TOKEN_STRUCT, "struct"), \
+    TOKEN_KIND(TOKEN_UNION, "union"), \
+    TOKEN_KIND(TOKEN_IF, "if"), \
+    TOKEN_KIND(TOKEN_ELSE, "else"), \
+    TOKEN_KIND(TOKEN_IFCASE, "ifcase"), \
+    TOKEN_KIND(TOKEN_CASE, "case"), \
+    TOKEN_KIND(TOKEN_DO, "do"), \
+    TOKEN_KIND(TOKEN_WHILE, "while"), \
+    TOKEN_KIND(TOKEN_FOR, "for"), \
+    TOKEN_KIND(TOKEN_BREAK, "break"), \
+    TOKEN_KIND(TOKEN_CONTINUE, "continue"), \
+    TOKEN_KIND(TOKEN_FALLTHROUGH, "fallthrough"), \
+    TOKEN_KIND(TOKEN_RETURN, "return"), \
+    TOKEN_KIND(TOKEN_DEFER, "defer"), \
+    TOKEN_KIND(TOKEN_CAST, "cast"), \
+    TOKEN_KIND(TOKEN_OPERATOR, "operator"), \
+    TOKEN_KIND(TOKEN_IN, "in"), \
+    TOKEN_KIND(TOKEN_SIZEOF, "sizeof"), \
+    TOKEN_KIND(TOKEN_TYPEOF, "typeof"), \
+    TOKEN_KIND(TOKEN_KEYWORD_END, "Keyword__End"), \
+    TOKEN_KIND(TOKEN_DIRECTIVE_BEGIN, "Directive__Begin"), \
+    TOKEN_KIND(TOKEN_LOAD, "#load"), \
+    TOKEN_KIND(TOKEN_IMPORT, "#import"), \
+    TOKEN_KIND(TOKEN_FOREIGN, "#foreign"), \
+    TOKEN_KIND(TOKEN_TYPEDEF, "#type"), \
+    TOKEN_KIND(TOKEN_COMPLETE, "#complete"), \
+    TOKEN_KIND(TOKEN_DIRECTIVE_END, "Directive__End"), \
+
 enum Token_Kind {
-    TOKEN_ERR = -1,
-    TOKEN_EOF,
-
-    //@Note Literals
-    TOKEN_IDENT,
-    TOKEN_INTLIT,
-    TOKEN_STRLIT,
-    TOKEN_FLOATLIT,
-
-    TOKEN_SEMI,
-    TOKEN_COLON,
-    TOKEN_COLON2,
-    TOKEN_COMMA,
-    TOKEN_ARROW,
-
-    //@Note Operators
-    TOKEN_OPERATOR_BEGIN,
-
-    TOKEN_DOT,
-    TOKEN_ELLIPSIS,
-
-    TOKEN_PLUS,
-    TOKEN_MINUS,
-    TOKEN_STAR,
-    TOKEN_SLASH,
-    TOKEN_MOD,
-
-    TOKEN_COLON_EQ,
-
-    //@Note Assignment operators
-    TOKEN_ASSIGN_BEGIN,
-    TOKEN_EQ,
-    TOKEN_PLUS_EQ,
-    TOKEN_MINUS_EQ,
-    TOKEN_STAR_EQ,
-    TOKEN_SLASH_EQ,
-    TOKEN_MOD_EQ,
-    TOKEN_XOR_EQ,
-    TOKEN_BAR_EQ,
-    TOKEN_AMPER_EQ,
-    TOKEN_LSHIFT_EQ,
-    TOKEN_RSHIFT_EQ,
-    TOKEN_ASSIGN_END,
-
-    TOKEN_EQ2,
-    TOKEN_NEQ,
-    TOKEN_LT,
-    TOKEN_LTEQ,
-    TOKEN_GT,
-    TOKEN_GTEQ,
-
-    TOKEN_BANG,
-    TOKEN_AMPER,
-    TOKEN_BAR,
-    TOKEN_AND,
-    TOKEN_OR,
-    TOKEN_XOR,
-    TOKEN_SQUIGGLE,
-
-    TOKEN_LSHIFT,
-    TOKEN_RSHIFT,
-
-    TOKEN_LBRACKET,
-    TOKEN_RBRACKET,
-
-    TOKEN_DOT_STAR,
-
-    TOKEN_OPERATOR_END,
-
-    TOKEN_LPAREN,
-    TOKEN_RPAREN,
-    TOKEN_LBRACE,
-    TOKEN_RBRACE,
-
-    //@Note Keywords
-    TOKEN_KEYWORD_BEGIN,
-    TOKEN_NULL,
-    TOKEN_ENUM,
-    TOKEN_STRUCT,
-    TOKEN_UNION,
-    TOKEN_TRUE,
-    TOKEN_FALSE,
-    TOKEN_IF,
-    TOKEN_ELSE,
-    TOKEN_IFCASE,
-    TOKEN_CASE,
-    TOKEN_DO,
-    TOKEN_WHILE,
-    TOKEN_FOR,
-    TOKEN_BREAK,
-    TOKEN_CONTINUE,
-    TOKEN_FALLTHROUGH,
-    TOKEN_RETURN,
-    TOKEN_CAST,
-    TOKEN_OPERATOR,
-    TOKEN_IN,
-    TOKEN_SIZEOF,
-    TOKEN_TYPEOF,
-    TOKEN_KEYWORD_END,
-
-    //@Note Directives
-    TOKEN_DIRECTIVE_BEGIN,
-    TOKEN_LOAD,
-    TOKEN_IMPORT,
-    TOKEN_FOREIGN,
-    TOKEN_TYPEDEF,
-    TOKEN_COMPLETE,
-    TOKEN_DIRECTIVE_END,
-
+#define TOKEN_KIND(K,S) K
+    TOKEN_KINDS
+#undef TOKEN_KIND
     TOKEN_COUNT
 };
 
-enum Literal_Flags {
-    LITERAL_NULL     = (1<<0),
-    LITERAL_INT      = (1<<1),
-    LITERAL_FLOAT    = (1<<2),
-    LITERAL_BOOLEAN  = (1<<3),
-    LITERAL_STRING   = (1<<4),
-    LITERAL_U8       = (1<<5),
-    LITERAL_U16      = (1<<6),
-    LITERAL_U32      = (1<<7),
-    LITERAL_U64      = (1<<8),
-    LITERAL_I8       = (1<<9),
-    LITERAL_I16      = (1<<10),
-    LITERAL_I32      = (1<<11),
-    LITERAL_I64      = (1<<12),
-    LITERAL_F32      = (1<<13),
-    LITERAL_F64      = (1<<14),
+const char *token_strings[] = {
+#define TOKEN_KIND(K,S) S
+    TOKEN_KINDS
+#undef TOKEN_KIND
+};
+
+enum Literal_Kind {
+    LITERAL_DEFAULT,
+    LITERAL_U8,
+    LITERAL_U16,
+    LITERAL_U32,
+    LITERAL_U64,
+    LITERAL_I8,
+    LITERAL_I16,
+    LITERAL_I32,
+    LITERAL_I64,
+    LITERAL_F32,
+    LITERAL_F64,
 };
 
 struct Token {
-    Token_Kind kind = TOKEN_ERR;
-    Source_Pos start, end;
-    Literal_Flags literal_flags = (Literal_Flags)0;
+    Token_Kind kind = TOKEN_UNKNOWN;
+    Source_Pos start = {};
+    Source_Pos end = {};
 
     union {
         Atom *name;
-        String8 strlit;
-        u64 intlit;
-        f64 floatlit;
+        struct {
+            Constant_Value value;
+            Literal_Kind literal_kind;
+        };
     };
 };
 
@@ -167,6 +149,7 @@ struct Lexer {
     u64 column_number = 0;
     u64 stream_index = 0;
 
+    int comment_region_level = 0;
     Token current_token;
 
     int error_count = 0;
@@ -186,11 +169,9 @@ struct Lexer {
     Token current();
 
     int get_next_hex_digit();
-
-    bool is_valid_suffix(String8 suffix);
     String8 scan_number_suffix();
-    Token scan_integer();
-    f64 scan_float();
+    f64 Lexer::scan_mantissa();
+    void Lexer::scan_number(Token *token);
 
     u8 get_escape_character(u8 c);
     u8 peek_character();
@@ -198,6 +179,8 @@ struct Lexer {
     void eat_char();
     void eat_line();
     void next_token();
+
+    void eat_comment_region();
 };
 
 

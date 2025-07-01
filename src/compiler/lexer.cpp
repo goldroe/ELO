@@ -1,9 +1,13 @@
 
-global Token poisoned_token = {TOKEN_ERR};
+global Token poisoned_token = {TOKEN_UNKNOWN};
 
 global u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];
 
 internal void compiler_error(char *fmt, ...);
+
+internal const char *string_from_token(Token_Kind token) {
+    return token_strings[token];
+}
 
 u8 Lexer::get_escape_character(u8 c) {
     switch (c) {
@@ -215,7 +219,7 @@ int Lexer::get_next_hex_digit() {
     return result;
 }
 
-String8 Lexer::scan_number_suffix() {
+String Lexer::scan_number_suffix() {
     u8 *start = stream;
     for (;;) {
         u8 c = peek_character();
@@ -224,17 +228,49 @@ String8 Lexer::scan_number_suffix() {
         }
         eat_char();
     }
-    String8 result = str8(start, stream - start);
+    String result = str8(start, stream - start);
     return result;
 }
 
-Token Lexer::scan_integer() {
-    u8 *start = stream;
+void Lexer::eat_comment_region() {
+    while (comment_region_level != 0) {
+        if (*stream == 0) {
+            report_parser_error(this, "unexpected EOF in comment region.\n");
+            return;
+        }
 
-    Token result = {};
-    result.literal_flags = LITERAL_INT;
+        if (*stream == '*') {
+            eat_char();
+            if (*stream == '/') {
+                eat_char();
+                comment_region_level--;
+            }
+        } else if (*stream == '/') {
+            eat_char();
+            if (*stream == '*') {
+                eat_char();
+                comment_region_level++;
+            }
+        } else {
+            eat_char();
+        }
+    }
+}
 
+f64 Lexer::scan_mantissa() {
+    char *start = (char *)stream;
+    eat_char();
+    while (isdigit(peek_character())) {
+        eat_char();
+    }
+
+    f64 mantissa = strtod(start, nullptr);
+    return mantissa;
+}
+
+void Lexer::scan_number(Token *token) {
     int base = 10;
+
     if (peek_character() == '0') {
         eat_char();
         u8 c = peek_character();
@@ -249,35 +285,37 @@ Token Lexer::scan_integer() {
         }
     }
 
-    bool bad_suffix = false;
+    bigint integer = {};
+    bool is_floating = false;
+    f64 mantissa = 0.0;
 
-    u64 value = 0;
-    while (isalnum(*stream)) {
-        u8 digit_char = peek_character();
+    for (;;) {
+        if (peek_character() == '.' && peek_next_character() != '.') {  //@Note Avoids conflict with ellipsis '..'
+            is_floating = true;
+            mantissa = scan_mantissa();
+            break;
+        }
+
         int digit = get_next_hex_digit();
-
         if (digit >= base) {
-            bad_suffix = true;
             break;
         }
-
         if (digit == -1) {
-            bad_suffix = true;
             break;
         }
 
-        value = value * base + digit;
+        // N = N * B + D
+        mp_mul_d(&integer, base, &integer);
+        mp_add_d(&integer, digit, &integer);
+
         eat_char();
     }
 
-    String8 suffix = str8_zero();
-    if (bad_suffix) {
-        suffix = scan_number_suffix();
-    }
+    String suffix = scan_number_suffix();
 
     struct Suffix_Literal {
-        String8 string;
-        Literal_Flags literal;
+        String string;
+        Literal_Kind literal;
     } suffix_literals[] = {
         {str_lit("u8"),  LITERAL_U8},
         {str_lit("u16"), LITERAL_U16},
@@ -287,13 +325,16 @@ Token Lexer::scan_integer() {
         {str_lit("i16"), LITERAL_I16},
         {str_lit("i32"), LITERAL_I32},
         {str_lit("i64"), LITERAL_I64},
+
         {str_lit("f32"), LITERAL_F32},
         {str_lit("f64"), LITERAL_F64}
     };
 
+    token->literal_kind = LITERAL_DEFAULT;
+
     //@Note Encountered suffix to check
     if (suffix.count > 0) {
-        Suffix_Literal *valid_suffix = NULL;
+        Suffix_Literal *valid_suffix = nullptr;
         for (int i = 0; i < ArrayCount(suffix_literals); i++) {
             Suffix_Literal suffix_literal = suffix_literals[i];
             if (str8_match(suffix_literal.string, suffix, StringMatchFlag_CaseInsensitive)) {
@@ -303,25 +344,26 @@ Token Lexer::scan_integer() {
         }
 
         if (valid_suffix) {
-            result.literal_flags = valid_suffix->literal;
+            token->literal_kind = valid_suffix->literal;
         } else {
             report_parser_error(this, "illegal literal suffix: '%S'.\n", suffix);
-            return poisoned_token;
         }
     }
 
-    result.kind = TOKEN_INTLIT;
-    result.intlit = value;
-    return result;
-}
-
-f64 Lexer::scan_float() {
-    char *end_ptr = (char *)stream;
-    f64 result = strtod((char *)stream, &end_ptr);
-    for (char *ptr = (char *)stream; ptr < end_ptr; ptr++) {
-        eat_char();
+    if (is_floating) {
+        f64 f = f64_from_bigint(&integer) + mantissa;
+        token->kind = TOKEN_FLOAT;
+        token->value = make_constant_value_float(f);
+        if (LITERAL_U8 <= token->literal_kind && token->literal_kind <= LITERAL_I64) {
+            report_parser_error(this, "illegal integer suffix on floating-point.\n");
+        }
+    } else {
+        token->kind = TOKEN_INTEGER;
+        token->value = make_constant_value_int(integer);
+        if (token->literal_kind == LITERAL_F32 || token->literal_kind == LITERAL_F64) {
+            report_parser_error(this, "illegal floating-point suffix on integer.\n");
+        }
     }
-    return result;
 }
 
 void Lexer::next_token() {
@@ -333,7 +375,7 @@ lex_start:
     
     switch (*stream) {
     default:
-        token.kind = TOKEN_ERR;
+        token.kind = TOKEN_UNKNOWN;
         report_parser_error(this, "unknown character '%#x'.\n", *stream);
         eat_char();
         break;
@@ -343,16 +385,12 @@ lex_start:
         break;
         
     case ' ': case '\t': case '\f': case '\n': case '\r':
-    {
         while (isspace(*stream)) {
             eat_char();
         }
         goto lex_start;
-        break;
-    }
 
-    case '#':
-    {
+    case '#': {
         u8 *start = stream;
         eat_char();
         while (isalpha(*stream) || *stream == '_') {
@@ -360,7 +398,7 @@ lex_start:
             eat_char();
         }
         u64 count = stream - start;
-        String8 string = str8(start, count);
+        String string = str8(start, count);
         Atom *atom = atom_lookup(string);
         if (atom) {
             Assert(atom->flags & ATOM_FLAG_DIRECTIVE);
@@ -379,7 +417,7 @@ lex_start:
             eat_char();
         }
         u64 count = stream - begin;
-        String8 string = str8(begin, count);
+        String string = str8(begin, count);
 
         Atom *atom = atom_create(string);
         if (atom->flags & ATOM_FLAG_IDENT) {
@@ -393,40 +431,14 @@ lex_start:
         break;
     }
 
-    case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-    {
-        while (isalnum(*stream)) {
-            eat_char();
-        }
-        bool do_float = false;
-        if (peek_character() == '.') {
-            if (peek_next_character() != '.') { //@Note Avoids conflict with ellipsis '..'
-                do_float = true;
-            }
-        }
-
-        //@Note Rewind
-        stream_index = token.start.index;
-        stream = source_file->text.data + stream_index;
-        line_number = token.start.line;
-        column_number = token.start.col;
-
-        if (do_float) {
-            f64 float_val = scan_float();
-            token.kind = TOKEN_FLOATLIT;
-            token.floatlit = float_val;
-            token.literal_flags = LITERAL_FLOAT;
-        } else {
-            Token int_token = scan_integer();
-            token.kind = TOKEN_INTLIT;
-            token.intlit = int_token.intlit;
-            token.literal_flags = int_token.literal_flags;
-        }
+    case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        scan_number(&token);
         break;
     }
 
-    case '"':
-    {
+    case '"': {
+        token.kind = TOKEN_STRING;
+
         eat_char();
         u8 *start = stream;
         int count = 0;
@@ -449,14 +461,12 @@ lex_start:
         eat_char(); // eat '"'
 
         g_lexer_string_buffer[count] = 0;
-        String8 string = str8_copy(heap_allocator(), str8(g_lexer_string_buffer, count));
-        token.kind = TOKEN_STRLIT;
-        token.strlit = string; 
+        String string = str8_copy(heap_allocator(), str8(g_lexer_string_buffer, count));
+        token.value.value_string = string;
         break;
     }
 
     case '%':
-    {
         token.kind = TOKEN_MOD;
         eat_char();
         if (*stream == '=') {
@@ -464,10 +474,8 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '&':
-    {
         token.kind = TOKEN_AMPER;
         eat_char();
         if (*stream == '&') {
@@ -475,10 +483,8 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '|':
-    {
         token.kind = TOKEN_BAR;
         eat_char();
         if (*stream == '|') {
@@ -486,30 +492,22 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '^':
-    {
         token.kind = TOKEN_XOR;
         eat_char();
-
         if (*stream == '=') {
             token.kind = TOKEN_XOR_EQ;
             eat_char();
         }
         break;
-    }
-
 
     case '~':
-    {
         token.kind = TOKEN_SQUIGGLE;
         eat_char();
         break;
-    }
 
     case '!':
-    {
         token.kind = TOKEN_BANG;
         eat_char();
         if (*stream == '=') {
@@ -517,24 +515,18 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '+':
-    {
         token.kind = TOKEN_PLUS;
-
         eat_char();
         if (*stream == '=') {
             eat_char();
             token.kind = TOKEN_PLUS_EQ;
         }
         break;
-    }
 
     case '-':
-    {
         token.kind = TOKEN_MINUS;
-
         eat_char();
         if (*stream == '>') {
             token.kind = TOKEN_ARROW;
@@ -544,24 +536,18 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '*':
-    {
         token.kind = TOKEN_STAR;
-
         eat_char();
         if (*stream == '=') {
             token.kind = TOKEN_STAR_EQ;
             eat_char();
         }
         break;
-    }
 
     case '/':
-    {
         token.kind = TOKEN_SLASH;
-
         eat_char();
         if (*stream == '=') {
             token.kind = TOKEN_SLASH_EQ;
@@ -569,26 +555,25 @@ lex_start:
         } else if (*stream == '/') {
             eat_line();
             goto lex_start;
+        } else if (*stream == '*') {
+            eat_char();
+            comment_region_level = 1;
+            eat_comment_region();
+            goto lex_start;
         }
         break;
-    }
 
     case '=':
-    {
         token.kind = TOKEN_EQ;
-
         eat_char();
         if (*stream == '=') {
             token.kind = TOKEN_EQ2;
             eat_char();
         }
         break;
-    }
 
     case '<':
-    {
         token.kind = TOKEN_LT;
-
         eat_char();
         if (*stream == '<') {
             token.kind = TOKEN_LSHIFT;
@@ -602,12 +587,9 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '>':
-    {
         token.kind = TOKEN_GT;
-
         eat_char();
         if (*stream == '>') {
             token.kind = TOKEN_RSHIFT;
@@ -621,7 +603,6 @@ lex_start:
             eat_char();
         }
         break;
-    }
 
     case '(':
         token.kind = TOKEN_LPAREN;
@@ -651,7 +632,6 @@ lex_start:
         break;
 
     case '.':
-    {
         token.kind = TOKEN_DOT;
         eat_char();
         if (*stream == '.') {
@@ -662,12 +642,10 @@ lex_start:
             eat_char();
         }
         break; 
-    }
 
-    case '\'':
-    {
+    case '\'': {
         eat_char();
-        u8 c = 0;
+        int c = 0;
         if (peek_character() == '\\') {
             eat_char();
             c = get_escape_character(peek_character());
@@ -678,14 +656,13 @@ lex_start:
         }
         eat_char();
 
-        token.kind = TOKEN_INTLIT;
-        token.intlit = c;
-        token.literal_flags = LITERAL_U8;
+        token.kind = TOKEN_INTEGER;
+        token.value = make_constant_value_int(bigint_make(c));
+        token.literal_kind = LITERAL_U8;
         break;
     }
 
-    case ',':
-    {
+    case ',': {
         token.kind = TOKEN_COMMA;
         eat_char();
         break;
@@ -697,167 +674,12 @@ lex_start:
         break;
 
     case ':':
-    {
         token.kind = TOKEN_COLON;
         eat_char();
-        // if (*stream == '=') {
-        //     token.kind = TOKEN_COLON_EQ;
-        //     eat_char();
-        // } else if (*stream == ':') {
-        //     token.kind = TOKEN_COLON2;
-        //     eat_char();
-        // }
         break;
-    }
     }
 
     token.end = make_source_pos(source_file, line_number, column_number, stream_index);
 
     current_token = token;
-}
-
-internal char *string_from_token(Token_Kind token) {
-    switch (token) {
-    default:
-        return "UNKNOWN";
-
-    case TOKEN_EOF:
-        return "EOF";
-
-    case TOKEN_IDENT:
-        return "name";
-    case TOKEN_INTLIT:
-        return "intlit";
-    case TOKEN_STRLIT:
-        return "strlit";
-    case TOKEN_FLOATLIT:
-        return "floatlit";
-
-    case TOKEN_SEMI:
-        return ";";
-    case TOKEN_COLON:
-        return ":";
-    case TOKEN_COLON2:
-        return "::";
-    case TOKEN_COMMA:
-        return ",";
-    case TOKEN_DOT:
-        return ".";
-    case TOKEN_ELLIPSIS:
-        return "..";
-    case TOKEN_ARROW:
-        return "->";
-
-    case TOKEN_PLUS:
-        return "+";
-    case TOKEN_MINUS:
-        return "-";
-    case TOKEN_STAR:
-        return "*";
-    case TOKEN_SLASH:
-        return "/";
-    case TOKEN_MOD:
-        return "%";
-
-    case TOKEN_COLON_EQ:
-        return ":=";
-    case TOKEN_PLUS_EQ:
-        return "+=";
-    case TOKEN_MINUS_EQ:
-        return "-=";
-    case TOKEN_STAR_EQ:
-        return "*=";
-    case TOKEN_SLASH_EQ:
-        return "/=";
-    case TOKEN_MOD_EQ:
-        return "%=";
-    case TOKEN_XOR_EQ:
-        return "^=";
-    case TOKEN_BAR_EQ:
-        return "|=";
-    case TOKEN_AMPER_EQ:
-        return "&=";
-    case TOKEN_LSHIFT_EQ:
-        return "<<=";
-    case TOKEN_RSHIFT_EQ:
-        return ">>=";
-
-    case TOKEN_EQ:
-        return "=";
-    case TOKEN_EQ2:
-        return "==";
-    case TOKEN_NEQ:
-        return "!=";
-    case TOKEN_LT:
-        return "<";
-    case TOKEN_LTEQ:
-        return "<=";
-    case TOKEN_GT:
-        return ">";
-    case TOKEN_GTEQ:
-        return ">=";
-
-    case TOKEN_BANG:
-        return "!";
-    case TOKEN_AMPER:
-        return "&";
-    case TOKEN_BAR:
-        return "|";
-    case TOKEN_AND:
-        return "&&";
-    case TOKEN_OR:
-        return "||";
-    case TOKEN_XOR:
-        return "^";
-
-    case TOKEN_DOT_STAR:
-        return ".*";
-
-    case TOKEN_LSHIFT:
-        return "<<";
-    case TOKEN_RSHIFT:
-        return ">>";
-
-    case TOKEN_LPAREN:
-        return "(";
-    case TOKEN_RPAREN:
-        return ")";
-    case TOKEN_LBRACKET:
-        return "[";
-    case TOKEN_RBRACKET:
-        return "]";
-    case TOKEN_LBRACE:
-        return "{";
-    case TOKEN_RBRACE:
-        return "}";
-
-    case TOKEN_NULL:
-        return "null";
-    case TOKEN_IF:
-        return "if";
-    case TOKEN_ELSE:
-        return "else";
-    case TOKEN_IFCASE:
-        return "ifcase";
-    case TOKEN_CASE:
-        return "case";
-    case TOKEN_WHILE:
-        return "while";
-    case TOKEN_FOR:
-        return "for";
-    case TOKEN_RETURN:
-        return "return";
-    case TOKEN_CONTINUE:
-        return "continue";
-    case TOKEN_BREAK:
-        return "break";
-    case TOKEN_STRUCT:
-        return "struct";
-    case TOKEN_ENUM:
-        return "enum";
-    case TOKEN_TRUE:
-        return "true";
-    case TOKEN_FALSE:
-        return "false";
-    }
 }
