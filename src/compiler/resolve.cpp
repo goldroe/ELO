@@ -123,7 +123,6 @@ void Resolver::resolve_variable_decl(Decl *decl) {
 }
 
 void Resolver:: resolve_constant_decl(Decl *decl) {
-
 }
 
 void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {

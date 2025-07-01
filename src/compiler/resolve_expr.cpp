@@ -226,6 +226,9 @@ void Resolver::resolve_cast_expr(Ast_Cast *cast) {
         if (!typecheck_castable(cast->inferred_type, cast->elem->inferred_type)) {
             report_ast_error(cast->elem, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->elem), string_from_type(cast->inferred_type), string_from_type(cast->elem->inferred_type));
         }
+        if (cast->elem->mode == ADDRESSING_CONSTANT) {
+            cast->value = constant_cast_value(cast->elem->value, cast->inferred_type);
+        }
     } else {
         cast->poison();
     }
@@ -343,11 +346,11 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
     case CONSTANT_VALUE_INTEGER:
         switch (literal->token.kind) {
         case LITERAL_DEFAULT: type = type_int; break;
-        case LITERAL_U8: type = type_u8; break;
+        case LITERAL_U8:  type = type_u8; break;
         case LITERAL_U16: type = type_u16; break;
         case LITERAL_U32: type = type_u32; break;
         case LITERAL_U64: type = type_u64; break;
-        case LITERAL_I8: type = type_i8; break;
+        case LITERAL_I8:  type = type_i8; break;
         case LITERAL_I16: type = type_i16; break;
         case LITERAL_I32: type = type_i32; break;
         case LITERAL_I64: type = type_i64; break;

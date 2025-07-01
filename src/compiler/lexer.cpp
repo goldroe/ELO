@@ -351,7 +351,7 @@ void Lexer::scan_number(Token *token) {
     }
 
     if (is_floating) {
-        f64 f = f64_from_bigint(&integer) + mantissa;
+        f64 f = f64_from_bigint(integer) + mantissa;
         token->kind = TOKEN_FLOAT;
         token->value = make_constant_value_float(f);
         if (LITERAL_U8 <= token->literal_kind && token->literal_kind <= LITERAL_I64) {

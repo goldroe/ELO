@@ -1,17 +1,31 @@
 
-internal u64 u64_from_bigint(bigint *i) {
-    u64 u = mp_get_u64(i);
+internal u64 u64_from_bigint(bigint i) {
+    u64 u = mp_get_u64(&i);
     return u;
 }
 
-internal f64 f64_from_bigint(bigint *i) {
-    f64 f = mp_get_double(i);
+internal f64 f64_from_bigint(bigint i) {
+    f64 f = mp_get_double(&i);
     return f;
 }
 
 internal bigint bigint_make(int value) {
     bigint i = {};
     mp_init_set(&i, value);
+    return i;
+}
+
+internal bigint bigint_make(u64 value) {
+    bigint i = {};
+    mp_init_u64(&i, value);
+    return i;
+}
+
+internal bigint bigint_from_f64(f64 f) {
+    bigint i = {};
+    mp_init(&i);
+    u64 u = (u64)f;
+    mp_set_u64(&i, u);
     return i;
 }
 
@@ -102,6 +116,25 @@ internal Constant_Value make_constant_value_float(f64 value) {
     result.kind = CONSTANT_VALUE_FLOAT;
     result.value_float = value;
     return result;
+}
+
+internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
+    switch (value.kind) {
+    case CONSTANT_VALUE_INTEGER: {
+        if (ct->is_float_type()) {
+            return make_constant_value_float(f64_from_bigint(value.value_integer));
+        }
+        break;
+    }
+
+    case CONSTANT_VALUE_FLOAT: {
+        if (ct->is_integral_type()) {
+            return make_constant_value_int(bigint_from_f64(value.value_float));
+        }
+        break;
+    }
+    }
+    return value;
 }
 
 internal Constant_Value constant_unary_op_value(OP op, Constant_Value x) {

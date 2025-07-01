@@ -141,8 +141,8 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
                     report_ast_error(range->rhs, "range in for loop must be integral type.\n");
                     continue;
                 }
-                u64 min = u64_from_bigint(&range->lhs->value.value_integer);
-                u64 max = u64_from_bigint(&range->rhs->value.value_integer);
+                u64 min = u64_from_bigint(range->lhs->value.value_integer);
+                u64 max = u64_from_bigint(range->rhs->value.value_integer);
                 for (u64 c = min; c <= max; c++) {
                     if (enum_values.find(c) != enum_values.end()) {
                         ifcase->poison();
@@ -153,7 +153,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
                     }
                 }
             } else if (label->cond) {
-                u64 c = u64_from_bigint(&label->cond->value.value_integer);
+                u64 c = u64_from_bigint(label->cond->value.value_integer);
                 auto find = enum_values.find(c);
                 if (find != enum_values.end()) {
                     report_ast_error(label, "case value '%llu' already used.\n", c);
@@ -169,7 +169,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
             Enum_Type *et = (Enum_Type *)ifcase->cond->inferred_type;
 
             for (Decl *field : et->fields) {
-                if (enum_values.find(u64_from_bigint(&field->constant_value.value_integer)) == enum_values.end()) {
+                if (enum_values.find(u64_from_bigint(field->constant_value.value_integer)) == enum_values.end()) {
                     unused.push(field);
                 }
             }
