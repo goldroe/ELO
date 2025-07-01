@@ -1,4 +1,595 @@
 global Arena *g_ast_arena;
+global u64 g_ast_counter;
+
+internal bool is_ast_type(Ast *node) {
+    switch (node->kind) {
+    case AST_STRUCT_TYPE:
+    case AST_ENUM_TYPE:
+    case AST_UNION_TYPE:
+    case AST_POINTER_TYPE:
+    case AST_ARRAY_TYPE:
+        return true;
+    }
+    return false;
+}
+
+internal inline Allocator ast_allocator() {
+    return arena_allocator(g_ast_arena);
+}
+
+internal inline Ast *ast__init(Ast *node, Source_File *f) {
+    node->file = f;
+    node->id = g_ast_counter++;
+    return node;
+}
+
+internal inline Ast *ast_alloc(u64 size, int alignment) {
+    Ast *node = (Ast *)arena_alloc(g_ast_arena, size, alignment);
+    return node;
+}
+
+internal Ast_Root *ast_root(Source_File *f, Auto_Array<Ast*> decls) {
+    Ast_Root *node = AST_NEW(f, Ast_Root);
+    node->decls = decls;
+    return node;
+}
+
+internal Ast_Empty_Stmt *ast_empty_stmt(Source_File *f, Token token) {
+    Ast_Empty_Stmt *node = AST_NEW(f, Ast_Empty_Stmt);
+    node->token = token;
+    return node;
+}
+
+internal Ast_Bad_Expr *ast_bad_expr(Source_File *f, Token start, Token end) {
+    Ast_Bad_Expr *node = AST_NEW(f, Ast_Bad_Expr);
+    node->poison();
+    node->start = start;
+    node->end = end;
+    return node;
+}
+
+internal Ast_Bad_Stmt *ast_bad_stmt(Source_File *f, Token start, Token end) {
+    Ast_Bad_Stmt *node = AST_NEW(f, Ast_Bad_Stmt);
+    node->poison();
+    node->start = start;
+    node->end = end;
+    return node;
+}
+
+internal Ast_Bad_Decl *ast_bad_decl(Source_File *f, Token start, Token end) {
+    Ast_Bad_Decl *node = AST_NEW(f, Ast_Bad_Decl);
+    node->poison();
+    node->start = start;
+    node->end = end;
+    return node;
+}
+
+internal Ast_Return *ast_return_stmt(Source_File *f, Token token, Auto_Array<Ast*> values) {
+    Ast_Return *node = AST_NEW(f, Ast_Return);
+    node->values = values;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Continue *ast_continue_stmt(Source_File *f, Token token) {
+    Ast_Continue *node = AST_NEW(f, Ast_Continue);
+    node->token = token;
+    return node;
+}
+
+internal Ast_Break *ast_break_stmt(Source_File *f, Token token) {
+    Ast_Break *node = AST_NEW(f, Ast_Break);
+    node->token = token;
+    return node;
+}
+
+internal Ast_Fallthrough *ast_fallthrough_stmt(Source_File *f, Token token) {
+    Ast_Fallthrough *node = AST_NEW(f, Ast_Fallthrough);
+    node->token = token;
+    return node;
+}
+
+internal Ast_Defer *ast_defer_stmt(Source_File *f, Token token, Ast *stmt) {
+    Ast_Defer *node = AST_NEW(f, Ast_Defer);
+    node->token = token;
+    node->stmt = stmt;
+    return node;
+}
+
+internal Ast_Type_Decl *ast_type_decl(Source_File *f, Atom *name, Ast *type) {
+    Ast_Type_Decl *node = AST_NEW(f, Ast_Type_Decl);
+    node->flags |= AST_FLAG_TYPE;
+    node->name = name;
+    node->type = type;
+    return node;
+}
+
+internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *type, Ast_Block *body) {
+    Ast_Proc_Lit *node = AST_NEW(f, Ast_Proc_Lit);
+    node->type = type;
+    node->body = body;
+    return node;
+}
+
+internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr) {
+    Ast_Enum_Field *node = AST_NEW(f, Ast_Enum_Field);
+    node->flags |= AST_FLAG_CONSTANT;
+    node->name = ident;
+    node->expr = expr;
+    return node;
+}
+
+internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *type) {
+    Ast_Param *node = AST_NEW(f, Ast_Param);
+    node->name = name;
+    node->type = type;
+    return node;
+}
+
+internal Ast_Ident *ast_ident(Source_File *f, Token token) {
+    Ast_Ident *node = AST_NEW(f, Ast_Ident);
+    node->name = token.name;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Literal *ast_literal(Source_File *f, Token token) {
+    Ast_Literal *node = AST_NEW(f, Ast_Literal);
+    node->value = token.value;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *type, Auto_Array<Ast*> elements) {
+    Ast_Compound_Literal *node = AST_NEW(f, Ast_Compound_Literal);
+    node->elements = elements;
+    node->type = type;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem) {
+    Ast_Paren *node = AST_NEW(f, Ast_Paren);
+    node->elem = elem;
+    node->flags = elem->flags;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem) {
+    Ast_Unary *node = AST_NEW(f, Ast_Unary);
+    node->op = op;
+    node->elem = elem;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Address *ast_address_expr(Source_File *f, Token token, Ast *elem) {
+    Ast_Address *node = AST_NEW(f, Ast_Address);
+    node->elem = elem;
+    node->flags |= AST_FLAG_LVALUE;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Range *ast_range_expr(Source_File *f, Token token, Ast *lhs, Ast *rhs) {
+    Ast_Range *node = AST_NEW(f, Ast_Range);
+    node->lhs = lhs;
+    node->rhs = rhs;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem) {
+    Ast_Deref *node = AST_NEW(f, Ast_Deref);
+    node->elem = elem;
+    node->flags |= AST_FLAG_LVALUE;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *type, Ast *elem) {
+    Ast_Cast *node = AST_NEW(f, Ast_Cast);
+    node->type = type;
+    node->elem = elem;
+    node->flags = elem->flags;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Auto_Array<Ast*> arguments) {
+    Ast_Call *node = AST_NEW(f, Ast_Call);
+    node->elem = elem;
+    node->arguments = arguments;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *parent, Ast_Ident *name) {
+    Ast_Selector *node = AST_NEW(f, Ast_Selector);
+    node->parent = parent;
+    node->name = name;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Value_Decl *ast_value_decl(Source_File *f, Auto_Array<Ast*> names, Ast *type, Auto_Array<Ast*> values, bool is_mutable) {
+    Ast_Value_Decl *node = AST_NEW(f, Ast_Value_Decl);
+    node->names = names;
+    node->type = type;
+    node->values = values;
+    node->is_mutable = is_mutable;
+    return node;
+}
+
+internal Ast_Load *ast_load_stmt(Source_File *f, Token token, Token file_token, String8 file_path) {
+    Ast_Load *node = AST_NEW(f, Ast_Load);
+    node->rel_path = file_path;
+    node->token = token;
+    node->file_token = file_token;
+    return node;
+}
+
+internal Ast_Import *ast_import_stmt(Source_File *f, Token token, Token file_token, String8 file_path) {
+    Ast_Import *node = AST_NEW(f, Ast_Import);
+    node->rel_path = file_path;
+    node->token = token;
+    node->file_token = file_token;
+    return node;
+}
+
+internal Ast_Binary *ast_binary_expr(Source_File *f, Token token, OP op, Ast *lhs, Ast *rhs) {
+    Ast_Binary *node = AST_NEW(f, Ast_Binary);
+    node->op = op;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    node->token = token;
+    return node; 
+}
+
+internal Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Auto_Array<Ast*> lhs, Auto_Array<Ast*> rhs) {
+    Ast_Assignment *node = AST_NEW(f, Ast_Assignment);
+    node->op = op;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token close, Ast *base, Ast *index) {
+    Ast_Subscript *node = AST_NEW(f, Ast_Subscript);
+    node->expr = base;
+    node->index = index;
+    node->flags |= AST_FLAG_LVALUE;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Token open, Token close, Ast *elem) {
+    Ast_Sizeof *node = AST_NEW(f, Ast_Sizeof);
+    node->elem = elem;
+    node->token = token;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Expr_Stmt *ast_expr_stmt(Source_File *f, Ast *expr) {
+    Ast_Expr_Stmt *node = AST_NEW(f, Ast_Expr_Stmt);
+    node->expr = expr;
+    return node;
+}
+
+internal Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Auto_Array<Ast*> statements) {
+    Ast_Block *node = AST_NEW(f, Ast_Block);
+    node->statements = statements;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_If *ast_if_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block) {
+    Ast_If *node = AST_NEW(f, Ast_If);
+    node->stmt_flags = STMT_FLAG_PATH_BRANCH;
+    node->cond = cond;
+    node->block = block;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Auto_Array<Ast*> statements) {
+    Ast_Case_Label *node = AST_NEW(f, Ast_Case_Label);
+    node->cond = cond;
+    node->statements = statements;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Auto_Array<Ast_Case_Label*> clauses, bool check_enum_complete) {
+    Ast_Ifcase *node = AST_NEW(f, Ast_Ifcase);
+    node->cond = cond;
+    node->cases = clauses;
+    node->check_enum_complete = check_enum_complete;
+    node->token = token;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block) {
+    Ast_While *node = AST_NEW(f, Ast_While);
+    node->cond = cond;
+    node->block = block;
+    node->token = token;
+    return node;
+}
+
+internal Ast_For *ast_for_stmt(Source_File *f, Token token, Auto_Array<Ast*> lhs, Ast *range_expr, Ast_Block *block) {
+    Ast_For *node = AST_NEW(f, Ast_For);
+    node->lhs = lhs;
+    node->range_expr = range_expr;
+    node->block = block;
+    node->token = token;
+    return node;
+} 
+
+internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *type) {
+    Ast_Pointer_Type *node = AST_NEW(f, Ast_Pointer_Type);
+    node->type = type;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *type, Ast *length) {
+    Ast_Array_Type *node = AST_NEW(f, Ast_Array_Type);
+    node->type = type;
+    node->length = length;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Auto_Array<Ast_Param*> params, Auto_Array<Ast*> results) {
+    Ast_Proc_Type *node = AST_NEW(f, Ast_Proc_Type);
+    node->params = params;
+    node->results = results;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Auto_Array<Ast_Enum_Field*> fields) {
+    Ast_Enum_Type *node = AST_NEW(f, Ast_Enum_Type);
+    node->base_type = base_type;
+    node->fields = fields;
+    node->token = token;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Auto_Array<Ast_Value_Decl*> members) {
+    Ast_Struct_Type *node = AST_NEW(f, Ast_Struct_Type);
+    node->members = members;
+    node->token = token;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Auto_Array<Ast_Value_Decl*> members) {
+    Ast_Union_Type *node = AST_NEW(f, Ast_Union_Type);
+    node->members = members;
+    node->token = token;
+    node->open = open;
+    node->close = close;
+    return node;
+}
+
+internal char *string_from_expr(Ast *expr) {
+    if (expr == NULL) return NULL;
+    
+    cstring result = NULL;
+    switch (expr->kind) {
+    case AST_CAST: {
+        Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
+        cstring str = make_cstring("cast(");
+        str = cstring_append(str, string_from_type(cast->inferred_type));
+        str = cstring_append(str, ")");
+        str = cstring_append(str, string_from_expr(cast->elem));
+        result = str;
+        break;
+    }
+    case AST_PAREN: {
+        Ast_Paren *paren = (Ast_Paren *)expr;
+        cstring str = make_cstring("(");
+        str = cstring_append(str, string_from_expr(paren->elem));
+        str = cstring_append(str, ")");
+        result = str;
+        break;
+    }
+    case AST_LITERAL: {
+        Ast_Literal *literal = (Ast_Literal *)expr;
+        switch (literal->value.kind) {
+        case CONSTANT_VALUE_INTEGER: {
+            String string = string_from_bigint(literal->value.value_integer);
+            result = cstring_fmt("%S", string);
+            break;
+        }
+        case CONSTANT_VALUE_FLOAT:
+            result = cstring_fmt("%f", literal->value.value_float);
+            break;
+        case CONSTANT_VALUE_STRING: {
+            String string = literal->value.value_string;
+            result = make_cstring_len((const char *)string.data, string.count);
+            break;
+        }
+        }
+        break;
+    }
+    case AST_IDENT: {
+        Ast_Ident *ident = (Ast_Ident *)expr;
+        result = make_cstring_len((const char *)ident->name->data, ident->name->count);
+        break;
+    }
+    case AST_CALL: {
+        Ast_Call *call = (Ast_Call *)expr;
+        cstring str = string_from_expr(call->elem);
+        str = cstring_append(str, "(..)");
+        result = str;
+        break;
+    }
+    case AST_SUBSCRIPT: {
+        Ast_Subscript *subscript = (Ast_Subscript *)expr;
+        cstring str = string_from_expr(subscript->expr);
+        str = cstring_append(str, "[");
+        str = cstring_append(str, string_from_expr(subscript->index));
+        str = cstring_append(str, "]");
+        result = str;
+        break;
+    }
+    case AST_UNARY: {
+        Ast_Unary *unary = (Ast_Unary *)expr;
+        cstring str = string_from_operator(unary->op);
+        str = cstring_append(str, string_from_expr(unary->elem));
+        result = str;
+        break;
+    }
+    case AST_ADDRESS: {
+        Ast_Address *address = (Ast_Address *)expr;
+        cstring str = make_cstring("*");
+        str = cstring_append(str, string_from_expr(address->elem));
+        result = str;
+        break;
+    }
+    case AST_DEREF: {
+        Ast_Deref *deref = (Ast_Deref *)expr;
+        cstring str = string_from_expr(deref->elem);
+        str = cstring_append(str, ".*");
+        result = str;
+        break;
+    }
+    case AST_BINARY: {
+        Ast_Binary *binary = (Ast_Binary *)expr;
+        cstring str = string_from_expr(binary->lhs);
+        str = cstring_append(str, string_from_operator(binary->op));
+        str = cstring_append(str, string_from_expr(binary->rhs));
+        result = str;
+        break;
+    }
+    case AST_RANGE: {
+        Ast_Range *range = static_cast<Ast_Range*>(expr);
+        cstring str = cstring_fmt("%s..%s", string_from_expr(range->lhs), string_from_expr(range->rhs));
+        result = str;
+        break;
+    }
+    case AST_SELECTOR: {
+        Ast_Selector *selector = (Ast_Selector *)expr;
+        cstring str = NULL;
+        str = string_from_expr(selector->parent);
+        str = cstring_append(str, ".");
+        str = cstring_append(str, string_from_expr(selector->name));
+        result = str;
+        break;
+    }
+    case AST_COMPOUND_LITERAL: {
+        break;
+    }
+    }
+
+    return result;
+}
+
+internal inline const char *string_from_ast(Ast_Kind kind) {
+    return ast_strings[kind];
+}
+
+internal char *string_from_operator(OP op) {
+    switch (op) {
+    default:
+        Assert(0);
+        return "";
+    case OP_ADD:
+        return "+";
+    case OP_SUB:
+        return "-";
+    case OP_MUL:
+        return "*";
+    case OP_DIV:
+        return "/";
+    case OP_MOD:
+        return "%";
+    case OP_UNARY_MINUS:
+        return "-";
+    case OP_UNARY_PLUS:
+        return "+";
+    case OP_EQ:
+        return "==";
+    case OP_NEQ:
+        return "!=";
+    case OP_LT:
+        return "<";
+    case OP_LTEQ:
+        return "<=";
+    case OP_GT:
+        return ">";
+    case OP_GTEQ:
+        return ">=";
+    case OP_NOT:
+        return "!";
+    case OP_OR:
+        return "||";
+    case OP_AND:
+        return "&&";
+    case OP_BIT_NOT:
+        return "~";
+    case OP_BIT_AND:
+        return "&";
+    case OP_BIT_OR:
+        return "|";
+    case OP_XOR:
+        return "^";
+    case OP_LSH:
+        return "<<";
+    case OP_RSH:
+        return ">>";
+    case OP_ASSIGN:
+        return "=";
+    case OP_ADD_ASSIGN:
+        return "+=";
+    case OP_SUB_ASSIGN:
+        return "-=";
+    case OP_MUL_ASSIGN:
+        return "*=";
+    case OP_DIV_ASSIGN:
+        return "/=";
+    case OP_MOD_ASSIGN:
+        return "%/=";
+    case OP_AND_ASSIGN:
+        return "&=";
+    case OP_OR_ASSIGN:
+        return "|=";
+    case OP_XOR_ASSIGN:
+        return "^=";
+    case OP_LSH_ASSIGN:
+        return "<<=";
+    case OP_RSH_ASSIGN:
+        return ">>=";
+    case OP_ADDRESS:
+        return "*";
+    case OP_DEREF:
+        return ".*";
+    case OP_SUBSCRIPT:
+        return "[]";
+    case OP_SELECT:
+        return ".";
+    case OP_CAST:
+        return "cast";
+    }
+}
 
 internal inline OP get_unary_operator(Token_Kind kind) {
     switch (kind) {
@@ -94,7 +685,7 @@ internal inline int get_operator_precedence(OP op) {
         return -1;
 
     case OP_SUBSCRIPT:
-    case OP_ACCESS:
+    case OP_SELECT:
         return 13000;
 
     case OP_UNARY_PLUS:
@@ -164,594 +755,7 @@ internal inline bool is_assignment_op(OP op) {
     return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
 }
 
-inline bool Ast_Expr::is_binop(OP binop) {
-    return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op == binop;
-}
-
-internal Ast *ast_alloc(u64 size, int alignment) {
-    Ast *node = (Ast *)arena_alloc(g_ast_arena, size, alignment);
-    return node;
-}
-
-internal inline Allocator ast_allocator() {
-    return arena_allocator(g_ast_arena);
-}
-
-Ast_Enum_Field *lookup_field(Ast_Enum *enum_decl, Atom *name) {
-    Ast_Enum_Field *result = NULL;
-    for (int i = 0; i < enum_decl->fields.count; i++) {
-        Ast_Enum_Field *field = enum_decl->fields[i];
-        if (atoms_match(name, field->name)) {
-            return field;
-        }
-    }
-    return NULL;
-}
-
-Ast_Decl *Scope::lookup(Atom *name) {
-    for (Scope *scope = this; scope; scope = scope->parent) {
-        for (int i = 0; i < scope->declarations.count; i++) {
-            Ast_Decl *decl = scope->declarations[i];
-            if (atoms_match(decl->name, name)) {
-                return decl;
-            }
-        }
-    }
-    return NULL;
-}
-
-internal Scope *make_scope(Scope_Flags flags) {
-    Scope *result = (Scope*)ast_alloc(sizeof(Scope), alignof(Scope));
-    result->scope_flags = flags;
-    return result;
-}
-
-internal Ast_Continue *ast_continue_stmt(Token t) {
-    Ast_Continue *result = AST_NEW(Ast_Continue);
-    result->mark_range(t.start, t.end);
-    return result;
-}
-
-internal Ast_Break *ast_break_stmt(Token t) {
-    Ast_Break *result = AST_NEW(Ast_Break);
-    result->mark_range(t.start, t.end);
-    return result;
-}
-
-internal Ast_Fallthrough *ast_fallthrough_stmt(Token t) {
-    Ast_Fallthrough *result = AST_NEW(Ast_Fallthrough);
-    result->mark_range(t.start, t.end);
-    return result;
-}
-
-internal Ast_Return *ast_return_stmt(Ast_Expr *expr) {
-    Ast_Return *result = AST_NEW(Ast_Return);
-    result->expr = expr;
-    return result;
-}
-
-internal Ast_Empty_Stmt *ast_empty_stmt(Token t) {
-    Ast_Empty_Stmt *result = AST_NEW(Ast_Empty_Stmt);
-    result->mark_range(t.start, t.end);
-    return result;
-}
-
-internal Ast_Type_Decl *ast_type_decl(Atom *name, Type *type) {
-    Ast_Type_Decl *result = AST_NEW(Ast_Type_Decl);
-    result->decl_flags |= DECL_FLAG_TYPE;
-    result->name = name;
-    result->type = type;
-    return result;
-}
-
-internal Ast_Var *ast_var(Atom *name, Ast_Expr *init, Ast_Type_Defn *type_defn) {
-    Ast_Var *result = AST_NEW(Ast_Var);
-    result->name = name;
-    result->init = init;
-    result->type_defn = type_defn;
-    return result;
-}
-
-internal Ast_Proc *ast_proc(Atom *name, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
-    Ast_Proc *result = AST_NEW(Ast_Proc);
-    result->name = name;
-    result->parameters = parameters;
-    result->return_type_defn = return_type;
-    result->block = block;
-    return result;
-}
-
-internal Ast_Operator_Proc *ast_operator_proc(OP op, Auto_Array<Ast_Param*> parameters, Ast_Type_Defn *return_type, Ast_Block *block) {
-    Ast_Operator_Proc *result = AST_NEW(Ast_Operator_Proc);
-    result->name = atom_create(str8_pushf(ast_allocator(), "operator%s", string_from_operator(op)));
-    result->op = op;
-    result->parameters = parameters;
-    result->return_type_defn = return_type;
-    result->block = block;
-    return result;
-}
-
-internal Ast_Struct *ast_struct(Atom *name, Auto_Array<Ast_Decl*> members) {
-    Ast_Struct *result = AST_NEW(Ast_Struct);
-    result->decl_flags |= DECL_FLAG_TYPE;
-    result->name = name;
-    result->members = members;
-    return result;
-}
-
-// internal Ast_Struct_Field *ast_struct_field(Atom *name, Ast_Type_Defn *type_defn) {
-//     Ast_Struct_Field *result = AST_NEW(Ast_Struct_Field);
-//     result->name = name;
-//     result->type_defn = type_defn;
-//     return result;
+// inline bool Ast::is_binop(OP binop) {
+//     return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op == binop;
 // }
 
-internal Ast_Enum *ast_enum(Atom *name, Auto_Array<Ast_Enum_Field*> fields) {
-    Ast_Enum *result = AST_NEW(Ast_Enum);
-    result->decl_flags |= DECL_FLAG_TYPE;
-    result->name = name;
-    result->fields = fields;
-    return result;
-}
-
-internal Ast_Enum_Field *ast_enum_field(Atom *name) {
-    Ast_Enum_Field *result = AST_NEW(Ast_Enum_Field);
-    result->decl_flags |= DECL_FLAG_CONST;
-    result->name = name;
-    return result;
-}
-
-internal Ast_Param *ast_param(Atom *name, Ast_Type_Defn *type_defn) {
-    Ast_Param *result = AST_NEW(Ast_Param);
-    result->name = name;
-    result->type_defn = type_defn;
-    return result;
-}
-
-internal Ast_Type_Defn *ast_type_defn(Type_Defn_Kind kind, Ast_Type_Defn *base) {
-    Ast_Type_Defn *result = AST_NEW(Ast_Type_Defn);
-    result->type_defn_kind = kind;
-    result->base = base;
-    return result;
-}
-
-internal Ast_Paren *ast_paren(Ast_Expr *elem) {
-    Ast_Paren *result = AST_NEW(Ast_Paren);
-    result->elem = elem;
-    result->expr_flags = elem->expr_flags;
-    return result;
-}
-
-internal Ast_Ident *ast_ident(Token name) {
-    Ast_Ident *result = AST_NEW(Ast_Ident);
-    result->mark_range(name.start, name.end);
-    result->name = name.name;
-    return result;
-}
-
-internal Ast_Literal *ast_intlit(Token token) {
-    Ast_Literal *result = AST_NEW(Ast_Literal);
-    result->expr_flags |= EXPR_FLAG_CONSTANT;
-    result->literal_flags = token.literal_flags;
-    result->int_val = token.intlit;
-    return result;
-}
-
-internal Ast_Literal *ast_floatlit(Token token) {
-    Ast_Literal *result = AST_NEW(Ast_Literal);
-    result->expr_flags |= EXPR_FLAG_CONSTANT;
-    result->literal_flags = token.literal_flags;
-    result->float_val = token.floatlit;
-    return result;
-}
-
-internal Ast_Literal *ast_strlit(Token token) {
-    Ast_Literal *result = AST_NEW(Ast_Literal);
-    result->expr_flags |= EXPR_FLAG_CONSTANT;
-    result->literal_flags = LITERAL_STRING;
-    result->str_val = token.strlit;
-    return result;
-}
-
-internal Ast_Compound_Literal *ast_compound_literal(Auto_Array<Ast_Expr*> elements, Ast_Type_Defn *type_defn) {
-    Ast_Compound_Literal *result = AST_NEW(Ast_Compound_Literal);
-    result->elements = elements;
-    result->type_defn = type_defn;
-    return result;
-}
-
-internal Ast_Unary *ast_unary_expr(OP op, Ast_Expr *elem) {
-    Ast_Unary *result = AST_NEW(Ast_Unary);
-    result->op = op;
-    result->elem = elem;
-    return result;
-}
-
-internal Ast_Address *ast_address_expr(Ast_Expr *elem) {
-    Ast_Address *result = AST_NEW(Ast_Address);
-    result->elem = elem;
-    result->expr_flags |= EXPR_FLAG_LVALUE;
-    // result->op = OP_ADDRESS;
-    return result;
-}
-
-internal Ast_Range *ast_range_expr(Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Range *result = AST_NEW(Ast_Range);
-    result->lhs = lhs;
-    result->rhs = rhs;
-    return result;
-}
-
-internal Ast_Deref *ast_deref_expr(Token op, Ast_Expr *elem) {
-    Ast_Deref *result = AST_NEW(Ast_Deref);
-    result->mark_start(op.start);
-    result->mark_start(elem->end);
-    result->elem = elem;
-    result->expr_flags |= EXPR_FLAG_LVALUE;
-    return result;
-}
-
-internal Ast_Cast *ast_cast_expr(Ast_Type_Defn *type, Ast_Expr *elem) {
-    Ast_Cast *result = AST_NEW(Ast_Cast);
-    result->type_defn = type;
-    result->elem = elem;
-    result->expr_flags = elem->expr_flags;
-    return result;
-}
-
-internal Ast_Call *ast_call_expr(Token op, Ast_Expr *elem, Auto_Array<Ast_Expr*> arguments) {
-    Ast_Call *result = AST_NEW(Ast_Call);
-    result->elem = elem;
-    result->arguments = arguments;
-    return result;
-}
-
-internal Ast_Access *ast_access_expr(Ast_Expr *parent, Ast_Ident *name) {
-    Ast_Access *result = AST_NEW(Ast_Access);
-    result->parent = parent;
-    result->name = name;
-    return result;
-}
-
-internal Ast_Expr *ast_error_expr() {
-    Ast_Expr *result = AST_NEW(Ast_Expr);
-    result->poison();
-    return result;
-}
-
-internal Ast_Bad_Stmt *ast_bad_stmt(Token start, Token end) {
-    Ast_Bad_Stmt *result = AST_NEW(Ast_Bad_Stmt);
-    result->poison();
-    result->mark_range(start.start, end.end);
-    return result;
-}
-
-internal Ast_Bad_Decl *ast_bad_decl(Token start, Token end) {
-    Ast_Bad_Decl *result = AST_NEW(Ast_Bad_Decl);
-    result->poison();
-    result->mark_range(start.start, end.end);
-    return result;
-}
-
-internal Ast_Load *ast_load_stmt(String8 file_path) {
-    Ast_Load *result = AST_NEW(Ast_Load);
-    result->rel_path = file_path;
-    return result;
-}
-
-internal Ast_Import *ast_import_stmt(String8 file_path) {
-    Ast_Import *result = AST_NEW(Ast_Import);
-    result->rel_path = file_path;
-    return result;
-}
-
-internal Ast_Binary *ast_binary_expr(OP op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Binary *result = AST_NEW(Ast_Binary);
-    result->op = op;
-    result->lhs = lhs;
-    result->rhs = rhs;
-    if (lhs) result->mark_start(lhs->start);
-    if (rhs) result->mark_end(rhs->end);
-    return result; 
-}
-
-internal Ast_Assignment *ast_assignment_expr(OP op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Assignment *result = AST_NEW(Ast_Assignment);
-    result->expr_flags |= EXPR_FLAG_LVALUE;
-    result->op = op;
-    result->lhs = lhs;
-    result->rhs = rhs;
-    result->mark_range(lhs->start, rhs->end);
-    return result;
-}
-
-internal Ast_Subscript *ast_subscript_expr(Token op, Ast_Expr *base, Ast_Expr *index) {
-    Ast_Subscript *result = AST_NEW(Ast_Subscript);
-    // result->loc = op.l0;
-    result->expr = base;
-    result->index = index;
-    result->expr_flags |= EXPR_FLAG_LVALUE;
-    return result;
-}
-
-internal Ast_Range *ast_range_expr(Token op, Ast_Expr *lhs, Ast_Expr *rhs) {
-    Ast_Range *result = AST_NEW(Ast_Range);
-    // result->loc = op.l0;
-    result->lhs = lhs;
-    result->rhs = rhs;
-    return result;
-}
-
-internal Ast_Decl_Stmt *ast_decl_stmt(Ast_Decl *decl) {
-    Ast_Decl_Stmt *result = AST_NEW(Ast_Decl_Stmt);
-    result->decl = decl;
-    return result;
-}
-
-internal Ast_Expr_Stmt *ast_expr_stmt(Ast_Expr *expr) {
-    Ast_Expr_Stmt *result = AST_NEW(Ast_Expr_Stmt);
-    result->expr = expr;
-    return result;
-}
-
-internal Ast_If *ast_if_stmt(Ast_Expr *cond, Ast_Block *block) {
-    Ast_If *result = AST_NEW(Ast_If);
-    result->stmt_flags = STMT_FLAG_PATH_BRANCH;
-    result->cond = cond;
-    result->block = block;
-    return result;
-}
-
-internal Ast_While *ast_while_stmt(Ast_Expr *cond, Ast_Block *block) {
-    Ast_While *result = AST_NEW(Ast_While);
-    result->cond = cond;
-    result->block = block;
-    return result;
-}
-
-internal Ast_For *ast_for_stmt(Atom *name, Ast_Expr *iterator, Ast_Block *block) {
-    Ast_For *result = AST_NEW(Ast_For);
-    Ast_Var *var = ast_var(name, iterator, NULL);
-    result->var = var;
-    result->iterator = iterator;
-    result->block = block;
-    return result;
-} 
-
-internal char *string_from_type(Type *ty) {
-    if (ty == NULL) return "";
-    cstring string = NULL;
-    for (Type *type = ty; type; type = type->base) {
-        switch (type->id) {
-        case TYPEID_POINTER:
-            string = cstring_append(string, "*");
-            break;
-        case TYPEID_ARRAY:
-            string = cstring_append(string, "[..]");
-            break;
-        case TYPEID_PROC:
-        {
-            Proc_Type *proc_type = static_cast<Proc_Type*>(type);
-            string = cstring_append(string, "(");
-            for (Type *param : proc_type->parameters) {
-                cstring_append(string, string_from_type(param));
-                if (param == proc_type->parameters.back()) string = cstring_append(string, ",");
-            }
-            string = cstring_append(string, ")");
-            if (proc_type->return_type) {
-                string = cstring_append(string, "->(");
-                string = cstring_append(string, string_from_type(proc_type->return_type));
-                string = cstring_append(string, ")");
-            }
-            break;
-        }
-        default:
-            string = cstring_append(string, type->decl->name->data);
-            break;
-        }
-    }
-    return string;
-}
-
-internal char *string_from_expr(Ast_Expr *expr) {
-    if (expr == NULL) return NULL;
-    
-    cstring result = NULL;
-    switch (expr->kind) {
-    case AST_CAST:
-    {
-        Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
-        cstring str = make_cstring("cast(");
-        str = cstring_append(str, string_from_type(cast->type));
-        str = cstring_append(str, ")");
-        str = cstring_append(str, string_from_expr(cast->elem));
-        result = str;
-        break;
-    }
-    case AST_PAREN:
-    {
-        Ast_Paren *paren = (Ast_Paren *)expr;
-        cstring str = make_cstring("(");
-        str = cstring_append(str, string_from_expr(paren->elem));
-        str = cstring_append(str, ")");
-        result = str;
-        break;
-    }
-    case AST_LITERAL:
-    {
-        Ast_Literal *literal = (Ast_Literal *)expr;
-        if (literal->literal_flags & LITERAL_INT) {
-            result = cstring_fmt("%llu", literal->int_val);
-        } else if (literal->literal_flags & LITERAL_FLOAT) {
-            result = cstring_fmt("%f", literal->float_val);
-        } else if (literal->literal_flags & LITERAL_STRING) {
-            result = make_cstring_len((const char *)literal->str_val.data, literal->str_val.count); 
-        }
-        break;
-    }
-    case AST_IDENT:
-    {
-        Ast_Ident *ident = (Ast_Ident *)expr;
-        result = make_cstring_len((const char *)ident->name->data, ident->name->count);
-        break;
-    }
-    case AST_CALL:
-    {
-        Ast_Call *call = (Ast_Call *)expr;
-        cstring str = string_from_expr(call->elem);
-        str = cstring_append(str, "()");
-        result = str;
-        break;
-    }
-    case AST_SUBSCRIPT:
-    {
-        Ast_Subscript *subscript = (Ast_Subscript *)expr;
-        cstring str = string_from_expr(subscript->expr);
-        str = cstring_append(str, "[");
-        str = cstring_append(str, string_from_expr(subscript->index));
-        str = cstring_append(str, "]");
-        result = str;
-        break;
-    }
-    case AST_UNARY:
-    {
-        Ast_Unary *unary = (Ast_Unary *)expr;
-        cstring str = string_from_operator(unary->op);
-        str = cstring_append(str, string_from_expr(unary->elem));
-        result = str;
-        break;
-    }
-    case AST_ADDRESS:
-    {
-        Ast_Address *address = (Ast_Address *)expr;
-        cstring str = make_cstring("*");
-        str = cstring_append(str, string_from_expr(address->elem));
-        result = str;
-        break;
-    }
-    case AST_DEREF:
-    {
-        Ast_Deref *deref = (Ast_Deref *)expr;
-        cstring str = string_from_expr(deref->elem);
-        str = cstring_append(str, ".*");
-        result = str;
-        break;
-    }
-    case AST_BINARY:
-    {
-        Ast_Binary *binary = (Ast_Binary *)expr;
-        cstring str = string_from_expr(binary->lhs);
-        str = cstring_append(str, string_from_operator(binary->op));
-        str = cstring_append(str, string_from_expr(binary->rhs));
-        result = str;
-        break;
-    }
-    case AST_RANGE:
-    {
-        Ast_Range *range = static_cast<Ast_Range*>(expr);
-        cstring str = cstring_fmt("%s..%s", string_from_expr(range->lhs), string_from_expr(range->rhs));
-        result = str;
-        break;
-    }
-    case AST_ACCESS:
-    {
-        Ast_Access *access = (Ast_Access *)expr;
-        cstring str = NULL;
-        str = string_from_expr(access->parent);
-        str = cstring_append(str, ".");
-        str = cstring_append(str, string_from_expr(access->name));
-        result = str;
-        break;
-    }
-    case AST_COMPOUND_LITERAL:
-    {
-        break;
-    }
-    }
-
-    return result;
-}
-
-internal char *string_from_operator(OP op) {
-    switch (op) {
-    default:
-        Assert(0);
-        return "";
-    case OP_ADD:
-        return "+";
-    case OP_SUB:
-        return "-";
-    case OP_MUL:
-        return "*";
-    case OP_DIV:
-        return "/";
-    case OP_MOD:
-        return "%";
-    case OP_UNARY_MINUS:
-        return "-";
-    case OP_UNARY_PLUS:
-        return "+";
-    case OP_EQ:
-        return "==";
-    case OP_NEQ:
-        return "!=";
-    case OP_LT:
-        return "<";
-    case OP_LTEQ:
-        return "<=";
-    case OP_GT:
-        return ">";
-    case OP_GTEQ:
-        return ">=";
-    case OP_NOT:
-        return "!";
-    case OP_OR:
-        return "||";
-    case OP_AND:
-        return "&&";
-    case OP_BIT_NOT:
-        return "~";
-    case OP_BIT_AND:
-        return "&";
-    case OP_BIT_OR:
-        return "|";
-    case OP_XOR:
-        return "^";
-    case OP_LSH:
-        return "<<";
-    case OP_RSH:
-        return ">>";
-    case OP_ASSIGN:
-        return "=";
-    case OP_ADD_ASSIGN:
-        return "+=";
-    case OP_SUB_ASSIGN:
-        return "-=";
-    case OP_MUL_ASSIGN:
-        return "*=";
-    case OP_DIV_ASSIGN:
-        return "/=";
-    case OP_MOD_ASSIGN:
-        return "%/=";
-    case OP_AND_ASSIGN:
-        return "&=";
-    case OP_OR_ASSIGN:
-        return "|=";
-    case OP_XOR_ASSIGN:
-        return "^=";
-    case OP_LSH_ASSIGN:
-        return "<<=";
-    case OP_RSH_ASSIGN:
-        return ">>=";
-    case OP_ADDRESS:
-        return "*";
-    case OP_DEREF:
-        return ".*";
-    case OP_SUBSCRIPT:
-        return "[]";
-    case OP_ACCESS:
-        return ".";
-    case OP_CAST:
-        return "cast";
-    }
-}
