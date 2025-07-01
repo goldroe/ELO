@@ -1,3 +1,5 @@
+#include <libtommath/tommath.h>
+
 #include "base/base_core.h"
 #include "base/base_memory.h"
 #include "base/base_strings.h"
@@ -18,18 +20,21 @@
 #include "auto_array.h"
 
 #include "source_file.h"
+#include "constant_value.h"
 #include "lexer.h"
 #include "report.h"
 #include "atom.h"
 #include "ast.h"
 #include "types.h"
 #include "parser.h"
+#include "decl.h"
 #include "resolve.h"
 #include "llvm_backend.h"
 
 global bool compiler_dump_IR;
 global Auto_Array<String8> compiler_link_libraries;
 
+#include "constant_value.cpp"
 #include "source_file.cpp"
 #include "report.cpp"
 #include "atom.cpp"
@@ -37,8 +42,14 @@ global Auto_Array<String8> compiler_link_libraries;
 #include "types.cpp"
 #include "ast.cpp"
 #include "parser.cpp"
+#include "decl.cpp"
 #include "resolve.cpp"
+#include "resolve_expr.cpp"
+#include "resolve_stmt.cpp"
+
+#if 0
 #include "llvm_backend.cpp"
+#endif
 
 internal void compiler_error(char *fmt, ...) {
     va_list args;
@@ -108,7 +119,6 @@ int main(int argc, char **argv) {
     temporary_arena = arena_create();
     g_report_arena = arena_create();
     g_ast_arena = arena_create();
-    llvm_arena = arena_create();
 
     atom_init();
 
@@ -139,23 +149,27 @@ int main(int argc, char **argv) {
     Lexer *lexer = new Lexer(source_file);
 
     Parser *parser = new Parser(lexer);
+    parser->file = source_file;
     parser->parse();
 
     Resolver *resolver = new Resolver(parser);
     resolver->resolve();
 
-    //@Note Print reports
-
     if (g_error_count > 0) {
         printf("%d error(s).\n", g_error_count);
     }
 
+#if 0
+    llvm_arena = arena_create();
     if (g_error_count == 0) {
         LLVM_Backend *backend = new LLVM_Backend(source_file, parser->root);
         backend->gen();
     }
+#endif
 
     compiler_exit();
+
+    printf("done.\n");
 
     return g_error_count;
 }
