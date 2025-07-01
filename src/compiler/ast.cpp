@@ -96,17 +96,9 @@ internal Ast_Defer *ast_defer_stmt(Source_File *f, Token token, Ast *stmt) {
     return node;
 }
 
-internal Ast_Type_Decl *ast_type_decl(Source_File *f, Atom *name, Ast *type) {
-    Ast_Type_Decl *node = AST_NEW(f, Ast_Type_Decl);
-    node->flags |= AST_FLAG_TYPE;
-    node->name = name;
-    node->type = type;
-    return node;
-}
-
-internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *type, Ast_Block *body) {
+internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast_Block *body) {
     Ast_Proc_Lit *node = AST_NEW(f, Ast_Proc_Lit);
-    node->type = type;
+    node->typespec = typespec;
     node->body = body;
     return node;
 }
@@ -119,10 +111,10 @@ internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *e
     return node;
 }
 
-internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *type) {
+internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec) {
     Ast_Param *node = AST_NEW(f, Ast_Param);
     node->name = name;
-    node->type = type;
+    node->typespec = typespec;
     return node;
 }
 
@@ -140,10 +132,10 @@ internal Ast_Literal *ast_literal(Source_File *f, Token token) {
     return node;
 }
 
-internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *type, Auto_Array<Ast*> elements) {
+internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Auto_Array<Ast*> elements) {
     Ast_Compound_Literal *node = AST_NEW(f, Ast_Compound_Literal);
     node->elements = elements;
-    node->type = type;
+    node->typespec = typespec;
     node->open = open;
     node->close = close;
     return node;
@@ -190,9 +182,9 @@ internal Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem) {
     return node;
 }
 
-internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *type, Ast *elem) {
+internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast *elem) {
     Ast_Cast *node = AST_NEW(f, Ast_Cast);
-    node->type = type;
+    node->typespec = typespec;
     node->elem = elem;
     node->flags = elem->flags;
     node->token = token;
@@ -216,10 +208,10 @@ internal Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *paren
     return node;
 }
 
-internal Ast_Value_Decl *ast_value_decl(Source_File *f, Auto_Array<Ast*> names, Ast *type, Auto_Array<Ast*> values, bool is_mutable) {
+internal Ast_Value_Decl *ast_value_decl(Source_File *f, Auto_Array<Ast*> names, Ast *typespec, Auto_Array<Ast*> values, bool is_mutable) {
     Ast_Value_Decl *node = AST_NEW(f, Ast_Value_Decl);
     node->names = names;
-    node->type = type;
+    node->typespec = typespec;
     node->values = values;
     node->is_mutable = is_mutable;
     return node;
@@ -337,16 +329,16 @@ internal Ast_For *ast_for_stmt(Source_File *f, Token token, Auto_Array<Ast*> lhs
     return node;
 } 
 
-internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *type) {
+internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *elem) {
     Ast_Pointer_Type *node = AST_NEW(f, Ast_Pointer_Type);
-    node->type = type;
+    node->elem = elem;
     node->token = token;
     return node;
 }
 
-internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *type, Ast *length) {
+internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *length) {
     Ast_Array_Type *node = AST_NEW(f, Ast_Array_Type);
-    node->type = type;
+    node->elem = elem;
     node->length = length;
     node->token = token;
     return node;
@@ -397,7 +389,7 @@ internal char *string_from_expr(Ast *expr) {
     case AST_CAST: {
         Ast_Cast *cast = static_cast<Ast_Cast*>(expr);
         cstring str = make_cstring("cast(");
-        str = cstring_append(str, string_from_type(cast->inferred_type));
+        str = cstring_append(str, string_from_type(cast->type));
         str = cstring_append(str, ")");
         str = cstring_append(str, string_from_expr(cast->elem));
         result = str;

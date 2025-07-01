@@ -66,7 +66,7 @@ internal Type *type_from_index(Type *type, int idx) {
 internal int get_values_count(Auto_Array<Ast*> values) {
     int count = 0;
     for (Ast *value : values) {
-        Type *type = value->inferred_type;
+        Type *type = value->type;
 
         if (type->kind == TYPE_TUPLE) {
             count += (int)((Tuple_Type *)type)->types.count;
@@ -132,20 +132,20 @@ void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
     proc_lit->scope = new_scope(global_scope, SCOPE_PROC);
 
     Auto_Array<Type*> params = {};
-    for (Ast_Param *param : proc_lit->type->params) {
+    for (Ast_Param *param : proc_lit->typespec->params) {
         Decl *param_decl = decl_variable_create(param->name->name);
-        param_decl->type_expr = param->type;
+        param_decl->type_expr = param->typespec;
         scope_add(current_scope, param_decl);
         resolve_decl(param_decl);
         params.push(param_decl->type);
     }
     Auto_Array<Type*> results = {};
-    for (Ast *ret : proc_lit->type->results) {
+    for (Ast *ret : proc_lit->typespec->results) {
         Type *ret_type = resolve_type(ret);
         results.push(ret_type);
     }
     Proc_Type *proc_type = proc_type_create(params, results);
-    proc_lit->inferred_type = proc_type;
+    proc_lit->type = proc_type;
 
     current_scope = prev_scope;
 
@@ -179,7 +179,7 @@ void Resolver::resolve_proc_lit(Ast_Proc_Lit *proc_lit) {
 void Resolver::resolve_proc_decl(Decl *decl) {
     Ast_Proc_Lit *proc_lit = (Ast_Proc_Lit *)decl->init_expr;
     resolve_proc_lit(proc_lit);
-    decl->type = proc_lit->inferred_type;
+    decl->type = proc_lit->type;
 }
 
 void Resolver::resolve_decl(Decl *decl) {
@@ -286,7 +286,7 @@ Type *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
         type_decl->type_complete = true;
     }
 
-    type->inferred_type = st;
+    type->type = st;
     return st;
 }
 
@@ -355,7 +355,7 @@ Type *Resolver::resolve_type(Ast *type) {
 
         resolve_selector_expr(selector);
         if (selector->mode == ADDRESSING_TYPE) {
-            return selector->inferred_type;
+            return selector->type;
         }
     }
 
@@ -363,7 +363,7 @@ Type *Resolver::resolve_type(Ast *type) {
         Ast_Pointer_Type *pointer = (Ast_Pointer_Type *)type;
         type_complete_path_add(pointer);
 
-        Type *elem = resolve_type(pointer->type);
+        Type *elem = resolve_type(pointer->elem);
         Pointer_Type *pt = pointer_type_create(elem);
         return pt;
     }
@@ -372,7 +372,7 @@ Type *Resolver::resolve_type(Ast *type) {
         Ast_Array_Type *array = (Ast_Array_Type *)type;
         type_complete_path_add(array);
 
-        Type *elem = resolve_type(array->type);
+        Type *elem = resolve_type(array->elem);
         Array_Type *array_type = array_type_create(elem);
         if (array->length) {
             
@@ -386,7 +386,7 @@ Type *Resolver::resolve_type(Ast *type) {
 
         Auto_Array<Type*> params = {};
         for (Ast_Param *param : proc->params) {
-            Type *param_type = resolve_type(param->type);
+            Type *param_type = resolve_type(param->typespec);
             params.push(param_type);
         }
 
@@ -441,7 +441,7 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
     }
 
     if (vd->type) {
-        Type *spec_type = resolve_type(vd->type);
+        Type *spec_type = resolve_type(vd->typespec);
 
         for (Ast *name : vd->names) {
             Ast_Ident *ident = (Ast_Ident *)name;
@@ -450,8 +450,8 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
         }
 
         for (Ast *value : vd->values) {
-            if (!is_convertible(spec_type, value->inferred_type)) {
-                report_ast_error(value, "cannot convert from '%s to '%s'.\n", string_from_type(value->inferred_type), string_from_type(spec_type));
+            if (!is_convertible(spec_type, value->type)) {
+                report_ast_error(value, "cannot convert from '%s to '%s'.\n", string_from_type(value->type), string_from_type(spec_type));
             }
         }
     } else {
@@ -459,10 +459,10 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
             for (int vidx = 0, nidx = 0; vidx < vd->values.count; vidx++) {
                 Ast *value = vd->values[vidx];
 
-                int type_count = type_value_count(value->inferred_type);
+                int type_count = type_value_count(value->type);
 
                 for (int i = 0; i < type_count; i++) {
-                    Type *type = type_from_index(value->inferred_type, i);
+                    Type *type = type_from_index(value->type, i);
                     Ast_Ident *name = (Ast_Ident *)(vd->names[nidx + i]);
                     Decl *decl = name->ref;
                     decl->type = type;
@@ -510,7 +510,7 @@ void Resolver::resolve_value_decl_preamble(Ast_Value_Decl *vd) {
 
             Decl *decl = decl_variable_create(ident->name);
             decl->node = vd;
-            decl->type_expr = vd->type;
+            decl->type_expr = vd->typespec;
             ident->ref = decl;
             // decl->init_expr = value;
             scope_add(current_scope, decl);
@@ -585,7 +585,7 @@ void Resolver::register_global_declarations() {
 
                     Decl *decl = decl_variable_create(name->name);
                     decl->node = vd;
-                    decl->type_expr = vd->type;
+                    decl->type_expr = vd->typespec;
                     name->ref = decl;
                     scope_add(current_scope, decl);
                 }
@@ -629,13 +629,11 @@ void Resolver::register_global_declarations() {
                         decl = decl_constant_create(name->name);
                     }
                     decl->node = decl_node;
-                    decl->type_expr = vd->type;
+                    decl->type_expr = vd->typespec;
                     decl->init_expr = value;
                     name->ref = decl;
                     scope_add(current_scope, decl);
                 }
-
-                continue;
             }
         }
         }

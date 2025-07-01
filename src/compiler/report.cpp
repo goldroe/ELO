@@ -195,7 +195,7 @@ internal Token ast_start_token(Ast *node) {
         if (param->name) {
             return ast_start_token(param->name);
         } else {
-            return ast_start_token(param->type);
+            return ast_start_token(param->typespec);
         }
     }
 
@@ -267,7 +267,7 @@ internal Token ast_start_token(Ast *node) {
     case AST_COMPOUND_LITERAL: {
         ast_node_var(compound, Ast_Compound_Literal, node);
         if (compound->type) {
-            return ast_start_token(compound->type);
+            return ast_start_token(compound->typespec);
         }
         return compound->open;
         break;
@@ -309,11 +309,11 @@ internal Token ast_start_token(Ast *node) {
 
     case AST_POINTER_TYPE: {
         ast_node_var(type, Ast_Pointer_Type, node);
-        return ast_start_token(type->type);
+        return ast_start_token(type->elem);
     }
     case AST_ARRAY_TYPE: {
         ast_node_var(type, Ast_Array_Type, node);
-        return ast_start_token(type->type);
+        return ast_start_token(type->elem);
     }
     case AST_PROC_TYPE:
         return ast_node(Ast_Proc_Type, node)->open;
@@ -339,8 +339,8 @@ internal Token ast_end_token(Ast *node) {
         break;
     case AST_PARAM: {
         ast_node_var(param, Ast_Param, node);
-        if (param->type) {
-            return ast_end_token(param->type);
+        if (param->typespec) {
+            return ast_end_token(param->typespec);
         } else {
             return ast_end_token(param->name);
         }
@@ -362,7 +362,7 @@ internal Token ast_end_token(Ast *node) {
         if (vd->values.count) {
             return ast_end_token(vd->values.back());
         } else {
-            return ast_end_token(vd->type);
+            return ast_end_token(vd->typespec);
         }
         break;
     }
@@ -463,9 +463,9 @@ internal Token ast_end_token(Ast *node) {
         return ast_node(Ast_Sizeof, node)->token;
 
     case AST_POINTER_TYPE:
-        return ast_end_token(ast_node(Ast_Pointer_Type, node)->type);
+        return ast_end_token(ast_node(Ast_Pointer_Type, node)->elem);
     case AST_ARRAY_TYPE:
-        return ast_end_token(ast_node(Ast_Array_Type, node)->type);
+        return ast_end_token(ast_node(Ast_Array_Type, node)->elem);
     case AST_PROC_TYPE:
         return ast_node(Ast_Proc_Type, node)->close;
     case AST_ENUM_TYPE:

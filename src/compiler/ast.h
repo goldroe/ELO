@@ -188,7 +188,7 @@ struct Ast {
     Source_File *file = nullptr;
 
     Addressing_Mode mode = ADDRESSING_INVALID;
-    Type *inferred_type = nullptr;
+    Type *type = nullptr;
     Constant_Value value = {};
 
     Ast_Flags flags = (Ast_Flags)0;
@@ -247,7 +247,7 @@ struct Ast_Literal : Ast {
 
 struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
-    Ast *type;
+    Ast *typespec;
     Auto_Array<Ast*> elements;
     Token open;
     Token close;
@@ -290,7 +290,7 @@ struct Ast_Deref : Ast {
 
 struct Ast_Cast : Ast {
     Ast_Cast() { kind = AST_CAST; }
-    Ast *type;
+    Ast *typespec;
     Ast *elem;
     Token token;
 };
@@ -350,23 +350,17 @@ struct Ast_Decl : Ast {
     BE_Var *backend_var;
 };
 
-struct Ast_Type_Decl : Ast_Decl {
-    Ast_Type_Decl() { kind = AST_TYPE_DECL; }
-    Ast *type;
-    Token token;
-};
+// struct Ast_Type_Decl : Ast_Decl {
+//     Ast_Type_Decl() { kind = AST_TYPE_DECL; }
+//     Ast *typespec;
+//     Token token;
+// };
 
 struct Ast_Param : Ast {
     Ast_Param() { kind = AST_PARAM; }
     Ast_Ident *name;
-    Ast *type;
+    Ast *typespec;
     b32 is_vararg;
-};
-
-struct Ast_Var : Ast_Decl {
-    Ast_Var() { kind = AST_VAR; }
-    Ast *type;
-    Ast *init;
 };
 
 struct Ast_Struct : Ast_Decl {
@@ -385,7 +379,7 @@ struct Ast_Enum : Ast_Decl {
 struct Ast_Proc_Lit : Ast {
     Ast_Proc_Lit() { kind = AST_PROC_LIT; }
     Scope *scope;
-    Ast_Proc_Type *type;
+    Ast_Proc_Type *typespec;
     Ast_Block *body;
 
     Proc_Resolve_State proc_resolve_state = PROC_RESOLVE_STATE_UNSTARTED;
@@ -596,20 +590,20 @@ struct Ast_Defer : Ast_Stmt {
 struct Ast_Value_Decl : Ast {
     Ast_Value_Decl() { kind = AST_VALUE_DECL; }
     Auto_Array<Ast*> names;
-    Ast *type;
+    Ast *typespec;
     Auto_Array<Ast*> values;
     bool is_mutable;
 };
 
 struct Ast_Pointer_Type : Ast {
     Ast_Pointer_Type() { kind = AST_POINTER_TYPE; }
-    Ast *type;
+    Ast *elem;
     Token token;
 };
 
 struct Ast_Array_Type : Ast {
     Ast_Array_Type() { kind = AST_ARRAY_TYPE; }
-    Ast *type;
+    Ast *elem;
     Ast *length;
     Token token;
 };

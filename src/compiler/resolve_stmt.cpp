@@ -13,7 +13,7 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
     Ast *cond = while_stmt->cond;
     resolve_expr(cond);
 
-    if (cond->valid() && !cond->inferred_type->is_conditional_type()) {
+    if (cond->valid() && !cond->type->is_conditional_type()) {
         report_ast_error(cond, "'%s' is not a conditional expression.\n", string_from_expr(cond));
         while_stmt->poison();
     }
@@ -29,8 +29,8 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     if (for_stmt->range_expr) {
         resolve_expr(for_stmt->range_expr);
 
-        if (for_stmt->range_expr->kind != AST_RANGE && !for_stmt->range_expr->inferred_type->is_array_type()) {
-            report_ast_error(for_stmt->range_expr, "'%s' of type '%s' is not iterable.\n", string_from_expr(for_stmt->range_expr), string_from_type(for_stmt->inferred_type));
+        if (for_stmt->range_expr->kind != AST_RANGE && !for_stmt->range_expr->type->is_array_type()) {
+            report_ast_error(for_stmt->range_expr, "'%s' of type '%s' is not iterable.\n", string_from_expr(for_stmt->range_expr), string_from_type(for_stmt->type));
         }
     }
 
@@ -56,7 +56,7 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
                 decl->type = type_int;
                 for_stmt->index_variable = decl;
             } else { // value
-                decl->type = for_stmt->range_expr->inferred_type;
+                decl->type = for_stmt->range_expr->type;
                 for_stmt->value_variable = decl;
             }
             ident->ref = decl;
@@ -79,7 +79,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
     ifcase->switchy = true;
 
     if (ifcase->cond) {
-        if (!ifcase->cond->inferred_type->is_integral_type()) {
+        if (!ifcase->cond->type->is_integral_type()) {
             ifcase->switchy = false;
         }
     } else {
@@ -105,8 +105,8 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         }
             
         if (ifcase->cond) {
-            if (case_label->cond && !is_convertible(ifcase->cond->inferred_type, case_label->cond->inferred_type)) {
-                report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->inferred_type));
+            if (case_label->cond && !is_convertible(ifcase->cond->type, case_label->cond->type)) {
+                report_ast_error(case_label->cond, "'%s' is illegal type for case expression.\n", string_from_type(case_label->cond->type));
                 ifcase->poison();
             }
         } else {
@@ -133,11 +133,11 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         for (Ast_Case_Label *label : ifcase->cases) {
             if (label->cond && label->cond->kind == AST_RANGE) {
                 Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                if (!range->lhs->inferred_type->is_integral_type()) {
+                if (!range->lhs->type->is_integral_type()) {
                     report_ast_error(range->lhs, "range in for loop must be integral type.\n");
                     continue;
                 }
-                if (!range->rhs->inferred_type->is_integral_type()) {
+                if (!range->rhs->type->is_integral_type()) {
                     report_ast_error(range->rhs, "range in for loop must be integral type.\n");
                     continue;
                 }
@@ -164,9 +164,9 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
             }
         }
 
-        if (ifcase->check_enum_complete && ifcase->cond->inferred_type->is_enum_type()) {
+        if (ifcase->check_enum_complete && ifcase->cond->type->is_enum_type()) {
             Auto_Array<Decl*> unused = {};
-            Enum_Type *et = (Enum_Type *)ifcase->cond->inferred_type;
+            Enum_Type *et = (Enum_Type *)ifcase->cond->type;
 
             for (Decl *field : et->fields) {
                 if (enum_values.find(u64_from_bigint(field->constant_value.value_integer)) == enum_values.end()) {
@@ -190,7 +190,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
     if (cond &&
         cond->valid() &&
-        cond->inferred_type->is_struct_type()) {
+        cond->type->is_struct_type()) {
         report_ast_error(cond, "'%s' is not a valid conditional expression.\n", string_from_expr(cond));
     }
 
@@ -220,7 +220,7 @@ void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
 void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     Assert(current_proc);
 
-    Proc_Type *proc_type = (Proc_Type *)(current_proc->inferred_type);
+    Proc_Type *proc_type = (Proc_Type *)(current_proc->type);
     Tuple_Type *results = proc_type->results;
 
     for (Ast *value : return_stmt->values) {
@@ -233,11 +233,11 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     if (total_value_count == proc_type_count) {
         for (int idx = 0, vidx = 0; vidx < total_value_count; vidx++) {
             Ast *value = return_stmt->values[vidx];
-            int value_type_count = type_value_count(value->inferred_type);
+            int value_type_count = type_value_count(value->type);
 
             for (int i = 0; i < value_type_count; i++) {
                 Type *result_type = results->types[idx];
-                Type *value_type = type_from_index(value->inferred_type, i);
+                Type *value_type = type_from_index(value->type, i);
                 if (!is_convertible(value_type, result_type)) {
                     report_ast_error(value, "cannot convert value of '%s' from '%s' to '%s'.\n", string_from_expr(value), string_from_type(value_type), string_from_type(result_type));
                 }
@@ -284,7 +284,7 @@ void Resolver::resolve_value_decl_stmt(Ast_Value_Decl *vd) {
 
             Decl *decl = decl_variable_create(ident->name);
             decl->node = vd;
-            decl->type_expr = vd->type;
+            decl->type_expr = vd->typespec;
             ident->ref = decl;
             // decl->init_expr = value;
             scope_add(current_scope, decl);
