@@ -87,12 +87,9 @@ internal void atom_init() {
         bucket->count = 0;
     }
 
-    atom_keyword(TOKEN_NULL,        str_lit("null"));
     atom_keyword(TOKEN_ENUM,        str_lit("enum"));
     atom_keyword(TOKEN_STRUCT,      str_lit("struct"));
     atom_keyword(TOKEN_UNION,       str_lit("union"));
-    atom_keyword(TOKEN_TRUE,        str_lit("true"));
-    atom_keyword(TOKEN_FALSE,       str_lit("false"));
     atom_keyword(TOKEN_IF,          str_lit("if"));
     atom_keyword(TOKEN_ELSE,        str_lit("else"));
     atom_keyword(TOKEN_IFCASE,      str_lit("ifcase"));
@@ -104,6 +101,7 @@ internal void atom_init() {
     atom_keyword(TOKEN_CONTINUE,    str_lit("continue"));
     atom_keyword(TOKEN_FALLTHROUGH, str_lit("fallthrough"));
     atom_keyword(TOKEN_RETURN,      str_lit("return"));
+    atom_keyword(TOKEN_DEFER,       str_lit("defer"));
     atom_keyword(TOKEN_CAST,        str_lit("cast"));
     atom_keyword(TOKEN_OPERATOR,    str_lit("operator"));
     atom_keyword(TOKEN_IN,          str_lit("in"));
