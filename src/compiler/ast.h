@@ -3,17 +3,25 @@
 
 struct Type;
 struct Ast;
-struct Ast_Expr;
 struct Ast_Stmt;
 struct Ast_Decl;
 struct Ast_Block;
-struct Ast_Type_Defn;
+struct Ast;
 struct Ast_Ident;
 struct Ast_Operator_Proc;
 struct Scope;
 struct BE_Var;
 struct BE_Proc;
 struct BE_Struct;
+struct Ast_Value_Decl;
+
+struct Decl;
+
+struct Ast_Pointer_Type;
+struct Ast_Array_Type;
+struct Ast_Proc_Type;
+struct Ast_Struct_Type;
+struct Ast_Enum_Type;
 
 enum OP {
     OP_ERR = -1,
@@ -21,7 +29,7 @@ enum OP {
     OP_ADDRESS,
     OP_DEREF,
     OP_SUBSCRIPT,
-    OP_ACCESS,
+    OP_SELECT,
     OP_CAST,
 
     // Unary
@@ -70,108 +78,123 @@ enum OP {
 
 };
 
+#define AST_KINDS \
+    AST_KIND(AST_NIL              , "Nil"),                  \
+    AST_KIND(AST_ROOT             , "Root"),                \
+    AST_KIND(AST_DECL_BEGIN       , "Decl__Begin"),     \
+    AST_KIND(AST_DECL             , "Decl"),                \
+    AST_KIND(AST_BAD_DECL         , "BadDecl"),         \
+    AST_KIND(AST_TYPE_DECL        , "TypeDecl"),       \
+    AST_KIND(AST_PARAM            , "Param"),              \
+    AST_KIND(AST_VAR              , "Var"),                  \
+    AST_KIND(AST_STRUCT           , "Struct"),            \
+    AST_KIND(AST_ENUM             , "Enum"),                \
+    AST_KIND(AST_ENUM_FIELD       , "Field"),         \
+    AST_KIND(AST_PROC             , "Proc"),                    \
+    AST_KIND(AST_PROC_LIT         , "ProcLit"),                \
+    AST_KIND(AST_OPERATOR_PROC    , "OperatorProc"),           \
+    AST_KIND(AST_VALUE_DECL       , "ValueDecl"),              \
+    AST_KIND(AST_DECL_END         , "Decl__End"),                \
+    AST_KIND(AST_STMT_BEGIN       , "Stmt__Begin"), \
+    AST_KIND(AST_STMT             , "Stmt"), \
+    AST_KIND(AST_EMPTY_STMT       , "EmptyStmt"), \
+    AST_KIND(AST_BAD_STMT         , "BadStmt"), \
+    AST_KIND(AST_EXPR_STMT        , "ExprStmt"), \
+    AST_KIND(AST_DECL_STMT        , "DeclStmt"), \
+    AST_KIND(AST_ASSIGNMENT       , "AssignmentStmt"), \
+    AST_KIND(AST_IF               , "IfStmt"), \
+    AST_KIND(AST_IFCASE           , "IfcaseStmt"), \
+    AST_KIND(AST_CASE_LABEL       , "CaseLabel"), \
+    AST_KIND(AST_DO_WHILE         , "DoWhileStmt"), \
+    AST_KIND(AST_WHILE            , "WhileStmt"), \
+    AST_KIND(AST_FOR              , "ForStmt"), \
+    AST_KIND(AST_BLOCK            , "Block"), \
+    AST_KIND(AST_RETURN           , "ReturnStmt"), \
+    AST_KIND(AST_CONTINUE         , "ContinueStmt"), \
+    AST_KIND(AST_BREAK            , "BreakStmt"), \
+    AST_KIND(AST_FALLTHROUGH      , "FallthroughStmt"), \
+    AST_KIND(AST_LOAD_STMT        , "LoadStmt"), \
+    AST_KIND(AST_IMPORT_STMT      , "ImportStmt"), \
+    AST_KIND(AST_DEFER_STMT       , "DeferStmt"), \
+    AST_KIND(AST_STMT_END         , "Stmt__End"), \
+    AST_KIND(AST_EXPR_BEGIN       , "Expr__Begin"), \
+    AST_KIND(AST_EXPR             , "Expr"), \
+    AST_KIND(AST_BAD_EXPR         , "BadExpr"), \
+    AST_KIND(AST_PAREN            , "ParenExpr"), \
+    AST_KIND(AST_LITERAL          , "LiteralExpr"), \
+    AST_KIND(AST_COMPOUND_LITERAL , "CompoundLiteralExpr"), \
+    AST_KIND(AST_IDENT            , "IdentExpr"), \
+    AST_KIND(AST_CALL             , "CallExpr"), \
+    AST_KIND(AST_SUBSCRIPT        , "SubscriptExpr"), \
+    AST_KIND(AST_CAST             , "CastExpr"), \
+    AST_KIND(AST_ITERATOR         , "IteratorExpr"), \
+    AST_KIND(AST_UNARY            , "UnaryExpr"), \
+    AST_KIND(AST_ADDRESS          , "AddressExpr"), \
+    AST_KIND(AST_DEREF            , "DerefExpr"), \
+    AST_KIND(AST_BINARY           , "BinaryExpr"), \
+    AST_KIND(AST_SELECTOR         , "SelectorExpr"), \
+    AST_KIND(AST_RANGE            , "RangeExpr"), \
+    AST_KIND(AST_SIZEOF           , "SizeofExpr"), \
+    AST_KIND(AST_EXPR_END         , "Expr__End"), \
+    AST_KIND(AST_TYPE_BEGIN       , "Type__Begin"), \
+    AST_KIND(AST_POINTER_TYPE     , "PointerType"), \
+    AST_KIND(AST_ARRAY_TYPE       , "ArrayType"), \
+    AST_KIND(AST_PROC_TYPE        , "ProcType"), \
+    AST_KIND(AST_ENUM_TYPE        , "EnumType"), \
+    AST_KIND(AST_STRUCT_TYPE      , "StructType"), \
+    AST_KIND(AST_UNION_TYPE       , "UnionType"), \
+    AST_KIND(AST_TYPE_END         , "Type__End"), \
+
 enum Ast_Kind {
-    AST_NIL,
-
-    AST_ROOT,
-    AST_SCOPE,
-
-    AST_TYPE_DEFN,
-    AST_TYPE,
-    AST_ARRAY_TYPE,
-    AST_ENUM_TYPE,
-    AST_PROC_TYPE,
-
-
-    //@Note Exprs
-    AST_EXPR_BEGIN,
-
-    AST_EXPR,
-    AST_NULL,
-    AST_PAREN,
-    AST_LITERAL,
-    AST_COMPOUND_LITERAL,
-    AST_IDENT,
-    AST_CALL,
-    AST_SUBSCRIPT,
-    AST_CAST,
-    AST_ITERATOR,
-
-    AST_UNARY,
-    AST_ADDRESS,
-    AST_DEREF,
-    AST_BINARY,
-    AST_ASSIGNMENT,
-    AST_ACCESS,
-    AST_RANGE,
-    AST_SIZEOF,
-
-    AST_EXPR_END,
-
-
-    //@Note Decls
-
-    AST_DECL_BEGIN,
-
-    AST_DECL,
-    AST_BAD_DECL,
-    AST_TYPE_DECL,
-    AST_PARAM,
-    AST_VAR,
-    AST_STRUCT,
-    AST_UNION,
-    AST_ENUM,
-    // AST_STRUCT_FIELD,
-    AST_ENUM_FIELD,
-    AST_PROC,
-    AST_OPERATOR_PROC,
-
-    AST_DECL_END,
-
-
-    //@Note Stmts
-
-    AST_STMT_BEGIN,
-
-    AST_STMT,
-    AST_EMPTY_STMT,
-    AST_BAD_STMT,
-    AST_EXPR_STMT,
-    AST_DECL_STMT,
-    AST_IF,
-    AST_IFCASE,
-    AST_CASE_LABEL,
-    AST_DO_WHILE,
-    AST_WHILE,
-    AST_FOR,
-    AST_BLOCK,
-    AST_RETURN,
-    AST_CONTINUE,
-    AST_BREAK,
-    AST_FALLTHROUGH,
-    AST_LOAD_STMT,
-    AST_IMPORT_STMT,
-
-    AST_STMT_END,
-
+#define AST_KIND(K,S) K
+    AST_KINDS
+#undef AST_KIND
     AST_COUNT
 };
 
+const char *ast_strings[] = {
+#define AST_KIND(K,S) S
+    AST_KINDS
+#undef AST_KIND
+};
+
+#define ast_node_var(N, T, V) T *N = (T *)(V)
+#define ast_node(T, V) ((T *)(V))
+
+enum Ast_Flags {
+    AST_FLAG_LVALUE   = (1<<0),
+    AST_FLAG_CONSTANT = (1<<1),
+    AST_FLAG_TYPE     = (1<<2),
+    AST_FLAG_OP_CALL  = (1<<3),
+    AST_FLAG_GLOBAL   = (1<<4),
+};
+EnumDefineFlagOperators(Ast_Flags);
+
+enum Addressing_Mode {
+    ADDRESSING_INVALID,
+    ADDRESSING_TYPE,
+    ADDRESSING_VALUE,
+    ADDRESSING_VARIABLE,
+    ADDRESSING_CONSTANT,
+    ADDRESSING_PROCEDURE,
+};
+
 struct Ast {
+    u64 id = 0;
     Ast_Kind kind = AST_NIL;
     Ast *next = nullptr;
     Ast *prev = nullptr;
 
     Source_File *file = nullptr;
-    Source_Pos start = {};
-    Source_Pos end = {};
 
-    b32 is_poisoned = 0;
-    b32 visited = 0;
+    Addressing_Mode mode = ADDRESSING_INVALID;
+    Type *inferred_type = nullptr;
+    Constant_Value value = {};
 
-    void mark_start(Source_Pos pos) { start = pos; file = pos.file; }
-    void mark_end(Source_Pos pos)   { end = pos; file = pos.file; }
-    void mark_range(Source_Pos p0, Source_Pos p1) { start = p0; end = p1; file = p0.file; }
+    Ast_Flags flags = (Ast_Flags)0;
+
+    b32 is_poisoned = false;
+    b32 visited = false;
 
     bool invalid() { return is_poisoned; }
     bool valid() { return !is_poisoned; }
@@ -184,160 +207,130 @@ struct Ast {
 
 struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
-    Auto_Array<Ast_Decl*> declarations;
     Scope *scope = nullptr;
+    Auto_Array<Ast*> decls;
 };
 
-enum Type_Defn_Kind {
-    TYPE_DEFN_NIL,
-    TYPE_DEFN_NAME,
-    TYPE_DEFN_POINTER,
-    TYPE_DEFN_ARRAY,
-    TYPE_DEFN_PROC,
-    TYPE_DEFN_STRUCT,
-};
-
-struct Ast_Type_Defn : Ast {
-    Ast_Type_Defn() { kind = AST_TYPE_DEFN; }
-    Ast_Type_Defn *base;
-    Type_Defn_Kind type_defn_kind;
-    union {
-        Atom *name;
-        Ast_Expr *array_size;
-        struct {
-            Auto_Array<Ast_Type_Defn*> parameters;
-            Ast_Type_Defn *return_type;
-        } proc;
-    };
-};
-
-enum Expr_Flags {
-    EXPR_FLAG_NIL         = 0,
-    EXPR_FLAG_CONSTANT    = (1<<0),
-    EXPR_FLAG_LVALUE      = (1<<1),
-    EXPR_FLAG_OP_CALL     = (1<<9),
-};
-EnumDefineFlagOperators(Expr_Flags);
-
-//@Todo Sign, Precision
-union Eval {
-    s64 int_val;
-    f64 float_val;
-};
-
-struct Ast_Expr : Ast {
-    Ast_Expr() { kind = AST_EXPR; }
-    Expr_Flags expr_flags;
-    Type *type;
-    Eval eval;
-
-    bool inline is_constant() { return expr_flags & EXPR_FLAG_CONSTANT; }
-    inline bool is_binop(OP op);
-};
-
-struct Ast_Null : Ast_Expr {
-    Ast_Null() { kind = AST_NULL; }
-};
-
-struct Ast_Paren : Ast_Expr {
+struct Ast_Paren : Ast {
     Ast_Paren() { kind = AST_PAREN; }
-    Ast_Expr *elem;
+    Ast *elem;
+    Token open;
+    Token close;
 };
 
-struct Ast_Subscript : Ast_Expr {
+struct Ast_Subscript : Ast {
     Ast_Subscript() { kind = AST_SUBSCRIPT; }
-    Ast_Expr *expr;
-    Ast_Expr *index;
+    Ast *expr;
+    Ast *index;
+    Token open;
+    Token close;
 };
 
-struct Ast_Access : Ast_Expr {
-    Ast_Access() { kind = AST_ACCESS; }
-    Ast_Expr *parent;
+struct Ast_Selector : Ast {
+    Ast_Selector() { kind = AST_SELECTOR; }
+    Ast *parent;
     Ast_Ident *name;
+    Token token;
 };
 
-struct Ast_Range : Ast_Expr {
+struct Ast_Range : Ast {
     Ast_Range() { kind = AST_RANGE; }
-    Ast_Expr *lhs;
-    Ast_Expr *rhs;
+    Ast *lhs;
+    Ast *rhs;
+    Token token;
 };
 
-struct Ast_Literal : Ast_Expr {
+struct Ast_Literal : Ast {
     Ast_Literal() { kind = AST_LITERAL; }
-    Literal_Flags literal_flags;
-    union {
-        String8 str_val;
-        u64 int_val;
-        f64 float_val;
-    };
+    Token token;
 };
 
-struct Ast_Compound_Literal : Ast_Expr {
+struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
-    Ast_Type_Defn *type_defn;
-    Auto_Array<Ast_Expr*> elements;
+    Ast *type;
+    Auto_Array<Ast*> elements;
+    Token open;
+    Token close;
 };
 
-struct Ast_Call : Ast_Expr {
+struct Ast_Call : Ast {
     Ast_Call() { kind = AST_CALL; }
-    Ast_Expr *elem;
-    Auto_Array<Ast_Expr*> arguments;
+    Ast *elem;
+    Auto_Array<Ast*> arguments;
+    Token open;
+    Token close;
 };
 
-struct Ast_Ident : Ast_Expr {
+struct Ast_Ident : Ast {
     Ast_Ident() { kind = AST_IDENT; }
     Atom *name;
-    Ast_Decl *ref;
+    Token token;
+    Decl *ref;
 };
 
-struct Ast_Unary : Ast_Expr {
+struct Ast_Unary : Ast {
     Ast_Unary() { kind = AST_UNARY; }
     OP op;
     Ast_Operator_Proc *proc;
-    Ast_Expr *elem;
+    Ast *elem;
+    Token token;
 };
 
-struct Ast_Address : Ast_Expr {
+struct Ast_Address : Ast {
     Ast_Address() { kind = AST_ADDRESS; }
-    Ast_Expr *elem;
+    Ast *elem;
+    Token token;
 };
 
-struct Ast_Deref : Ast_Expr {
+struct Ast_Deref : Ast {
     Ast_Deref() { kind = AST_DEREF; }
-    Ast_Expr *elem;
+    Ast *elem;
+    Token token;
 };
 
-struct Ast_Cast : Ast_Expr {
+struct Ast_Cast : Ast {
     Ast_Cast() { kind = AST_CAST; }
-    Ast_Type_Defn *type_defn;
-    Ast_Expr *elem;
+    Ast *type;
+    Ast *elem;
+    Token token;
 };
 
-struct Ast_Assignment : Ast_Expr {
+struct Ast_Assignment : Ast {
     Ast_Assignment() { kind = AST_ASSIGNMENT; }
     OP op;
-    Ast_Operator_Proc *proc;
-    Ast_Expr *lhs;
-    Ast_Expr *rhs;
+    Auto_Array<Ast*> lhs;
+    Auto_Array<Ast*> rhs;
+    // Ast_Operator_Proc *proc;
+    Token token;
 };
 
-struct Ast_Binary : Ast_Expr {
+struct Ast_Binary : Ast {
     Ast_Binary() { kind = AST_BINARY; }
     OP op;
     Ast_Operator_Proc *proc;
-    Ast_Expr *lhs;
-    Ast_Expr *rhs;
+    Ast *lhs;
+    Ast *rhs;
+    Token token;
 };
 
-struct Ast_Sizeof : Ast_Expr {
+struct Ast_Sizeof : Ast {
     Ast_Sizeof() { kind = AST_SIZEOF; }
-    Ast_Expr *elem;
+    Ast *elem;
+    Token token;
+    Token open;
+    Token close;
 };
 
 enum Resolve_State {
     RESOLVE_UNSTARTED,
     RESOLVE_STARTED,
     RESOLVE_DONE
+};
+
+enum Proc_Resolve_State {
+    PROC_RESOLVE_STATE_UNSTARTED,
+    PROC_RESOLVE_STATE_HEADER,
+    PROC_RESOLVE_STATE_COMPLETE,
 };
 
 enum Decl_Flags {
@@ -359,31 +352,22 @@ struct Ast_Decl : Ast {
 
 struct Ast_Type_Decl : Ast_Decl {
     Ast_Type_Decl() { kind = AST_TYPE_DECL; }
-    Ast_Type_Defn *type_defn;
+    Ast *type;
+    Token token;
 };
 
-struct Ast_Param : Ast_Decl {
+struct Ast_Param : Ast {
     Ast_Param() { kind = AST_PARAM; }
-    Ast_Type_Defn *type_defn;
+    Ast_Ident *name;
+    Ast *type;
     b32 is_vararg;
 };
 
 struct Ast_Var : Ast_Decl {
     Ast_Var() { kind = AST_VAR; }
-    Ast_Type_Defn *type_defn;
-    Ast_Expr *init;
+    Ast *type;
+    Ast *init;
 };
-
-struct Ast_Union : Ast_Decl {
-    Ast_Union() { kind = AST_UNION; }
-};
-
-// struct Ast_Struct_Field : Ast {
-//     Ast_Struct_Field() { kind = AST_STRUCT_FIELD; }
-//     Atom *name;
-//     Ast_Type_Defn *type_defn;
-//     Type *type;
-// };
 
 struct Ast_Struct : Ast_Decl {
     Ast_Struct() { kind = AST_STRUCT; }
@@ -392,23 +376,31 @@ struct Ast_Struct : Ast_Decl {
     BE_Struct *backend_struct;
 };
 
-struct Ast_Enum_Field : Ast_Decl {
-    Ast_Enum_Field() { kind = AST_ENUM_FIELD; }
-    Ast_Expr *expr;
-    s64 value;
-};
-
 struct Ast_Enum : Ast_Decl {
     Ast_Enum() { kind = AST_ENUM; }
     Scope *scope;
-    Auto_Array<Ast_Enum_Field*> fields;
+    Auto_Array<Ast*> fields;
+};
+
+struct Ast_Proc_Lit : Ast {
+    Ast_Proc_Lit() { kind = AST_PROC_LIT; }
+    Scope *scope;
+    Ast_Proc_Type *type;
+    Ast_Block *body;
+
+    Proc_Resolve_State proc_resolve_state = PROC_RESOLVE_STATE_UNSTARTED;
+
+    Auto_Array<Ast_Decl*> local_vars;
+    b32 returns;
+    BE_Proc *backend_proc;
 };
 
 struct Ast_Proc : Ast_Decl {
     Ast_Proc() { kind = AST_PROC; }
-    Auto_Array<Ast_Param*> parameters;
-    Ast_Type_Defn *return_type_defn = nullptr;
     Scope *scope = nullptr;
+
+    Auto_Array<Ast_Param*> params;
+    Ast *return_type = nullptr;
     Ast_Block *block = nullptr;
 
     Auto_Array<Ast_Decl*> local_vars;
@@ -436,29 +428,42 @@ struct Ast_Stmt : Ast {
 
 struct Ast_Empty_Stmt : Ast_Stmt {
     Ast_Empty_Stmt() { kind = AST_EMPTY_STMT; }
+    Token token;
+};
+
+struct Ast_Bad_Expr : Ast {
+    Ast_Bad_Expr() { kind = AST_BAD_EXPR; }
+    Token start;
+    Token end;
 };
 
 struct Ast_Bad_Stmt : Ast_Stmt {
     Ast_Bad_Stmt() { kind = AST_BAD_STMT; }
+    Token start;
+    Token end;
 };
-
 
 struct Ast_Bad_Decl : Ast_Decl {
     Ast_Bad_Decl() { kind = AST_BAD_DECL; }
+    Token start;
+    Token end;
 };
 
 struct Ast_If : Ast_Stmt {
     Ast_If() { kind = AST_IF; }
-    Ast_Expr *cond;
+    Ast *cond;
     Ast_Block *block;
     b32 is_else;
+    Token token;
 };
 
 struct Ast_Case_Label : Ast_Stmt {
     Ast_Case_Label() { kind = AST_CASE_LABEL; }
     Scope *scope;
-    Ast_Expr *cond;
-    Ast_Block *block;
+    Ast *cond;
+    Auto_Array<Ast*> statements;
+
+    Token token;
 
     b32 is_default;
     b32 fallthrough;
@@ -468,9 +473,14 @@ struct Ast_Case_Label : Ast_Stmt {
 
 struct Ast_Ifcase : Ast_Stmt {
     Ast_Ifcase() { kind = AST_IFCASE; }
-    Ast_Expr *cond;
+    Ast *cond;
     Ast_Case_Label *default_case;
     Auto_Array<Ast_Case_Label*> cases;
+
+    Token token;
+    Token open;
+    Token close;
+
     b32 switchy;
     b32 check_enum_complete;
 
@@ -479,8 +489,10 @@ struct Ast_Ifcase : Ast_Stmt {
 
 struct Ast_While : Ast_Stmt {
     Ast_While() { kind = AST_WHILE; }
-    Ast_Expr *cond;
+    Ast *cond;
     Ast_Block *block;
+
+    Token token;
 
     void *entry_block;
     void *exit_block;
@@ -488,17 +500,34 @@ struct Ast_While : Ast_Stmt {
 
 struct Ast_Do_While : Ast_Stmt {
     Ast_Do_While() { kind = AST_DO_WHILE; }
-    Ast_Expr *cond;
+    Ast *cond;
     Ast_Block *block;
+
+    Token token;
+
     // void *entry_block;
     // void *exit_block;
 };
 
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }
-    Ast_Var *var;
-    Ast_Expr *iterator;
+
+    //@Todo Regular for loop
+    // for init; condition; post { .. }
+    // Ast *init;
+    // Ast *condition;
+    // Ast *post;
+
+    //@Note Range for loop
+    // for index, value: expr
+    Auto_Array<Ast*> lhs;
+    Ast *range_expr;
     Ast_Block *block;
+
+    Decl *index_variable = nullptr;
+    Decl *value_variable = nullptr;
+
+    Token token;
 
     void *entry_block;
     void *retry_block;
@@ -507,55 +536,139 @@ struct Ast_For : Ast_Stmt {
 
 struct Ast_Expr_Stmt : Ast_Stmt {
     Ast_Expr_Stmt() { kind = AST_EXPR_STMT; }   
-    Ast_Expr *expr;
+    Ast *expr;
 };
 
-struct Ast_Decl_Stmt : Ast_Stmt {
-    Ast_Decl_Stmt() { kind = AST_DECL_STMT; }
-    Ast_Decl *decl;
-};
-
-struct Ast_Load : Ast_Stmt {
+struct Ast_Load : Ast {
     Ast_Load() { kind = AST_LOAD_STMT; }
     String8 rel_path;
+    Token token;
+    Token file_token;
 };
 
-struct Ast_Import : Ast_Stmt {
+struct Ast_Import : Ast {
     Ast_Import() { kind = AST_IMPORT_STMT; }
     String8 rel_path;
+    Token token;
+    Token file_token;
 };
 
 struct Ast_Block : Ast_Stmt {
     Ast_Block() { kind = AST_BLOCK; }
+    Scope *scope;
     Auto_Array<Ast*> statements;
-    Scope *scope = nullptr;
+    Token open;
+    Token close;
+
     b32 returns;
 };
 
 struct Ast_Return : Ast_Stmt {
     Ast_Return() { kind = AST_RETURN; }
-    Ast_Expr *expr = nullptr;
+    Auto_Array<Ast*> values;
+    Token token;
 };
 
 struct Ast_Break : Ast_Stmt {
     Ast_Break() { kind = AST_BREAK; }
     Ast *target = nullptr;
+    Token token;
 };
 
 struct Ast_Continue : Ast_Stmt {
     Ast_Continue() { kind = AST_CONTINUE; }
     Ast *target = nullptr;
+    Token token;
 };
 
 struct Ast_Fallthrough : Ast_Stmt {
     Ast_Fallthrough() { kind = AST_FALLTHROUGH; }
     Ast *target = nullptr;
+    Token token;
 };
 
-#define AST_NEW(T) static_cast<T*>(&(*ast_alloc(sizeof(T), alignof(T)) = T()))
+struct Ast_Defer : Ast_Stmt {
+    Ast_Defer() { kind = AST_DEFER_STMT; }
+    Ast *stmt;
+    Token token;
+};
+
+struct Ast_Value_Decl : Ast {
+    Ast_Value_Decl() { kind = AST_VALUE_DECL; }
+    Auto_Array<Ast*> names;
+    Ast *type;
+    Auto_Array<Ast*> values;
+    bool is_mutable;
+};
+
+struct Ast_Pointer_Type : Ast {
+    Ast_Pointer_Type() { kind = AST_POINTER_TYPE; }
+    Ast *type;
+    Token token;
+};
+
+struct Ast_Array_Type : Ast {
+    Ast_Array_Type() { kind = AST_ARRAY_TYPE; }
+    Ast *type;
+    Ast *length;
+    Token token;
+};
+
+struct Ast_Proc_Type : Ast {
+    Ast_Proc_Type() { kind = AST_PROC_TYPE; }
+    Scope *scope;
+    Auto_Array<Ast_Param*> params;
+    Auto_Array<Ast*> results;
+    Token open;
+    Token close;
+
+    b32 foreign;
+    b32 variadic;
+};
+
+struct Ast_Enum_Field : Ast {
+    Ast_Enum_Field() { kind = AST_ENUM_FIELD; }
+    Ast_Ident *name;
+    Ast *expr;
+    Token token;
+};
+
+struct Ast_Enum_Type : Ast {
+    Ast_Enum_Type () { kind = AST_ENUM_TYPE; }
+    Scope *scope;
+    Ast *base_type;
+    Auto_Array<Ast_Enum_Field*> fields;
+    Token token;
+    Token open;
+    Token close;
+};
+
+struct Ast_Struct_Type : Ast {
+    Ast_Struct_Type() { kind = AST_STRUCT_TYPE; }
+    Scope *scope;
+    Ast_Ident *name;
+    Auto_Array<Ast_Value_Decl*> members;
+    b32 complete = false;
+
+    Token token;
+    Token open;
+    Token close;
+};
+
+struct Ast_Union_Type : Ast {
+    Ast_Union_Type() { kind = AST_UNION_TYPE; }
+    Scope *scope;
+    Auto_Array<Ast_Value_Decl*> members;
+
+    Token token;
+    Token open;
+    Token close;
+};
+
+#define AST_NEW(F, T) static_cast<T*>(ast__init(&(*ast_alloc(sizeof(T), alignof(T)) = T()), F))
 
 internal inline Allocator ast_allocator();
-internal Ast *ast_alloc(u64 size, int alignment);
+internal Ast *ast_alloc(Source_File *f, u64 size, int alignment);
 internal char *string_from_operator(OP op);
 
 #endif // AST_H
