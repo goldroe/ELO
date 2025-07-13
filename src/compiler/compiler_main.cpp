@@ -46,10 +46,7 @@ global Auto_Array<String8> compiler_link_libraries;
 #include "resolve.cpp"
 #include "resolve_expr.cpp"
 #include "resolve_stmt.cpp"
-
-#if 0
 #include "llvm_backend.cpp"
-#endif
 
 internal void compiler_error(char *fmt, ...) {
     va_list args;
@@ -159,13 +156,11 @@ int main(int argc, char **argv) {
         printf("%d error(s).\n", g_error_count);
     }
 
-#if 0
     llvm_arena = arena_create();
     if (g_error_count == 0) {
         LLVM_Backend *backend = new LLVM_Backend(source_file, parser->root);
         backend->gen();
     }
-#endif
 
     compiler_exit();
 
