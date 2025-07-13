@@ -188,8 +188,6 @@ internal Token ast_start_token(Ast *node) {
         break;
     case AST_BAD_DECL:
         break;
-    case AST_TYPE_DECL:
-        break;
     case AST_PARAM: {
         ast_node_var(param, Ast_Param, node);
         if (param->name) {
@@ -334,8 +332,6 @@ internal Token ast_end_token(Ast *node) {
         Assert(0);
         break;
     case AST_BAD_DECL:
-        break;
-    case AST_TYPE_DECL:
         break;
     case AST_PARAM: {
         ast_node_var(param, Ast_Param, node);
