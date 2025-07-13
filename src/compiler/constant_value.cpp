@@ -21,6 +21,12 @@ internal bigint bigint_make(u64 value) {
     return i;
 }
 
+internal bigint bigint_copy(const bigint *a) {
+    bigint i = {};
+    mp_init_copy(&i, a);
+    return i;
+}
+
 internal bigint bigint_from_f64(f64 f) {
     bigint i = {};
     mp_init(&i);
@@ -121,14 +127,14 @@ internal Constant_Value make_constant_value_float(f64 value) {
 internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
     switch (value.kind) {
     case CONSTANT_VALUE_INTEGER: {
-        if (ct->is_float_type()) {
+        if (is_float_type(ct)) {
             return make_constant_value_float(f64_from_bigint(value.value_integer));
         }
         break;
     }
 
     case CONSTANT_VALUE_FLOAT: {
-        if (ct->is_integral_type()) {
+        if (is_integral_type(ct)) {
             return make_constant_value_int(bigint_from_f64(value.value_float));
         }
         break;
