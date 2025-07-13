@@ -21,26 +21,26 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
 
     switch (expr->op) {
     case OP_ADD:
-        if (lhs->type->is_pointer_type() && rhs->type->is_pointer_type()) {
+        if (is_pointer_type(lhs->type) && is_pointer_type(rhs->type)) {
             report_ast_error(expr, "cannot add two pointers.\n");
-        } else if (lhs->type->is_pointer_type()) {
-            if (!rhs->type->is_integral_type()) {
+        } else if (is_pointer_type(lhs->type)) {
+            if (!is_integral_type(rhs->type)) {
                 report_ast_error(rhs, "pointer addition requires integral operand.\n");
                 expr->poison();
             }
             expr->type = lhs->type;
-        } else if (rhs->type->is_pointer_type()) {
-            if (!lhs->type->is_integral_type()) {
+        } else if (is_pointer_type(rhs->type)) {
+            if (!is_integral_type(lhs->type)) {
                 report_ast_error(lhs, "pointer addition requires integral operand.\n");
                 expr->poison();
             }
             expr->type = rhs->type;
         } else {
-            if (!lhs->type->is_numeric_type()) {
+            if (!is_numeric_type(lhs->type)) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type->is_numeric_type()) {
+            if (!is_numeric_type(rhs->type)) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
@@ -49,26 +49,26 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
         break;
 
     case OP_SUB:
-        if (lhs->type->is_pointer_type() && rhs->type->is_pointer_type()) {
+        if (is_pointer_type(lhs->type) && is_pointer_type(rhs->type)) {
             if (lhs->type != rhs->type) {
                 report_ast_error(expr, "'%s' and '%s' are incompatible pointer types.\n", string_from_type(lhs->type), string_from_type(rhs->type));
                 expr->poison();
             }
             expr->type = lhs->type;
-        } else if (lhs->type->is_pointer_type()) {
-            if (!rhs->type->is_integral_type()) {
+        } else if (is_pointer_type(lhs->type)) {
+            if (!is_integral_type(rhs->type)) {
                 report_ast_error(rhs, "pointer subtraction requires pointer or integral operand.\n");
                 expr->poison();
             }
-        } else if (rhs->type->is_pointer_type()) {
+        } else if (is_pointer_type(rhs->type)) {
             report_ast_error(lhs, "pointer can only be subtracted from another pointer.\n");
             expr->poison();
         } else {
-            if (!lhs->type->is_numeric_type()) {
+            if (!is_numeric_type(lhs->type)) {
                 report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
                 expr->poison();
             }
-            if (!rhs->type->is_numeric_type()) {
+            if (!is_numeric_type(rhs->type)) {
                 report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
                 expr->poison();
             }
@@ -80,11 +80,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_DIV:
     case OP_MOD:
         expr->type = lhs->type;
-        if (!lhs->type->is_numeric_type() || lhs->type->is_pointer_type()) {
+        if (!is_numeric_type(lhs->type) || is_pointer_type(lhs->type)) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type->is_numeric_type() || rhs->type->is_pointer_type()) {
+        if (!is_numeric_type(rhs->type) || is_pointer_type(rhs->type)) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -96,11 +96,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_LSH:
     case OP_RSH:
         expr->type = lhs->type;
-        if (!lhs->type->is_integral_type()) {
+        if (!is_integral_type(lhs->type)) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type->is_integral_type()) {
+        if (!is_integral_type(rhs->type)) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -113,11 +113,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_GT:
     case OP_GTEQ:
         expr->type = type_bool;
-        if (lhs->type->is_struct_type()) {
+        if (is_struct_type(lhs->type)) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (rhs->type->is_struct_type()) {
+        if (is_struct_type(rhs->type)) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -126,11 +126,11 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     case OP_OR:
     case OP_AND:
         expr->type = type_bool;
-        if (!lhs->type->is_numeric_type()) {
+        if (!is_numeric_type(lhs->type)) {
             report_ast_error(lhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(lhs), string_from_operator(expr->op));
             expr->poison();
         }
-        if (!rhs->type->is_numeric_type()) {
+        if (!is_numeric_type(rhs->type)) {
             report_ast_error(rhs, "invalid operand '%s' in binary '%s'.\n", string_from_expr(rhs), string_from_operator(expr->op));
             expr->poison();
         }
@@ -139,7 +139,7 @@ void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
 
     if (expr->valid() &&
         lhs->mode == ADDRESSING_CONSTANT && rhs->mode == ADDRESSING_CONSTANT) {
-        expr->flags |= AST_FLAG_CONSTANT;
+        expr->mode = ADDRESSING_CONSTANT;
         expr->value = constant_binary_op_value(expr->op, expr->lhs->value, expr->rhs->value);
     }
 }
@@ -163,10 +163,10 @@ void Resolver::resolve_binary_expr(Ast_Binary *expr) {
 void Resolver::resolve_call_expr(Ast_Call *call) {
     resolve_expr(call->elem);
 
-    Proc_Type *proc_type = nullptr;
+    Type_Proc *proc_type = nullptr;
     if (call->elem->valid()) {
-        if (call->elem->type->is_proc_type()) {
-            proc_type = static_cast<Proc_Type*>(call->elem->type);
+        if (is_proc_type(call->elem->type)) {
+            proc_type = static_cast<Type_Proc*>(call->elem->type);
         } else {
             report_ast_error(call, "'%s' does not valueuate to a procedure.\n", string_from_expr(call->elem));
             call->poison();
@@ -186,8 +186,8 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         }
     }
 
-    int total_arg_count = get_values_count(call->arguments);
-    int total_param_count = type_value_count(proc_type->params);
+    int total_arg_count = get_value_count(call->arguments);
+    int total_param_count = get_value_count(proc_type->params);
 
     if (total_arg_count < total_param_count) {
         report_ast_error(call, "too few arguments for '%s', expected %d arguments, got %d.\n", string_from_expr(call->elem), total_param_count, total_arg_count);
@@ -203,7 +203,7 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
     for (int arg_idx = 0, param_idx = 0; arg_idx < call->arguments.count; arg_idx++) {
         Ast *arg = call->arguments[arg_idx];
 
-        int type_count = type_value_count(arg->type);
+        int type_count = get_value_count(arg->type);
 
         for (int i = 0; i < type_count; i++) {
             Type *param = proc_type->params->types[param_idx];
@@ -227,6 +227,7 @@ void Resolver::resolve_cast_expr(Ast_Cast *cast) {
             report_ast_error(cast->elem, "cannot cast '%s' as '%s' from '%s'.\n", string_from_expr(cast->elem), string_from_type(cast->type), string_from_type(cast->elem->type));
         }
         if (cast->elem->mode == ADDRESSING_CONSTANT) {
+            cast->mode = ADDRESSING_CONSTANT;
             cast->value = constant_cast_value(cast->elem->value, cast->type);
         }
     } else {
@@ -244,8 +245,8 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         resolve_expr(elem);
     }
 
-    if (specified_type->is_struct_type()) {
-        Struct_Type *struct_type = (Struct_Type *)specified_type;
+    if (is_struct_type(specified_type)) {
+        Type_Struct *struct_type = (Type_Struct *)specified_type;
         // if (struct_type->fields.count < literal->elements.count) {
         //     report_ast_error(literal, "too many initializers for struct '%s'.\n", struct_type->decl->name->data);
         //     report_note(struct_type->decl->start, "see declaration of '%s'.\n", struct_type->decl->name->data);
@@ -263,7 +264,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
         //         literal->poison();
         //     }
         // }
-    } else if (specified_type->is_array_type()) {
+    } else if (is_array_type(specified_type)) {
         Type *elem_type = specified_type->base;
         for (int i = 0; i < literal->elements.count; i++) {
             Ast *elem = literal->elements[i];
@@ -290,7 +291,7 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     resolve_expr(deref->elem);
-    if (deref->elem->type->is_indirection_type()) {
+    if (is_indirection_type(deref->elem->type)) {
         deref->type = deref->elem->type->base;
     } else {
         report_ast_error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
@@ -344,7 +345,7 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
     Type *type = nullptr;
     switch (literal->value.kind) {
     case CONSTANT_VALUE_INTEGER:
-        switch (literal->token.kind) {
+        switch (literal->token.literal_kind) {
         case LITERAL_DEFAULT: type = type_int; break;
         case LITERAL_U8:  type = type_u8; break;
         case LITERAL_U16: type = type_u16; break;
@@ -358,7 +359,7 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
         break;
 
     case CONSTANT_VALUE_FLOAT:
-        switch (literal->token.kind) {
+        switch (literal->token.literal_kind) {
         case LITERAL_DEFAULT: type = type_f32; break;
         case LITERAL_F32: type = type_f32; break;
         case LITERAL_F64: type = type_f64; break;
@@ -378,14 +379,14 @@ void Resolver::resolve_range_expr(Ast_Range *range) {
     resolve_expr(range->rhs);
 
     if (range->lhs->valid()) {
-        if (!range->lhs->type->is_integral_type()) {
+        if (!is_integral_type(range->lhs->type)) {
             report_ast_error(range->lhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->lhs));
             range->poison();
         }
     }
 
     if (range->rhs->valid()) {
-        if (!range->rhs->type->is_integral_type()) {
+        if (!is_integral_type(range->rhs->type)) {
             report_ast_error(range->rhs, "'%s' is invalid range expression, not an integral type.\n", string_from_expr(range->rhs));
             range->poison();
         }
@@ -433,7 +434,7 @@ void Resolver::resolve_selector_expr(Ast_Selector *selector) {
     }
 
     selector->type = decl->type;
-    selector->name->ref = decl;
+    selector->name->ref = decl; 
 
     switch (decl->kind) {
     case DECL_TYPE:
@@ -458,7 +459,7 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
     resolve_expr(subscript->index);
 
     if (subscript->expr->valid()) {
-        if (subscript->expr->type->is_indirection_type()) {
+        if (is_indirection_type(subscript->expr->type)) {
             subscript->type = subscript->expr->type->base;
         } else {
             report_ast_error(subscript->expr, "'%s' is not a pointer or array type.\n", string_from_expr(subscript->expr));
@@ -469,7 +470,7 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
     }
 
     if (subscript->index->valid()) {
-        if (!subscript->index->type->is_integral_type()) {
+        if (!is_integral_type(subscript->index->type)) {
             report_ast_error(subscript->index, "array subscript is not of integral type.\n");
             subscript->poison();
         }
@@ -482,7 +483,7 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
     Ast *elem = expr->elem;
     switch (expr->op) {
     case OP_UNARY_PLUS:
-        if (elem->type->is_numeric_type()) {
+        if (is_numeric_type(elem->type)) {
             expr->type = elem->type;
         } else {
             report_ast_error(elem, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
@@ -490,7 +491,7 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
         }
         break;
     case OP_UNARY_MINUS:
-        if (elem->type->is_numeric_type() && !elem->type->is_pointer_type()) {
+        if (is_numeric_type(elem->type) && !is_pointer_type(elem->type)) {
             expr->type = elem->type;
         } else {
             report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
@@ -498,7 +499,7 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
         }
         break;
     case OP_NOT:
-        if (elem->type->is_numeric_type()) {
+        if (is_numeric_type(elem->type)) {
             expr->type = type_bool;
         } else {
             report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
@@ -506,7 +507,7 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
         }
         break;
     case OP_BIT_NOT:
-        if (elem->type->is_numeric_type()) {
+        if (is_numeric_type(elem->type)) {
             expr->type = elem->type;
         } else {
             report_ast_error(expr, "invalid operand '%s' of type '%s' in unary '%s'.\n", string_from_expr(elem), string_from_type(elem->type), string_from_operator(expr->op));
@@ -521,7 +522,7 @@ void Resolver::resolve_unary_expr(Ast_Unary *expr) {
     if (expr->elem->valid()) {
         resolve_builtin_unary_expr(expr);
         if (expr->valid() && expr->elem->mode == ADDRESSING_CONSTANT) {
-            expr->flags |= AST_FLAG_CONSTANT;
+            expr->mode = ADDRESSING_CONSTANT;
             expr->value = constant_unary_op_value(expr->op, expr->elem->value);
         }
     } else {
@@ -532,7 +533,7 @@ void Resolver::resolve_unary_expr(Ast_Unary *expr) {
 void Resolver::resolve_single_value(Ast *expr) {
     Type *type = expr->type;
     if (type && type->kind == TYPE_TUPLE) {
-        Tuple_Type *tuple = (Tuple_Type *)type;
+        Type_Tuple *tuple = (Type_Tuple *)type;
         if (tuple->types.count > 1) {
             expr->poison();
             report_ast_error(expr, "multi valued (%d) expression where single value type expected.\n", tuple->types.count);
@@ -614,7 +615,7 @@ void Resolver::resolve_expr_base(Ast *expr) {
 
         if (paren->elem->valid()) {
             if (paren->elem->mode == ADDRESSING_CONSTANT) {
-                paren->flags |= AST_FLAG_CONSTANT;
+                paren->mode = ADDRESSING_CONSTANT;
                 paren->value = paren->elem->value;
             }
         } else {

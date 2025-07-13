@@ -1,6 +1,11 @@
 #ifndef RESOLVE_H
 #define RESOLVE_H
 
+struct Select {
+    Decl *decl = nullptr;
+    int index = 0;
+};
+
 struct Resolver {
     Arena *arena;
 
@@ -30,7 +35,6 @@ struct Resolver {
 
     void resolve_block(Ast_Block *block);
 
-    void resolve_control_path_flow(Ast_Proc *proc);
     void resolve_for_stmt(Ast_For *for_stmt);
     void resolve_while_stmt(Ast_While *while_stmt);
     void resolve_decl_stmt(Ast_Decl *decl);
@@ -47,8 +51,6 @@ struct Resolver {
     void Resolver::resolve_stmt(Ast *stmt);
 
     Ast_Decl *lookup_overloaded(Atom *name, Auto_Array<Ast*> arguments, bool *overloaded);
-    Ast_Operator_Proc *lookup_user_defined_binary_operator(OP op, Type *lhs, Type *rhs);
-    Ast_Operator_Proc *lookup_user_defined_unary_operator(OP op, Type *type);
 
     void resolve_user_defined_binary_expr(Ast_Binary *expr);
     void resolve_builtin_binary_expr(Ast_Binary *expr);

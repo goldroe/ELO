@@ -1,11 +1,4 @@
-//@Todo Fix resolution of declarations
-
 #include <unordered_set>
-
-struct Select {
-    Decl *decl = nullptr;
-    int index = 0;
-};
 
 void Resolver::type_complete_path_add(Ast *type) {
     type_complete_path.push(type);
@@ -43,38 +36,36 @@ internal char *get_name_scoped(Atom *name, Scope *scope) {
     return string;
 }
 
-internal int type_value_count(Type *type) {
-    if (!type) return 0;
+internal int get_value_count(Type *type) {
+    // if (!type) return 0;
     if (type->kind == TYPE_TUPLE) {
-        Tuple_Type *tuple = (Tuple_Type *)type;
+        Type_Tuple *tuple = (Type_Tuple *)type;
         return (int)tuple->types.count;
     }
     return 1;
 }
 
+internal int get_value_count(Ast *value) {
+    return get_value_count(value->type);
+}
+
+internal int get_value_count(Auto_Array<Ast*> values) {
+    int count = 0;
+    for (Ast *v : values) {
+        count += get_value_count(v);
+    }
+    return count;
+}
+
 internal Type *type_from_index(Type *type, int idx) {
     if (type->kind == TYPE_TUPLE) {
-        Tuple_Type *tuple = (Tuple_Type *)type;
+        Type_Tuple *tuple = (Type_Tuple *)type;
         Assert(idx < tuple->types.count);
         return tuple->types[idx];
     } else {
         Assert(idx == 0);
         return type;
     }
-}
-
-internal int get_values_count(Auto_Array<Ast*> values) {
-    int count = 0;
-    for (Ast *value : values) {
-        Type *type = value->type;
-
-        if (type->kind == TYPE_TUPLE) {
-            count += (int)((Tuple_Type *)type)->types.count;
-        } else {
-            count += 1;
-        }
-    }
-    return count;
 }
 
 Resolver::Resolver(Parser *_parser) {
@@ -107,8 +98,9 @@ void Resolver::resolve_type_decl(Decl *decl) {
 
     //@Note Resolve procedures after type data members so as to avoid cyclic definition error.
     decl->resolve_state = RESOLVE_DONE;
+
     if (type->kind == TYPE_STRUCT) {
-        Struct_Type *st = (Struct_Type *)type;
+        Type_Struct *st = (Type_Struct *)type;
         for (Decl *member : st->members) {
             if (member->kind == DECL_PROCEDURE) {
                 resolve_decl(member);
@@ -123,6 +115,15 @@ void Resolver::resolve_variable_decl(Decl *decl) {
 }
 
 void Resolver:: resolve_constant_decl(Decl *decl) {
+    Ast *init = decl->init_expr;
+    resolve_expr_base(init);
+
+    if (init->mode == ADDRESSING_CONSTANT) {
+        decl->type = init->type;
+        decl->constant_value = init->value;
+    } else {
+        report_ast_error(init, "invalid initializer for constant value, not a constant.\n");
+    }
 }
 
 void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
@@ -138,13 +139,14 @@ void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
         scope_add(current_scope, param_decl);
         resolve_decl(param_decl);
         params.push(param_decl->type);
+        param->name->ref = param_decl;
     }
     Auto_Array<Type*> results = {};
     for (Ast *ret : proc_lit->typespec->results) {
         Type *ret_type = resolve_type(ret);
         results.push(ret_type);
     }
-    Proc_Type *proc_type = proc_type_create(params, results);
+    Type_Proc *proc_type = proc_type_create(params, results);
     proc_lit->type = proc_type;
 
     current_scope = prev_scope;
@@ -157,6 +159,10 @@ void Resolver::resolve_proc_body(Ast_Proc_Lit *proc_lit) {
 
     Ast_Proc_Lit *prev_proc = current_proc;
     Scope *prev_scope = current_scope;
+
+    for (Ast_Param *param : proc_lit->typespec->params) {
+        proc_lit->local_vars.push(param);
+    }
 
     current_proc = proc_lit;
     current_scope = proc_lit->scope;
@@ -219,30 +225,40 @@ internal Select lookup_field(Type *type, Atom *name, bool is_type) {
     Select select = {};
 
     if (is_type) {
-        if (type->is_struct_type()) {
-            Struct_Type *st = (Struct_Type *)type;
-            Decl *member = scope_find(st->scope, name);
+        if (is_struct_type(type)) {
+            Type_Struct *ts = (Type_Struct *)type;
+            Decl *member = scope_find(ts->scope, name);
             if (member && member->kind != DECL_VARIABLE) {
                 select.decl = member;
                 return select;
             }
-        } else if (type->is_enum_type()) {
-            Enum_Type *et = (Enum_Type *)type;
+        } else if (is_enum_type(type)) {
+            Type_Enum *et = (Type_Enum *)type;
             Decl *field = scope_find(et->scope, name);
             select.decl = field;
             return select;
         }
-    } else if (type->is_struct_type()) {
-        Struct_Type *st = (Struct_Type *)type;
-        Decl *member = scope_find(st->scope, name);
+    } else if (is_struct_type(type)) {
+        Type_Struct *ts = (Type_Struct *)type;
+        Decl *member = nullptr;
+        for (Decl *decl : ts->scope->decls) {
+            if (atoms_match(decl->name, name)) {
+                member = decl;
+                break;
+            }
+            if (decl->kind == DECL_VARIABLE) {
+                select.index++;
+            }
+        }
+
         if (member && member->kind == DECL_VARIABLE) {
             select.decl = member;
             return select;
         }
-    } else if (type->is_enum_type()) {
+    } else if (is_enum_type(type)) {
     }
 
-    return select;
+    return {};
 }
 
 
@@ -262,7 +278,7 @@ Type *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
     }
     type->scope->name = name;
 
-    Struct_Type *st = struct_type_create(name, {}, type->scope);
+    Type_Struct *st = struct_type_create(name, {}, type->scope);
 
     for (Ast_Value_Decl *member : type->members) {
         resolve_value_decl_preamble(member);
@@ -298,9 +314,9 @@ Type *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
         base_type = resolve_type(type->base_type);
     }
 
-    Constant_Value enumerant = {0};
+    bigint enumerant = bigint_make(0);
 
-    Enum_Type *et = enum_type_create(base_type, {}, type->scope);
+    Type_Enum *et = enum_type_create(base_type, {}, type->scope);
 
     for (Ast_Enum_Field *field : type->fields) {
         Decl *found = scope_find(current_scope, field->name->name);
@@ -313,19 +329,24 @@ Type *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
             resolve_expr(field->expr);
 
             if (field->expr->mode == ADDRESSING_CONSTANT) {
-                enumerant = field->expr->value;
+                if (is_integral_type(field->expr->type)) {
+                    enumerant = field->expr->value.value_integer;
+                } else {
+                    report_ast_error(field->expr, "enumerant must be of integral type.\n");
+                }
             } else {
                 report_ast_error(field->expr, "enumerant must be a constant value.\n");
             }
         }
 
         Decl *decl = decl_constant_create(field->name->name);
+        decl->resolve_state = RESOLVE_DONE;
         decl->init_expr = field->expr;
         decl->type = et;
-        decl->constant_value = enumerant;
+        decl->constant_value = make_constant_value_int(bigint_copy(&enumerant));
         scope_add(current_scope, decl);
         et->fields.push(decl);
-        bigint_add(&enumerant.value_integer, &enumerant.value_integer, 1);
+        bigint_add(&enumerant, &enumerant, 1);
     }
 
     exit_scope();
@@ -364,7 +385,7 @@ Type *Resolver::resolve_type(Ast *type) {
         type_complete_path_add(pointer);
 
         Type *elem = resolve_type(pointer->elem);
-        Pointer_Type *pt = pointer_type_create(elem);
+        Type_Pointer *pt = pointer_type_create(elem);
         return pt;
     }
 
@@ -373,7 +394,7 @@ Type *Resolver::resolve_type(Ast *type) {
         type_complete_path_add(array);
 
         Type *elem = resolve_type(array->elem);
-        Array_Type *array_type = array_type_create(elem);
+        Type_Array *array_type = array_type_create(elem);
         if (array->length) {
             
         }
@@ -398,7 +419,7 @@ Type *Resolver::resolve_type(Ast *type) {
 
         type_complete_path_clear();
 
-        Proc_Type *pt = proc_type_create(params, results);
+        Type_Proc *pt = proc_type_create(params, results);
         return pt;
     }
 
@@ -428,19 +449,31 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
             Decl *decl = name->ref;
             resolve_decl(decl);
         }
+
+        //@Todo Check for simple value decls
+        if (vd->is_mutable) {
+            for (Ast *value : vd->values) {
+                resolve_expr_base(value);
+            }
+        }
+
         return;
     }
+
+    current_proc->local_vars.push(vd);
 
     for (Ast *value : vd->values) {
         resolve_expr_base(value);
     }
 
-    int total_values_count = get_values_count(vd->values);
-    if (vd->names.count < total_values_count) {
-        report_ast_error(vd, "mismatched number of values '%d' = '%d'.\n", vd->names.count, total_values_count);
+    int total_values_count = get_value_count(vd->values);
+    if (vd->is_mutable && total_values_count != 0) {
+        if (vd->names.count != total_values_count) {
+            report_ast_error(vd, "assignment mismatch: %d variables, %d values.\n", (int)vd->names.count, total_values_count);
+        }
     }
 
-    if (vd->type) {
+    if (vd->typespec) {
         Type *spec_type = resolve_type(vd->typespec);
 
         for (Ast *name : vd->names) {
@@ -455,15 +488,15 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
             }
         }
     } else {
-        if (total_values_count < vd->names.count) {
+        if (total_values_count <= vd->names.count) {
             for (int vidx = 0, nidx = 0; vidx < vd->values.count; vidx++) {
                 Ast *value = vd->values[vidx];
 
-                int type_count = type_value_count(value->type);
+                int type_count = get_value_count(value->type);
 
                 for (int i = 0; i < type_count; i++) {
                     Type *type = type_from_index(value->type, i);
-                    Ast_Ident *name = (Ast_Ident *)(vd->names[nidx + i]);
+                    Ast_Ident *name = (Ast_Ident *)(vd->names[nidx]);
                     Decl *decl = name->ref;
                     decl->type = type;
                     nidx++;

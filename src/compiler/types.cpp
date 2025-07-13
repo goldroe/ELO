@@ -9,42 +9,42 @@ global Type *type_isize, *type_usize;
 global Type *type_f32, *type_f64;
 global Type *type_string;
 
-internal Pointer_Type *pointer_type_create(Type *elem) {
-    Pointer_Type *type = TYPE_NEW(Pointer_Type);
+internal Type_Pointer *pointer_type_create(Type *elem) {
+    Type_Pointer *type = TYPE_NEW(Type_Pointer);
     type->base = elem;
     return type;
 }
 
-internal Array_Type *array_type_create(Type *elem) {
-    Array_Type *type = TYPE_NEW(Array_Type);
+internal Type_Array *array_type_create(Type *elem) {
+    Type_Array *type = TYPE_NEW(Type_Array);
     type->base = elem;
     return type;
 }
 
-internal Tuple_Type *tuple_type_create(Auto_Array<Type*> types) {
-    Tuple_Type *type = TYPE_NEW(Tuple_Type);
+internal Type_Tuple *tuple_type_create(Auto_Array<Type*> types) {
+    Type_Tuple *type = TYPE_NEW(Type_Tuple);
     type->types = types;
     return type;
 }
 
-internal Proc_Type *proc_type_create(Auto_Array<Type*> params, Auto_Array<Type*> results) {
-    Proc_Type *type = TYPE_NEW(Proc_Type);
+internal Type_Proc *proc_type_create(Auto_Array<Type*> params, Auto_Array<Type*> results) {
+    Type_Proc *type = TYPE_NEW(Type_Proc);
     type->params = tuple_type_create(params);
     type->results = tuple_type_create(results);
     return type;
 }
 
-internal Struct_Type *struct_type_create(Atom *name, Auto_Array<Decl*> members, Scope *scope) {
-    Struct_Type *type = TYPE_NEW(Struct_Type);
+internal Type_Struct *struct_type_create(Atom *name, Auto_Array<Decl*> members, Scope *scope) {
+    Type_Struct *type = TYPE_NEW(Type_Struct);
     type->name = name;
     type->members = members;
     type->scope = scope;
     return type;
 }
 
-internal Enum_Type *enum_type_create(Type *base_type, Auto_Array<Decl*> fields, Scope *scope) {
-    Enum_Type *type = TYPE_NEW(Enum_Type);
-    type->base_type = type;
+internal Type_Enum *enum_type_create(Type *base_type, Auto_Array<Decl*> fields, Scope *scope) {
+    Type_Enum *type = TYPE_NEW(Type_Enum);
+    type->base_type = base_type;
     type->fields = fields;
     type->scope = scope;
     return type;
@@ -91,11 +91,24 @@ internal void register_builtin_types() {
     }
 }
 
+internal Type *type_untuple_maybe(Type *type) {
+    if (is_tuple_type(type)) {
+        Type_Tuple *tuple = (Type_Tuple *)type;
+        if (tuple->types.count == 1) {
+            return tuple->types[0];
+        }
+    }
+    return type;
+}
+
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
 internal bool is_convertible(Type *t0, Type *t1) {
-    Assert(t0 != NULL);
-    Assert(t1 != NULL);
+    Assert(t0 != nullptr);
+    Assert(t1 != nullptr);
+
+    t0 = type_untuple_maybe(t0);
+    t1 = type_untuple_maybe(t1);
 
     if (t0 == t1) return true;
 
@@ -104,7 +117,7 @@ internal bool is_convertible(Type *t0, Type *t1) {
 
     //@Note Nullable types
     if (t1->kind == TYPE_NULL) {
-        if (t0->is_indirection_type()) {
+        if (is_indirection_type(t0)) {
             return true;
         } else {
             return false;
@@ -112,15 +125,15 @@ internal bool is_convertible(Type *t0, Type *t1) {
     }
 
     //@Note Indirection testing
-    if (t0->is_indirection_type() && t1->is_integral_type()) {
+    if (is_indirection_type(t0) && is_integral_type(t1)) {
         return true;
     }
 
-    if (t0->is_indirection_type() != t1->is_indirection_type()) {
+    if (is_indirection_type(t0) != is_indirection_type(t1)) {
         return false;
     }
 
-    if (t0->is_indirection_type() && t1->is_indirection_type()) {
+    if (is_indirection_type(t0) && is_indirection_type(t1)) {
         Type *a = t0, *b = t1;
         for (;;) {
             //@Note Bad indirection
@@ -138,11 +151,11 @@ internal bool is_convertible(Type *t0, Type *t1) {
     }
 
     //@Note Should have early returned on identical check
-    if (t0->is_enum_type() || t1->is_enum_type()) {
+    if (is_enum_type(t0) || is_enum_type(t1)) {
         return false;
     }
 
-    if (t0->is_integral_type() == t1->is_integral_type()) {
+    if (is_integral_type(t0) == is_integral_type(t1)) {
         if (t0->bytes == t1->bytes) {
             return true;
         }
@@ -156,13 +169,13 @@ internal bool typecheck_castable(Type *t0, Type *t1) {
 
     if (t0 == t1) return true;
 
-    if (t0->is_numeric_type() && t1->is_numeric_type()) {
+    if (is_numeric_type(t0) && is_numeric_type(t1)) {
         return true;
-    } else if (t0->is_integer_type()) {
-        return t1->is_pointer_like_type();
-    } else if (t1->is_integer_type()) {
-        return t0->is_pointer_like_type();
-    } else if (t0->is_pointer_like_type() && t1->is_pointer_like_type()) {
+    } else if (is_integer_type(t0)) {
+        return is_pointer_like_type(t1);
+    } else if (is_integer_type(t1)) {
+        return is_pointer_like_type(t0);
+    } else if (is_pointer_like_type(t0) && is_pointer_like_type(t1)) {
         return true;
     } else {
         return false;
@@ -195,7 +208,7 @@ internal char *string_from_type(Type *ty) {
             break;
 
         case TYPE_TUPLE: {
-            Tuple_Type *tuple_type = (Tuple_Type *)type;
+            Type_Tuple *tuple_type = (Type_Tuple *)type;
             for (Type *type : tuple_type->types) {
                 cstring_append(&string, string_from_type(type));
                 if (type == tuple_type->types.back()) cstring_append(&string, ",");
@@ -204,7 +217,7 @@ internal char *string_from_type(Type *ty) {
         }
 
         case TYPE_PROC: {
-            Proc_Type *proc_type = static_cast<Proc_Type*>(type);
+            Type_Proc *proc_type = static_cast<Type_Proc*>(type);
             cstring_append(&string, "(");
 
             cstring_append(&string, ")");
@@ -217,7 +230,7 @@ internal char *string_from_type(Type *ty) {
         }
 
         case TYPE_ENUM: {
-            Enum_Type *enum_type = static_cast<Enum_Type*>(type);
+            Type_Enum *enum_type = static_cast<Type_Enum*>(type);
             if (enum_type->name) {
                 cstring_append(&string, enum_type->name->data);
             } else {
@@ -227,7 +240,7 @@ internal char *string_from_type(Type *ty) {
         }
 
         case TYPE_STRUCT: {
-            Struct_Type *struct_type = static_cast<Struct_Type*>(type);
+            Type_Struct *struct_type = static_cast<Type_Struct*>(type);
             if (struct_type->name) {
                 cstring_append(&string, struct_type->name->data);
             } else {
@@ -237,7 +250,7 @@ internal char *string_from_type(Type *ty) {
         }
 
         case TYPE_UNION: {
-            Union_Type *union_type = static_cast<Union_Type*>(type);
+            Type_Union *union_type = static_cast<Type_Union*>(type);
             if (union_type->name) {
                 cstring_append(&string, union_type->name->data);
             } else {
