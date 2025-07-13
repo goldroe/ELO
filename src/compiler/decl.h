@@ -4,6 +4,9 @@
 #define DECL_ALLOC(T) (alloc_item(heap_allocator(), T))
 #define DECL_NEW(T) static_cast<T*>(&(*DECL_ALLOC(T) = T()))
 
+struct BE_Proc;
+struct BE_Var;
+
 enum Decl_Kind {
     DECL_INVALID,
     DECL_TYPE,
@@ -29,6 +32,10 @@ struct Decl {
     b32 type_complete = false;
 
     Constant_Value constant_value;
+
+    union {
+        BE_Var *backend_var = nullptr;
+    };
 };
 
 enum Scope_Flags {

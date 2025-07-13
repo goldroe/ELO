@@ -52,25 +52,28 @@ struct BE_Struct {
     Atom *name;
     llvm::Type* type;
     Auto_Array<llvm::Type*> element_types;
-    Ast_Struct *decl;
+    Type_Struct *st = nullptr;
 };
 
 struct BE_Var {
     Atom *name;
-    Ast_Decl *decl;
+    Decl *decl;
     llvm::Type* type;
-    llvm::AllocaInst *alloca;
-    llvm::GlobalVariable *global_variable;
+    union {
+        llvm::AllocaInst *alloca;
+        llvm::GlobalVariable *global_variable;
+        llvm::Value *value;
+    };
 };
 
 struct BE_Proc {
     Atom *name;
-    Ast_Proc *proc;
+    Ast_Proc_Lit *proc_lit;
 
     llvm::Function *fn;
     llvm::FunctionType* type;
-    llvm::Type* return_type;
-    Auto_Array<llvm::Type*> parameter_types;
+    llvm::Type *results;
+    Auto_Array<llvm::Type*> params;
 
     llvm::IRBuilder<> *builder;
     llvm::BasicBlock *entry;
@@ -103,25 +106,23 @@ struct LLVM_Backend {
     void gen();
     
     llvm::Type* get_type(Type *type_info);
-    LLVM_Addr gen_addr(Ast_Expr *expr);
-    llvm::Value* gen_condition(Ast_Expr *expr);
+    LLVM_Addr gen_addr(Ast *expr);
+    llvm::Value* gen_condition(Ast *expr);
 
 
     llvm::Value *gen_logical_not(llvm::Value *value);
 
-    LLVM_Value gen_expr(Ast_Expr *expr);
+    LLVM_Value gen_expr(Ast *expr);
     LLVM_Value gen_binary_op(Ast_Binary *binop);
 
-    void gen_decl(Ast_Decl *decl);
     void gen_param(Ast_Param *param);
-    void gen_var(Ast_Var *var_node);
+    // void gen_var(Ast_Var *var_node);
 
     void set_procedure(BE_Proc *procedure);
-    BE_Proc *gen_procedure(Ast_Proc *proc);
-    void gen_procedure_body(BE_Proc *procedure);
-    void gen_struct(Ast_Struct *struct_decl);
+    void gen_procedure_body(Decl *decl);
     
-    void gen_stmt(Ast_Stmt *stmt);
+    void gen_assignment_stmt(Ast_Assignment *assignment);
+    void gen_stmt(Ast *stmt);
     void gen_if(Ast_If *if_stmt);
     void gen_while(Ast_While *while_stmt);
     void gen_for(Ast_For *for_stmt);
@@ -130,12 +131,14 @@ struct LLVM_Backend {
     void gen_statement_list(Auto_Array<Ast*> statement_list);
 
     llvm::BasicBlock *llvm_block_new(const char *s = "");
+
+    llvm::Value *llvm_struct_gep(llvm::Type *type, llvm::Value *ptr, unsigned index);
     void llvm_store(llvm::Value *value, llvm::Value *address);
 
     BE_Proc *lookup_proc(Atom *name);
     BE_Struct *LLVM_Backend::lookup_struct(Atom *name);
 
-    void get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast_Expr*> *expr_list);
+    void get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast*> *expr_list);
     void lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block);
 
     bool emit_block_check_branch();
@@ -156,10 +159,24 @@ struct LLVM_Backend {
 
 
     llvm::Value *LLVM_Backend::emit_gep_offset(llvm::Value *ptr, llvm::Value *offset);
-    LLVM_Value LLVM_Backend::gen_null(Ast_Null *null);
     LLVM_Value LLVM_Backend::gen_literal(Ast_Literal *literal);
 
-    LLVM_Value LLVM_Backend::gen_assignment(Ast_Assignment *assignment);
+    void LLVM_Backend::gen_assignment(Ast_Assignment *assignment);
+
+
+    llvm::Value *LLVM_Backend::gen_constant_value(Constant_Value value);
+
+    void gen_type_struct(Type_Struct *ts);
+
+    void gen_decl(Decl *decl);
+    void LLVM_Backend::gen_decl_variable(Decl *decl);
+    void LLVM_Backend::gen_decl_type(Decl *decl);
+
+
+    LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value value, Type *type);
+    void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd);
+
+    void LLVM_Backend::gen_decl_procedure(Decl *decl);
 };
 
 #endif // LLVM_BACKEND_H
