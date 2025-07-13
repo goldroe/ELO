@@ -13,7 +13,7 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
     Ast *cond = while_stmt->cond;
     resolve_expr(cond);
 
-    if (cond->valid() && !cond->type->is_conditional_type()) {
+    if (cond->valid() && !is_conditional_type(cond->type)) {
         report_ast_error(cond, "'%s' is not a conditional expression.\n", string_from_expr(cond));
         while_stmt->poison();
     }
@@ -29,7 +29,7 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     if (for_stmt->range_expr) {
         resolve_expr(for_stmt->range_expr);
 
-        if (for_stmt->range_expr->kind != AST_RANGE && !for_stmt->range_expr->type->is_array_type()) {
+        if (for_stmt->range_expr->kind != AST_RANGE && !is_array_type(for_stmt->range_expr->type)) {
             report_ast_error(for_stmt->range_expr, "'%s' of type '%s' is not iterable.\n", string_from_expr(for_stmt->range_expr), string_from_type(for_stmt->type));
         }
     }
@@ -79,7 +79,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
     ifcase->switchy = true;
 
     if (ifcase->cond) {
-        if (!ifcase->cond->type->is_integral_type()) {
+        if (!is_integral_type(ifcase->cond->type)) {
             ifcase->switchy = false;
         }
     } else {
@@ -133,11 +133,11 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         for (Ast_Case_Label *label : ifcase->cases) {
             if (label->cond && label->cond->kind == AST_RANGE) {
                 Ast_Range *range = static_cast<Ast_Range*>(label->cond);
-                if (!range->lhs->type->is_integral_type()) {
+                if (!is_integral_type(range->lhs->type)) {
                     report_ast_error(range->lhs, "range in for loop must be integral type.\n");
                     continue;
                 }
-                if (!range->rhs->type->is_integral_type()) {
+                if (!is_integral_type(range->rhs->type)) {
                     report_ast_error(range->rhs, "range in for loop must be integral type.\n");
                     continue;
                 }
@@ -164,9 +164,9 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
             }
         }
 
-        if (ifcase->check_enum_complete && ifcase->cond->type->is_enum_type()) {
+        if (ifcase->check_enum_complete && is_enum_type(ifcase->cond->type)) {
             Auto_Array<Decl*> unused = {};
-            Enum_Type *et = (Enum_Type *)ifcase->cond->type;
+            Type_Enum *et = (Type_Enum *)ifcase->cond->type;
 
             for (Decl *field : et->fields) {
                 if (enum_values.find(u64_from_bigint(field->constant_value.value_integer)) == enum_values.end()) {
@@ -190,7 +190,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
     if (cond &&
         cond->valid() &&
-        cond->type->is_struct_type()) {
+        is_struct_type(cond->type)) {
         report_ast_error(cond, "'%s' is not a valid conditional expression.\n", string_from_expr(cond));
     }
 
@@ -220,20 +220,20 @@ void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
 void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
     Assert(current_proc);
 
-    Proc_Type *proc_type = (Proc_Type *)(current_proc->type);
-    Tuple_Type *results = proc_type->results;
+    Type_Proc *proc_type = (Type_Proc *)(current_proc->type);
+    Type_Tuple *results = proc_type->results;
 
     for (Ast *value : return_stmt->values) {
         resolve_expr(value);
     }
 
-    int total_value_count = get_values_count(return_stmt->values);
-    int proc_type_count = type_value_count(proc_type->results);
+    int total_value_count = get_value_count(return_stmt->values);
+    int proc_type_count = get_value_count(proc_type->results);
 
     if (total_value_count == proc_type_count) {
         for (int idx = 0, vidx = 0; vidx < total_value_count; vidx++) {
             Ast *value = return_stmt->values[vidx];
-            int value_type_count = type_value_count(value->type);
+            int value_type_count = get_value_count(value->type);
 
             for (int i = 0; i < value_type_count; i++) {
                 Type *result_type = results->types[idx];
@@ -256,6 +256,17 @@ void Resolver::resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough) {
 }
 
 void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
+    for (Ast *rhs : assign->rhs) {
+        resolve_expr_base(rhs);
+    }
+
+    int total_value_count = get_value_count(assign->rhs);
+
+    if (assign->lhs.count != total_value_count) {
+        report_ast_error(assign, "assignment mismatch: %d variables, %d values.\n", (int)assign->lhs.count, total_value_count);
+        return;
+    }
+
     for (Ast *lhs : assign->lhs) {
         resolve_expr(lhs);
         if (lhs->valid()) {
@@ -265,8 +276,26 @@ void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
         }
     }
 
-    for (Ast *rhs : assign->rhs) {
-        resolve_expr_base(rhs);
+    if (assign->op == OP_ASSIGN) {
+        for (int n = 0, v = 0; v < total_value_count; v++) {
+            Ast *val = assign->rhs[v];
+            int value_count = get_value_count(val);
+            for (int i = 0; i < value_count; i++, n++) {
+                Ast *lhs = assign->lhs[n];
+                if (!is_convertible(lhs->type, val->type)) {
+                    report_ast_error(lhs, "cannot convert from '%s' to '%s' in assignment.\n", string_from_type(val->type), string_from_type(lhs->type));
+                }
+            }
+        }
+    } else {
+        if (total_value_count > 1 || assign->lhs.count > 1) {
+            report_ast_error(assign, "assign operation: '%s' illegal use of multi-value expressions.\n", string_from_operator(assign->op));
+        }
+        Ast *lhs = assign->lhs[0];
+        Ast *rhs = assign->rhs[0];
+        if (!is_convertible(lhs->type, rhs->type)) {
+            report_ast_error(assign, "cannot convert from '%s' to '%s'.\n", string_from_type(rhs->type), string_from_type(lhs->type));
+        }
     }
 }
 
