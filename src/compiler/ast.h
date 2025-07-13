@@ -8,12 +8,13 @@ struct Ast_Decl;
 struct Ast_Block;
 struct Ast;
 struct Ast_Ident;
-struct Ast_Operator_Proc;
 struct Scope;
 struct BE_Var;
 struct BE_Proc;
 struct BE_Struct;
 struct Ast_Value_Decl;
+
+struct Ast_Stmt;
 
 struct Decl;
 
@@ -84,15 +85,9 @@ enum OP {
     AST_KIND(AST_DECL_BEGIN       , "Decl__Begin"),     \
     AST_KIND(AST_DECL             , "Decl"),                \
     AST_KIND(AST_BAD_DECL         , "BadDecl"),         \
-    AST_KIND(AST_TYPE_DECL        , "TypeDecl"),       \
     AST_KIND(AST_PARAM            , "Param"),              \
-    AST_KIND(AST_VAR              , "Var"),                  \
-    AST_KIND(AST_STRUCT           , "Struct"),            \
-    AST_KIND(AST_ENUM             , "Enum"),                \
     AST_KIND(AST_ENUM_FIELD       , "Field"),         \
-    AST_KIND(AST_PROC             , "Proc"),                    \
     AST_KIND(AST_PROC_LIT         , "ProcLit"),                \
-    AST_KIND(AST_OPERATOR_PROC    , "OperatorProc"),           \
     AST_KIND(AST_VALUE_DECL       , "ValueDecl"),              \
     AST_KIND(AST_DECL_END         , "Decl__End"),                \
     AST_KIND(AST_STMT_BEGIN       , "Stmt__Begin"), \
@@ -163,9 +158,7 @@ const char *ast_strings[] = {
 
 enum Ast_Flags {
     AST_FLAG_LVALUE   = (1<<0),
-    AST_FLAG_CONSTANT = (1<<1),
     AST_FLAG_TYPE     = (1<<2),
-    AST_FLAG_OP_CALL  = (1<<3),
     AST_FLAG_GLOBAL   = (1<<4),
 };
 EnumDefineFlagOperators(Ast_Flags);
@@ -173,7 +166,7 @@ EnumDefineFlagOperators(Ast_Flags);
 enum Addressing_Mode {
     ADDRESSING_INVALID,
     ADDRESSING_TYPE,
-    ADDRESSING_VALUE,
+    // ADDRESSING_VALUE,
     ADDRESSING_VARIABLE,
     ADDRESSING_CONSTANT,
     ADDRESSING_PROCEDURE,
@@ -209,6 +202,12 @@ struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
     Scope *scope = nullptr;
     Auto_Array<Ast*> decls;
+};
+
+struct Ast_Bad_Expr : Ast {
+    Ast_Bad_Expr() { kind = AST_BAD_EXPR; }
+    Token start;
+    Token end;
 };
 
 struct Ast_Paren : Ast {
@@ -271,7 +270,6 @@ struct Ast_Ident : Ast {
 struct Ast_Unary : Ast {
     Ast_Unary() { kind = AST_UNARY; }
     OP op;
-    Ast_Operator_Proc *proc;
     Ast *elem;
     Token token;
 };
@@ -295,19 +293,9 @@ struct Ast_Cast : Ast {
     Token token;
 };
 
-struct Ast_Assignment : Ast {
-    Ast_Assignment() { kind = AST_ASSIGNMENT; }
-    OP op;
-    Auto_Array<Ast*> lhs;
-    Auto_Array<Ast*> rhs;
-    // Ast_Operator_Proc *proc;
-    Token token;
-};
-
 struct Ast_Binary : Ast {
     Ast_Binary() { kind = AST_BINARY; }
     OP op;
-    Ast_Operator_Proc *proc;
     Ast *lhs;
     Ast *rhs;
     Token token;
@@ -350,30 +338,17 @@ struct Ast_Decl : Ast {
     BE_Var *backend_var;
 };
 
-// struct Ast_Type_Decl : Ast_Decl {
-//     Ast_Type_Decl() { kind = AST_TYPE_DECL; }
-//     Ast *typespec;
-//     Token token;
-// };
+struct Ast_Bad_Decl : Ast_Decl {
+    Ast_Bad_Decl() { kind = AST_BAD_DECL; }
+    Token start;
+    Token end;
+};
 
 struct Ast_Param : Ast {
     Ast_Param() { kind = AST_PARAM; }
     Ast_Ident *name;
     Ast *typespec;
     b32 is_vararg;
-};
-
-struct Ast_Struct : Ast_Decl {
-    Ast_Struct() { kind = AST_STRUCT; }
-    Scope *scope;
-    Auto_Array<Ast_Decl*> members;
-    BE_Struct *backend_struct;
-};
-
-struct Ast_Enum : Ast_Decl {
-    Ast_Enum() { kind = AST_ENUM; }
-    Scope *scope;
-    Auto_Array<Ast*> fields;
 };
 
 struct Ast_Proc_Lit : Ast {
@@ -384,31 +359,9 @@ struct Ast_Proc_Lit : Ast {
 
     Proc_Resolve_State proc_resolve_state = PROC_RESOLVE_STATE_UNSTARTED;
 
-    Auto_Array<Ast_Decl*> local_vars;
+    Auto_Array<Ast*> local_vars;
     b32 returns;
     BE_Proc *backend_proc;
-};
-
-struct Ast_Proc : Ast_Decl {
-    Ast_Proc() { kind = AST_PROC; }
-    Scope *scope = nullptr;
-
-    Auto_Array<Ast_Param*> params;
-    Ast *return_type = nullptr;
-    Ast_Block *block = nullptr;
-
-    Auto_Array<Ast_Decl*> local_vars;
-
-    b32 foreign;
-    b32 has_varargs;
-    b32 returns;
-
-    BE_Proc *backend_proc;
-};
-
-struct Ast_Operator_Proc : Ast_Proc {
-    Ast_Operator_Proc() { kind = AST_OPERATOR_PROC; }
-    OP op;
 };
 
 enum Stmt_Flags {
@@ -425,22 +378,18 @@ struct Ast_Empty_Stmt : Ast_Stmt {
     Token token;
 };
 
-struct Ast_Bad_Expr : Ast {
-    Ast_Bad_Expr() { kind = AST_BAD_EXPR; }
-    Token start;
-    Token end;
-};
-
 struct Ast_Bad_Stmt : Ast_Stmt {
     Ast_Bad_Stmt() { kind = AST_BAD_STMT; }
     Token start;
     Token end;
 };
 
-struct Ast_Bad_Decl : Ast_Decl {
-    Ast_Bad_Decl() { kind = AST_BAD_DECL; }
-    Token start;
-    Token end;
+struct Ast_Assignment : Ast_Stmt {
+    Ast_Assignment() { kind = AST_ASSIGNMENT; }
+    OP op;
+    Auto_Array<Ast*> lhs;
+    Auto_Array<Ast*> rhs;
+    Token token;
 };
 
 struct Ast_If : Ast_Stmt {

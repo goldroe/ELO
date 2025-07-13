@@ -105,7 +105,7 @@ internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast
 
 internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr) {
     Ast_Enum_Field *node = AST_NEW(f, Ast_Enum_Field);
-    node->flags |= AST_FLAG_CONSTANT;
+    node->mode = ADDRESSING_CONSTANT;
     node->name = ident;
     node->expr = expr;
     return node;
@@ -747,7 +747,7 @@ internal inline bool is_assignment_op(OP op) {
     return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
 }
 
-// inline bool Ast::is_binop(OP binop) {
-//     return kind == AST_BINARY && static_cast<Ast_Binary*>(this)->op == binop;
-// }
+inline bool is_binop(Ast *expr, OP op) {
+    return expr->kind == AST_BINARY && ((Ast_Binary *)expr)->op == op;
+}
 
