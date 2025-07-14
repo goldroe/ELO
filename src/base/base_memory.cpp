@@ -54,26 +54,26 @@ internal void free(Allocator allocator, void *memory) {
     allocator.proc(ALLOCATION_FREE, allocator.data, 0, 0, memory);
 }
 
+internal void *allocator_resize(Allocator allocator, void *old_mem, u64 size, int alignment) {
+    return allocator.proc(ALLOCATION_RESIZE, allocator.data, size, alignment, old_mem);
+}
+
 ALLOCATOR_PROC(heap_allocator_proc) {
     switch (type) {
-    case ALLOCATION_ALLOC:
-    {
+    case ALLOCATION_ALLOC: {
         void *memory = malloc(size);
         MemoryZero(memory, size);
         return memory;
     }
-    case ALLOCATION_RESIZE:
-    {
+    case ALLOCATION_RESIZE: {
         void *memory = realloc(old_mem, size);
         return memory;
     }
-    case ALLOCATION_FREE:
-    {
+    case ALLOCATION_FREE: {
         if (old_mem) free(old_mem);
         break;
     }
-    case ALLOCATION_FREE_ALL:
-    {
+    case ALLOCATION_FREE_ALL: {
         if (old_mem) free(old_mem);
         break;
     }
