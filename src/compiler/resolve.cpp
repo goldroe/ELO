@@ -1,11 +1,11 @@
 #include <unordered_set>
 
 void Resolver::type_complete_path_add(Ast *type) {
-    type_complete_path.push(type);
+    array_add(&type_complete_path, type);
 }
 
 void Resolver::type_complete_path_clear() {
-    type_complete_path.clear();
+    array_clear(&type_complete_path);
 }
 
 internal char *get_scoping_name(Scope *scope) {
@@ -49,7 +49,7 @@ internal int get_value_count(Ast *value) {
     return get_value_count(value->type);
 }
 
-internal int get_value_count(Auto_Array<Ast*> values) {
+internal int get_value_count(Array<Ast*> values) {
     int count = 0;
     for (Ast *v : values) {
         count += get_value_count(v);
@@ -71,10 +71,13 @@ internal Type *type_from_index(Type *type, int idx) {
 Resolver::Resolver(Parser *_parser) {
     arena = arena_create();
     parser = _parser;
+
+    array_init(&type_complete_path, heap_allocator());
+    array_init(&breakcont_stack, heap_allocator());
 }
 
 Scope *Resolver::new_scope(Scope *parent, Scope_Flags scope_flags) {
-    Scope *scope = make_scope(scope_flags);
+    Scope *scope = scope_create(scope_flags);
     if (parent) {
         scope->parent = parent;
         scope->level = parent->level + 1;
@@ -132,19 +135,19 @@ void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
     Scope *prev_scope = current_scope;
     proc_lit->scope = new_scope(global_scope, SCOPE_PROC);
 
-    Auto_Array<Type*> params = {};
+    auto params = array_make<Type*>(heap_allocator());
     for (Ast_Param *param : proc_lit->typespec->params) {
         Decl *param_decl = decl_variable_create(param->name->name);
         param_decl->type_expr = param->typespec;
         scope_add(current_scope, param_decl);
         resolve_decl(param_decl);
-        params.push(param_decl->type);
+        array_add(&params, param_decl->type);
         param->name->ref = param_decl;
     }
-    Auto_Array<Type*> results = {};
+    auto results = array_make<Type*>(heap_allocator());
     for (Ast *ret : proc_lit->typespec->results) {
         Type *ret_type = resolve_type(ret);
-        results.push(ret_type);
+        array_add(&results, ret_type);
     }
     Type_Proc *proc_type = proc_type_create(params, results);
     proc_lit->type = proc_type;
@@ -161,7 +164,7 @@ void Resolver::resolve_proc_body(Ast_Proc_Lit *proc_lit) {
     Scope *prev_scope = current_scope;
 
     for (Ast_Param *param : proc_lit->typespec->params) {
-        proc_lit->local_vars.push(param);
+        array_add(&proc_lit->local_vars, (Ast *)param);
     }
 
     current_proc = proc_lit;
@@ -287,7 +290,7 @@ Type *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
             Ast_Ident *ident = (Ast_Ident *)name;
             Decl *decl = ident->ref;
             Assert(decl);
-            st->members.push(decl);
+            array_add(&st->members, decl);
         }
     }
 
@@ -317,6 +320,7 @@ Type *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
     bigint enumerant = bigint_make(0);
 
     Type_Enum *et = enum_type_create(base_type, {}, type->scope);
+    array_init(&et->fields, heap_allocator());
 
     for (Ast_Enum_Field *field : type->fields) {
         Decl *found = scope_find(current_scope, field->name->name);
@@ -343,9 +347,9 @@ Type *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
         decl->resolve_state = RESOLVE_DONE;
         decl->init_expr = field->expr;
         decl->type = et;
-        decl->constant_value = make_constant_value_int(bigint_copy(&enumerant));
+        decl->constant_value = constant_value_int_make(bigint_copy(&enumerant));
         scope_add(current_scope, decl);
-        et->fields.push(decl);
+        array_add(&et->fields, decl);
         bigint_add(&enumerant, &enumerant, 1);
     }
 
@@ -405,16 +409,16 @@ Type *Resolver::resolve_type(Ast *type) {
     case AST_PROC_TYPE: {
         Ast_Proc_Type *proc = (Ast_Proc_Type *)type;
 
-        Auto_Array<Type*> params = {};
+        auto params = array_make<Type*>(heap_allocator());
         for (Ast_Param *param : proc->params) {
             Type *param_type = resolve_type(param->typespec);
-            params.push(param_type);
+            array_add(&params, param_type);
         }
 
-        Auto_Array<Type*> results = {};
+        auto results = array_make<Type*>(heap_allocator());
         for (Ast *t : proc->results) {
             Type *ret = resolve_type(t);
-            results.push(ret);
+            array_add(&results, ret);
         }
 
         type_complete_path_clear();
@@ -460,7 +464,7 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
         return;
     }
 
-    current_proc->local_vars.push(vd);
+    array_add(&current_proc->local_vars, (Ast *)vd);
 
     for (Ast *value : vd->values) {
         resolve_expr_base(value);
@@ -585,10 +589,10 @@ void Resolver::register_global_declarations() {
     global_scope = new_scope(current_scope, SCOPE_GLOBAL);
     root->scope = global_scope;
 
-    add_global_constant(str_lit("true"), type_bool,  make_constant_value_int(bigint_make(0)));
-    add_global_constant(str_lit("false"), type_bool, make_constant_value_int(bigint_make(1)));
+    add_global_constant(str_lit("true"), type_bool,  constant_value_int_make(bigint_make(0)));
+    add_global_constant(str_lit("false"), type_bool, constant_value_int_make(bigint_make(1)));
 
-    add_global_constant(str_lit("null"), type_null, make_constant_value_int(bigint_make(0)));
+    add_global_constant(str_lit("null"), type_null, constant_value_int_make(bigint_make(0)));
 
     for (Type *type : g_builtin_types) {
         if (type->name) {

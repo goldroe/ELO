@@ -28,7 +28,7 @@ internal inline Ast *ast_alloc(u64 size, int alignment) {
     return node;
 }
 
-internal Ast_Root *ast_root(Source_File *f, Auto_Array<Ast*> decls) {
+internal Ast_Root *ast_root(Source_File *f, Array<Ast*> decls) {
     Ast_Root *node = AST_NEW(f, Ast_Root);
     node->decls = decls;
     return node;
@@ -64,7 +64,7 @@ internal Ast_Bad_Decl *ast_bad_decl(Source_File *f, Token start, Token end) {
     return node;
 }
 
-internal Ast_Return *ast_return_stmt(Source_File *f, Token token, Auto_Array<Ast*> values) {
+internal Ast_Return *ast_return_stmt(Source_File *f, Token token, Array<Ast*> values) {
     Ast_Return *node = AST_NEW(f, Ast_Return);
     node->values = values;
     node->token = token;
@@ -100,6 +100,7 @@ internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast
     Ast_Proc_Lit *node = AST_NEW(f, Ast_Proc_Lit);
     node->typespec = typespec;
     node->body = body;
+    array_init(&node->local_vars, heap_allocator());
     return node;
 }
 
@@ -132,7 +133,7 @@ internal Ast_Literal *ast_literal(Source_File *f, Token token) {
     return node;
 }
 
-internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Auto_Array<Ast*> elements) {
+internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Array<Ast*> elements) {
     Ast_Compound_Literal *node = AST_NEW(f, Ast_Compound_Literal);
     node->elements = elements;
     node->typespec = typespec;
@@ -191,7 +192,7 @@ internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast
     return node;
 }
 
-internal Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Auto_Array<Ast*> arguments) {
+internal Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Array<Ast*> arguments) {
     Ast_Call *node = AST_NEW(f, Ast_Call);
     node->elem = elem;
     node->arguments = arguments;
@@ -208,7 +209,7 @@ internal Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *paren
     return node;
 }
 
-internal Ast_Value_Decl *ast_value_decl(Source_File *f, Auto_Array<Ast*> names, Ast *typespec, Auto_Array<Ast*> values, bool is_mutable) {
+internal Ast_Value_Decl *ast_value_decl(Source_File *f, Array<Ast*> names, Ast *typespec, Array<Ast*> values, bool is_mutable) {
     Ast_Value_Decl *node = AST_NEW(f, Ast_Value_Decl);
     node->names = names;
     node->typespec = typespec;
@@ -242,7 +243,7 @@ internal Ast_Binary *ast_binary_expr(Source_File *f, Token token, OP op, Ast *lh
     return node; 
 }
 
-internal Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Auto_Array<Ast*> lhs, Auto_Array<Ast*> rhs) {
+internal Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Array<Ast*> lhs, Array<Ast*> rhs) {
     Ast_Assignment *node = AST_NEW(f, Ast_Assignment);
     node->op = op;
     node->lhs = lhs;
@@ -276,7 +277,7 @@ internal Ast_Expr_Stmt *ast_expr_stmt(Source_File *f, Ast *expr) {
     return node;
 }
 
-internal Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Auto_Array<Ast*> statements) {
+internal Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Array<Ast*> statements) {
     Ast_Block *node = AST_NEW(f, Ast_Block);
     node->statements = statements;
     node->open = open;
@@ -293,7 +294,7 @@ internal Ast_If *ast_if_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *
     return node;
 }
 
-internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Auto_Array<Ast*> statements) {
+internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Array<Ast*> statements) {
     Ast_Case_Label *node = AST_NEW(f, Ast_Case_Label);
     node->cond = cond;
     node->statements = statements;
@@ -301,7 +302,7 @@ internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, 
     return node;
 }
 
-internal Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Auto_Array<Ast_Case_Label*> clauses, bool check_enum_complete) {
+internal Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Array<Ast_Case_Label*> clauses, bool check_enum_complete) {
     Ast_Ifcase *node = AST_NEW(f, Ast_Ifcase);
     node->cond = cond;
     node->cases = clauses;
@@ -320,7 +321,7 @@ internal Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_B
     return node;
 }
 
-internal Ast_For *ast_for_stmt(Source_File *f, Token token, Auto_Array<Ast*> lhs, Ast *range_expr, Ast_Block *block) {
+internal Ast_For *ast_for_stmt(Source_File *f, Token token, Array<Ast*> lhs, Ast *range_expr, Ast_Block *block) {
     Ast_For *node = AST_NEW(f, Ast_For);
     node->lhs = lhs;
     node->range_expr = range_expr;
@@ -344,7 +345,7 @@ internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, 
     return node;
 }
 
-internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Auto_Array<Ast_Param*> params, Auto_Array<Ast*> results) {
+internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results) {
     Ast_Proc_Type *node = AST_NEW(f, Ast_Proc_Type);
     node->params = params;
     node->results = results;
@@ -353,7 +354,7 @@ internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, A
     return node;
 }
 
-internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Auto_Array<Ast_Enum_Field*> fields) {
+internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Array<Ast_Enum_Field*> fields) {
     Ast_Enum_Type *node = AST_NEW(f, Ast_Enum_Type);
     node->base_type = base_type;
     node->fields = fields;
@@ -363,7 +364,7 @@ internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, T
     return node;
 }
 
-internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Auto_Array<Ast_Value_Decl*> members) {
+internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members) {
     Ast_Struct_Type *node = AST_NEW(f, Ast_Struct_Type);
     node->members = members;
     node->token = token;
@@ -372,7 +373,7 @@ internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token ope
     return node;
 }
 
-internal Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Auto_Array<Ast_Value_Decl*> members) {
+internal Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members) {
     Ast_Union_Type *node = AST_NEW(f, Ast_Union_Type);
     node->members = members;
     node->token = token;

@@ -1,18 +1,49 @@
 global Arena *llvm_arena;
 
-void LLVM_Backend::get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast*> *expr_list) {
+#define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
+internal void *llvm_backend_alloc(u64 size, int alignment) {
+    void *result = (void *)arena_alloc(llvm_arena, size, alignment);
+    MemoryZero(result, size);
+    return result;
+}
+
+internal BE_Struct *llvm_backend_struct_create(Atom *name) {
+    BE_Struct *bs = llvm_alloc(BE_Struct);
+    bs->name = name;
+    array_init(&bs->element_types, heap_allocator());
+    return bs;
+}
+
+internal BE_Proc *llvm_backend_proc_create(Atom *name, Ast_Proc_Lit *proc_lit) {
+    BE_Proc *bp = llvm_alloc(BE_Proc);
+    bp->name = name;
+    bp->proc_lit = proc_lit;
+    array_init(&bp->params, heap_allocator());
+    array_init(&bp->named_values, heap_allocator());
+    return bp;
+}
+
+internal BE_Var *llvm_backend_var_create(Decl *decl, llvm::Type *type) {
+    BE_Var *bv = llvm_alloc(BE_Var);
+    bv->name = decl->name;
+    bv->decl = decl;
+    bv->type = type;
+    return bv;
+}
+
+void LLVM_Backend::get_lazy_expressions(Ast_Binary *root, OP op, Array<Ast*> *expr_list) {
     if (is_binop(root->lhs, op)) {
         Ast_Binary *child = static_cast<Ast_Binary*>(root->lhs);
         get_lazy_expressions(child, op, expr_list);
-        expr_list->push(root);
+        array_add(expr_list, (Ast *)root);
     } else {
-        expr_list->push(root->lhs);
-        expr_list->push(root->rhs);
+        array_add(expr_list, (Ast *)root->lhs);
+        array_add(expr_list, (Ast *)root->rhs);
     }
 }
 
 void LLVM_Backend::lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block) {
-    Auto_Array<Ast*> lazy_hierarchy;
+    Array<Ast*> lazy_hierarchy;
     get_lazy_expressions(root, root->op, &lazy_hierarchy);
 
     llvm::Value *lazy_constant;
@@ -20,7 +51,7 @@ void LLVM_Backend::lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::Ba
     else lazy_constant = llvm::ConstantInt::getTrue(llvm::Type::getInt1Ty(*Ctx));
 
     for (Ast *expr : lazy_hierarchy) {
-        bool is_tail = expr == lazy_hierarchy.back();
+        bool is_tail = expr == array_back(lazy_hierarchy);
 
         llvm::Value *value = NULL;
         if (is_binop(expr, root->op)) {
@@ -129,13 +160,6 @@ LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
             break;
         }
     }
-    return result;
-}
-
-#define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
-internal void *llvm_backend_alloc(u64 size, int alignment) {
-    void *result = (void *)arena_alloc(llvm_arena, size, alignment);
-    MemoryZero(result, size);
     return result;
 }
 
@@ -486,18 +510,18 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
             bool is_global = false;
             if (is_global) {
                 if (is_array_type(ident->type)) {
-                    value.value = be_var->global_variable;
+                    value.value = be_var->storage;
                 } else {
-                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->global_variable);
+                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->storage);
                     value.value = load;
                 }
                 value.type = be_var->type;
             } else {
                 Assert(be_var);
                 if (is_array_type(ident->type)) {
-                    value.value = be_var->alloca;
+                    value.value = be_var->storage;
                 } else {
-                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->alloca);
+                    llvm::LoadInst *load = Builder->CreateLoad(be_var->type, be_var->storage);
                     value.value = load;
                 }
                 value.type = be_var->type;
@@ -539,14 +563,14 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
 
             case DECL_VARIABLE: {
                 Type_Proc *tp = (Type_Proc *)ident->type;
-                Auto_Array<llvm::Type*> params;
+                auto params = array_make<llvm::Type*>(heap_allocator());
                 for (Type *param : tp->params->types) {
                     llvm::Type *param_type = get_type(param);
-                    params.push(param_type);
+                    array_add(&params, param_type);
                 }
                 return_ty = get_type(tp->results);
                 fn_ty = llvm::FunctionType::get(return_ty, llvm::ArrayRef(params.data, params.count), false);
-                callee = Builder->CreateLoad(Builder->getPtrTy(), decl->backend_var->alloca);
+                callee = Builder->CreateLoad(Builder->getPtrTy(), decl->backend_var->storage);
                 break;
             }
             }
@@ -554,11 +578,11 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
             LLVM_Value call_value = gen_expr(call->elem);
             Type_Proc *tp = (Type_Proc *)call->elem->type;
 
-            Auto_Array<llvm::Type*> params;
+            auto params = array_make<llvm::Type*>(heap_allocator());
             if (tp->params->types.count) {
                 for (Type *param : tp->params->types) {
                     llvm::Type *t = get_type(param);
-                    params.push(t);
+                    array_add(&params, t);
                 }
             }
             return_ty = get_type(tp->results);
@@ -566,12 +590,12 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
             callee = call_value.value;
         }
 
-        Auto_Array<llvm::Value*> args;
+        auto args = array_make<llvm::Value*>(heap_allocator());
         for (int i = 0; i < call->arguments.count; i++) {
             Ast *arg = call->arguments[i];
             LLVM_Value arg_value = gen_expr(arg);
 
-            args.push(arg_value.value);
+            array_add(&args, arg_value.value);
         }
 
         llvm::CallInst *call_inst = Builder->CreateCall(fn_ty, callee, llvm::ArrayRef(args.data, args.count));
@@ -707,7 +731,7 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast *expr) {
         Decl *decl = ident->ref;
         BE_Var *var = decl->backend_var;
         Assert(var);
-        result.value = var->value;
+        result.value = var->storage;
         break;
     }
 
@@ -848,10 +872,10 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
         Type_Proc *proc_ty = static_cast<Type_Proc*>(type);
         llvm::Type *results = get_type(proc_ty->results);
         Type_Tuple *params = proc_ty->params;
-        Auto_Array<llvm::Type*> parameter_types;
+        auto parameter_types = array_make<llvm::Type*>(heap_allocator());
         for (Type *param : params->types) {
             llvm::Type *param_type = get_type(param);
-            parameter_types.push(param_type);
+            array_add(&parameter_types, param_type);
         }
         llvm::FunctionType *function_type = llvm::FunctionType::get(results, llvm::ArrayRef(parameter_types.data, parameter_types.count), false);
         llvm::PointerType *pointer_type = llvm::PointerType::get(function_type, 0);
@@ -865,10 +889,10 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
         } else if (tuple->types.count == 1) {
             return get_type(tuple->types[0]);
         } else {
-            Auto_Array<llvm::Type*> types = {};
+            auto types = array_make<llvm::Type*>(heap_allocator());
             for (Type *ty : tuple->types) {
                 llvm::Type *t = get_type(ty);
-                types.push(t);
+                array_add(&types, t);
             }
             bool is_packed = true;
             llvm::StructType *st = llvm::StructType::create(llvm::ArrayRef(types.data, types.count), "", is_packed);
@@ -879,7 +903,7 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
 }
 
 
-void LLVM_Backend::gen_statement_list(Auto_Array<Ast*> statement_list) {
+void LLVM_Backend::gen_statement_list(Array<Ast*> statement_list) {
     for (Ast *stmt : statement_list) {
         gen_stmt((Ast_Stmt *)stmt);
     }
@@ -1043,7 +1067,7 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
     ifcase->exit_block = llvm_block_new();
     llvm::BasicBlock *switch_exit = (llvm::BasicBlock *)ifcase->exit_block;
 
-    for (Ast_Case_Label *label = ifcase->cases.front(); label; label = static_cast<Ast_Case_Label *>(label->next)) {
+    for (Ast_Case_Label *label = array_front(ifcase->cases); label; label = static_cast<Ast_Case_Label *>(label->next)) {
         Ast_Case_Label *prev = static_cast<Ast_Case_Label*>(label->prev);
         if (!prev) {
             label->backend_block = llvm_block_new();
@@ -1299,9 +1323,7 @@ void LLVM_Backend::gen_type_struct(Type_Struct *ts) {
     }
 
     Atom *name = ts->name;
-
-    BE_Struct *be_struct = llvm_alloc(BE_Struct);
-    be_struct->name = name;
+    BE_Struct *be_struct = llvm_backend_struct_create(name);
     ts->backend_struct = be_struct;
 
     llvm::StructType *struct_type = llvm::StructType::create(*Ctx, name->data);
@@ -1312,7 +1334,7 @@ void LLVM_Backend::gen_type_struct(Type_Struct *ts) {
 
         if (member->kind == DECL_VARIABLE) {
             llvm::Type* member_type = get_type(member->type);
-            be_struct->element_types.push(member_type);
+            array_add(&be_struct->element_types, member_type);
         }
     }
     struct_type->setBody(llvm::ArrayRef(be_struct->element_types.data, be_struct->element_types.count), false);
@@ -1324,16 +1346,14 @@ void LLVM_Backend::gen_decl_variable(Decl *decl) {
 void LLVM_Backend::gen_decl_procedure(Decl *decl) {
     Ast_Proc_Lit *proc_lit = decl->proc_lit;
     
-    BE_Proc *be_proc = llvm_alloc(BE_Proc);
-    be_proc->name = decl->name;
-    be_proc->proc_lit = proc_lit;
+    BE_Proc *be_proc = llvm_backend_proc_create(decl->name, proc_lit);
     proc_lit->backend_proc = be_proc;
 
     Type_Proc *tp = (Type_Proc *)proc_lit->type;
 
     for (Type *param : tp->params->types) {
         // if (param->is_vararg) break;
-        be_proc->params.push(get_type(param));
+        array_add(&be_proc->params, get_type(param));
     }
 
     be_proc->results = get_type(tp->results);
@@ -1391,15 +1411,12 @@ void LLVM_Backend::gen_procedure_body(Decl *proc_decl) {
         case AST_PARAM: {
             Ast_Param *param = static_cast<Ast_Param*>(var);
             Decl *decl = param->name->ref;
-            BE_Var *var = llvm_alloc(BE_Var);
+            BE_Var *var = llvm_backend_var_create(decl, get_type(decl->type));
             decl->backend_var = var;
-            var->name = decl->name;
-            var->decl = decl;
-            var->type = get_type(decl->type);
-            var->value = Builder->CreateAlloca(var->type, 0, nullptr);
+            var->storage = Builder->CreateAlloca(var->type, 0, nullptr);
             llvm::Argument *argument = procedure->fn->getArg(arg_idx);
             arg_idx++;
-            llvm_store(argument, var->alloca);
+            llvm_store(argument, var->storage);
             break;
         }
 
@@ -1461,20 +1478,17 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd) {
             Decl *decl = ident->ref;
 
             if (decl->kind == DECL_VARIABLE) {
-                BE_Var *var = llvm_alloc(BE_Var);
+                BE_Var *var = llvm_backend_var_create(decl, get_type(decl->type));
                 decl->backend_var = var;
-                var->name = ident->name;
-                var->decl = decl;
-                var->type = get_type(decl->type);
                 if (is_global) {
                     llvm::GlobalVariable *global_variable = new llvm::GlobalVariable(*Module, var->type, false, llvm::GlobalValue::ExternalLinkage, nullptr, (char *)ident->name->data);
-                    var->value = global_variable;
+                    var->storage = global_variable;
                 } else {
                     llvm::AllocaInst *alloca = Builder->CreateAlloca(var->type, 0, nullptr);
-                    var->value = alloca;
-                    current_proc->named_values.push(var);
+                    var->storage = alloca;
+                    array_add(&current_proc->named_values, var);
                 }
-                var->value->setName((char *)var->name->data);
+                var->storage->setName((char *)var->name->data);
             }
         }
 
@@ -1488,7 +1502,7 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd) {
                 Ast_Ident *ident = (Ast_Ident *)name;
                 Decl *decl = ident->ref;
                 BE_Var *var = decl->backend_var;
-                llvm::GlobalVariable *global_variable = (llvm::GlobalVariable *)var->value;
+                llvm::GlobalVariable *global_variable = (llvm::GlobalVariable *)var->storage;
                 llvm::Constant *init = (llvm::Constant *)value.value;
                 global_variable->setInitializer(init);
                 n++;
@@ -1498,7 +1512,7 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd) {
                 if (value_count == 1) {
                     Ast_Ident *ident = (Ast_Ident *)vd->names[n];
                     BE_Var *var = ident->ref->backend_var;
-                    llvm_store(value.value, var->value);
+                    llvm_store(value.value, var->storage);
                 } else {
                     llvm::Type *type = get_type(val_expr->type);
 
@@ -1510,7 +1524,7 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd) {
                         if (decl->kind == DECL_VARIABLE) {
                             BE_Var *var = decl->backend_var;
                             Type_Tuple *tup = (Type_Tuple *)val_expr->type;
-                            llvm::Value *ptr = llvm_struct_gep(type, var->value, (unsigned)i);
+                            llvm::Value *ptr = llvm_struct_gep(type, var->storage, (unsigned)i);
                             llvm_store(value.value, ptr);
                         }
                     }
@@ -1580,8 +1594,8 @@ void LLVM_Backend::gen() {
     LLVMSetDataLayout((LLVMModuleRef)Module, data_layout_str);
     LLVMDisposeMessage(data_layout_str);
 
-    String8 object_name = path_remove_extension(path_file_name(file->path));
-    String8 object_file_name = path_join(heap_allocator(), os_current_dir(heap_allocator()), object_name);
+    String object_name = path_remove_extension(path_file_name(file->path));
+    String object_file_name = path_join(heap_allocator(), os_current_dir(heap_allocator()), object_name);
     object_file_name = str8_concat(heap_allocator(), object_file_name, str_lit(".o"));
 
     if (LLVMTargetMachineEmitToFile(target_machine, (LLVMModuleRef)Module, (char *)object_file_name.data, LLVMObjectFile, &errors)) {
@@ -1589,10 +1603,11 @@ void LLVM_Backend::gen() {
         return;
     }
 
-    compiler_link_libraries.push(str8_lit("msvcrt.lib"));
-    compiler_link_libraries.push(str8_lit("legacy_stdio_definitions.lib"));
+    array_init(&compiler_link_libraries, heap_allocator());
+    array_add(&compiler_link_libraries, str_lit("msvcrt.lib"));
+    array_add(&compiler_link_libraries, str_lit("legacy_stdio_definitions.lib"));
     char *linker_args = NULL;
-    for (String8 lib : compiler_link_libraries) {
+    for (String lib : compiler_link_libraries) {
         linker_args = cstring_append_fmt(linker_args, "%S ", lib);
     }
     char *linker_command = cstring_fmt("link.exe %s %s", (char *)object_file_name.data, linker_args);

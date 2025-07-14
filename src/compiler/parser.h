@@ -23,8 +23,8 @@ struct Parser {
     void expect_semi();
 
 
-    Auto_Array<Ast_Enum_Field*> Parser::parse_enum_field_list();
-    Auto_Array<Ast_Value_Decl*> Parser::parse_struct_members();
+    Array<Ast_Enum_Field*> Parser::parse_enum_field_list();
+    Array<Ast_Value_Decl*> Parser::parse_struct_members();
     Ast_Value_Decl *parse_struct_member();
 
     Ast_Ident *Parser::parse_ident();
@@ -44,14 +44,14 @@ struct Parser {
 
     Ast *parse_operand();
 
-    Auto_Array<Ast*> parse_expr_list();
+    Array<Ast*> parse_expr_list();
 
     Ast *parse_import_stmt();
     Ast *parse_load_stmt();
 
 
 
-    Auto_Array<Ast*> Parser::parse_type_list();
+    Array<Ast*> Parser::parse_type_list();
     Ast_Block *parse_block();
     Ast_Return *Parser::parse_return_stmt();
     Ast_Continue *parse_continue_stmt();
@@ -65,7 +65,7 @@ struct Parser {
 
     // Ast_Decl_Stmt *parse_init_stmt(Ast *lhs);
 
-    Ast_Value_Decl *parse_value_decl(Auto_Array<Ast*> names);
+    Ast_Value_Decl *parse_value_decl(Array<Ast*> names);
 
     Ast *parse_simple_stmt();
     Ast *parse_stmt();

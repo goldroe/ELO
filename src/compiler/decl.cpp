@@ -26,14 +26,15 @@ internal Decl *decl_procedure_create(Atom *name) {
     return decl;
 }
 
-internal Scope *make_scope(Scope_Flags flags) {
-    Scope *result = new Scope();
-    result->scope_flags = flags;
-    return result;
+internal Scope *scope_create(Scope_Flags flags) {
+    Scope *scope = new Scope();
+    scope->scope_flags = flags;
+    array_init(&scope->decls, heap_allocator());
+    return scope;
 }
 
 internal void scope_add(Scope *scope, Decl *decl) {
-    scope->decls.push(decl);
+    array_add(&scope->decls, decl);
 }
 
 internal Decl *scope_find(Scope *scope, Atom *name) {
@@ -55,4 +56,3 @@ internal Decl *scope_lookup(Scope *scope, Atom *name) {
     }
     return nullptr;
 }
-

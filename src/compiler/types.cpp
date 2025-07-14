@@ -1,4 +1,4 @@
-global Auto_Array<Type*> g_builtin_types;
+global Array<Type*> g_builtin_types;
 global Type *type_invalid;
 global Type *type_void;
 global Type *type_null;
@@ -21,20 +21,20 @@ internal Type_Array *array_type_create(Type *elem) {
     return type;
 }
 
-internal Type_Tuple *tuple_type_create(Auto_Array<Type*> types) {
+internal Type_Tuple *tuple_type_create(Array<Type*> types) {
     Type_Tuple *type = TYPE_NEW(Type_Tuple);
     type->types = types;
     return type;
 }
 
-internal Type_Proc *proc_type_create(Auto_Array<Type*> params, Auto_Array<Type*> results) {
+internal Type_Proc *proc_type_create(Array<Type*> params, Array<Type*> results) {
     Type_Proc *type = TYPE_NEW(Type_Proc);
     type->params = tuple_type_create(params);
     type->results = tuple_type_create(results);
     return type;
 }
 
-internal Type_Struct *struct_type_create(Atom *name, Auto_Array<Decl*> members, Scope *scope) {
+internal Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
     Type_Struct *type = TYPE_NEW(Type_Struct);
     type->name = name;
     type->members = members;
@@ -42,7 +42,7 @@ internal Type_Struct *struct_type_create(Atom *name, Auto_Array<Decl*> members, 
     return type;
 }
 
-internal Type_Enum *enum_type_create(Type *base_type, Auto_Array<Decl*> fields, Scope *scope) {
+internal Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope) {
     Type_Enum *type = TYPE_NEW(Type_Enum);
     type->base_type = base_type;
     type->fields = fields;
@@ -57,12 +57,13 @@ internal Type *builtin_type_create(Type_Kind kind, String8 name, int bytes, Type
     type->kind = kind;
     type->type_flags = flags;
     type->bytes = bytes;
-    g_builtin_types.push(type);
+    array_add(&g_builtin_types, type);
     return type;
 }
 
 internal void register_builtin_types() {
     int system_max_bytes = 8;
+    array_init(&g_builtin_types, heap_allocator());
     type_invalid = builtin_type_create(TYPE_INVALID, str_lit("builtin(invalid)"), 0);
     type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);//, TYPE_FLAG_VOID);
     type_u8    = builtin_type_create(TYPE_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
@@ -211,7 +212,7 @@ internal char *string_from_type(Type *ty) {
             Type_Tuple *tuple_type = (Type_Tuple *)type;
             for (Type *type : tuple_type->types) {
                 cstring_append(&string, string_from_type(type));
-                if (type == tuple_type->types.back()) cstring_append(&string, ",");
+                if (type == array_back(tuple_type->types)) cstring_append(&string, ",");
             }
             break;
         }

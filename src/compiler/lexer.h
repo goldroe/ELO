@@ -184,6 +184,6 @@ struct Lexer {
 };
 
 
-internal Source_Pos make_source_pos(Source_File *file, u64 line, u64 col, u64 index);
+internal Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index);
 
 #endif // LEXER_H

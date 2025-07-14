@@ -75,7 +75,7 @@ struct Type_Array : Type {
 
 struct Type_Tuple : Type {
     Type_Tuple() { kind = TYPE_TUPLE; }
-    Auto_Array<Type*> types;
+    Array<Type*> types;
 };
 
 struct Type_Proc : Type {
@@ -89,7 +89,7 @@ struct Type_Proc : Type {
 struct Type_Struct : Type {
     Type_Struct() { kind = TYPE_STRUCT; }
     Scope *scope;
-    Auto_Array<Decl*> members;
+    Array<Decl*> members;
 
     BE_Struct *backend_struct = nullptr;
 };
@@ -97,14 +97,14 @@ struct Type_Struct : Type {
 struct Type_Union : Type {
     Type_Union() { kind = TYPE_UNION; }
     Scope *scope;
-    Auto_Array<Decl*> members;
+    Array<Decl*> members;
 };
 
 struct Type_Enum : Type {
     Type_Enum() { kind = TYPE_ENUM;}
     Scope *scope;
     Type *base_type;
-    Auto_Array<Decl*> fields;
+    Array<Decl*> fields;
 };
 
 #define TYPE_ALLOC(T) (alloc_item(heap_allocator(), T))

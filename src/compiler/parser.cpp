@@ -27,28 +27,28 @@ Token Parser::expect_token(Token_Kind kind) {
     return token;
 }
 
-Auto_Array<Ast*> Parser::parse_expr_list() {
-    Auto_Array<Ast*> list;
+Array<Ast*> Parser::parse_expr_list() {
+    auto list = array_make<Ast*>(heap_allocator());
 
     Ast *expr = parse_expr();
     if (!expr) {
         return list;
     }
-    list.push(expr);
+    array_add(&list, expr);
     while (lexer->eat(TOKEN_COMMA)) {
         expr = parse_expr();
         if (!expr) {
             report_parser_error(lexer, "expected expression after ','.\n");
             break;
         }
-        list.push(expr);
+        array_add(&list, expr);
     }
     
     return list;
 }
 
-Auto_Array<Ast*> Parser::parse_type_list() {
-    Auto_Array<Ast*> type_list = {};
+Array<Ast*> Parser::parse_type_list() {
+    auto type_list = array_make<Ast*>(heap_allocator());
 
     for (;;) {
         Ast *type = parse_type();
@@ -56,7 +56,7 @@ Auto_Array<Ast*> Parser::parse_type_list() {
             break;
         }
 
-        type_list.push(type);
+        array_add(&type_list, type);
 
         if (!lexer->eat(TOKEN_COMMA)) {
             break; 
@@ -69,13 +69,13 @@ Auto_Array<Ast*> Parser::parse_type_list() {
 Ast_Compound_Literal *Parser::parse_compound_literal(Ast *operand) {
     Token open = expect_token(TOKEN_LBRACE);
 
-    Auto_Array<Ast*> elements = {};
+    auto elements = array_make<Ast*>(heap_allocator());
 
     while (!lexer->match(TOKEN_RBRACE)) {
         Ast *expr = parse_expr(); 
         if (expr == NULL) break;
 
-        elements.push(expr);
+        array_add(&elements, expr);
 
         if (!lexer->eat(TOKEN_COMMA)) break;
     }
@@ -113,14 +113,14 @@ Ast_Subscript *Parser::parse_subscript_expr(Ast *base) {
 Ast_Call *Parser::parse_call_expr(Ast *expr) {
     Token open = expect_token(TOKEN_LPAREN);
 
-    Auto_Array<Ast*> arguments = {};
+    auto arguments = array_make<Ast*>(heap_allocator());
     do {
         if (lexer->match(TOKEN_RPAREN)) {
             break;   
         }
         Ast *arg = parse_expr();
         if (!arg) break;
-        arguments.push(arg);
+        array_add(&arguments, arg);
     } while (lexer->eat(TOKEN_COMMA));
 
     Token close = expect_token(TOKEN_RPAREN);
@@ -164,7 +164,7 @@ Ast *Parser::parse_range_expr() {
 }
 
 Ast_Value_Decl *Parser::parse_struct_member() {
-    Auto_Array<Ast*> lhs = {};
+    auto lhs = array_make<Ast*>(heap_allocator());
 
     Token token = lexer->current();
 
@@ -172,13 +172,13 @@ Ast_Value_Decl *Parser::parse_struct_member() {
     if (token.kind == TOKEN_STRUCT || token.kind == TOKEN_ENUM || token.kind == TOKEN_UNION) {
         Ast *operand = parse_operand();
 
-        Auto_Array<Ast*> values = {operand};
+        auto values = array_make<Ast*>(heap_allocator(), {operand});
 
         return ast_value_decl(file, lhs, nullptr, values, false);
     }
     
     Ast *type = nullptr;
-    Auto_Array<Ast*> values = {};
+    auto values = array_make<Ast*>(heap_allocator());
     lhs = parse_expr_list();
 
     expect_token(TOKEN_COLON);
@@ -199,18 +199,18 @@ Ast_Value_Decl *Parser::parse_struct_member() {
     return parse_value_decl(lhs);
 }
 
-Auto_Array<Ast_Value_Decl*> Parser::parse_struct_members() {
-    Auto_Array<Ast_Value_Decl*> members = {};
+Array<Ast_Value_Decl*> Parser::parse_struct_members() {
+    auto members = array_make<Ast_Value_Decl*>(heap_allocator());
     while (!lexer->match(TOKEN_RBRACE)) {
         Ast_Value_Decl *member = parse_struct_member();
         if (!member) break;
-        members.push(member);
+        array_add(&members, member);
     }
     return members;
 }
 
-Auto_Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
-    Auto_Array<Ast_Enum_Field*> field_list;
+Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
+    auto field_list = array_make<Ast_Enum_Field*>(heap_allocator());
 
     while (!lexer->match(TOKEN_RBRACE)) {
         Ast_Ident *ident = parse_ident();
@@ -221,7 +221,7 @@ Auto_Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
         }
 
         Ast_Enum_Field *enum_field = ast_enum_field(file, ident, expr);
-        field_list.push(enum_field);
+        array_add(&field_list, enum_field);
 
         if (!lexer->eat(TOKEN_COMMA)) {
             break; 
@@ -293,7 +293,7 @@ Auto_Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
 
 // Ast_Proc *Parser::parse_proc(Token name) {
 //     bool has_varargs = false;
-//     Auto_Array<Ast_Param*> parameters;
+//     Array<Ast_Param*> parameters;
 //     expect_token(TOKEN_LPAREN);
 //     while (!lexer->match(TOKEN_RPAREN)) {
 //         Ast_Param *param = parse_param();
@@ -344,7 +344,7 @@ Auto_Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
 
 //     Token op_tok = lexer->current();
 
-//     Auto_Array<Ast_Param*> parameters;
+//     Array<Ast_Param*> parameters;
 
 //     if (is_operator(op_tok.kind)) {
 //         OP op = {}; //@todo get operator
@@ -522,7 +522,7 @@ Ast *Parser::parse_operand() {
         Token open = lexer->current();
         Token close = lexer->current();
 
-        Auto_Array<Ast_Value_Decl*> members = {};
+        auto members = array_make<Ast_Value_Decl*>(heap_allocator());
         if (lexer->match(TOKEN_LBRACE)) {
             open = expect_token(TOKEN_LBRACE);
             members = parse_struct_members();
@@ -544,7 +544,7 @@ Ast *Parser::parse_operand() {
 
         Token open = expect_token(TOKEN_LBRACE);
 
-        Auto_Array<Ast_Enum_Field*> field_list = parse_enum_field_list();
+        Array<Ast_Enum_Field*> field_list = parse_enum_field_list();
 
         Token close = expect_token(TOKEN_RBRACE);
 
@@ -650,11 +650,11 @@ Ast *Parser::parse_expr() {
 Ast_Block *Parser::parse_block() {
     Token open = expect_token(TOKEN_LBRACE);
 
-    Auto_Array<Ast*> statements;
+    auto statements = array_make<Ast*>(heap_allocator());
     while (!lexer->match(TOKEN_RBRACE)) {
         Ast *stmt = parse_stmt();
         if (stmt == NULL) break;
-        statements.push(stmt);
+        array_add(&statements, stmt);
     }
     Token close = expect_token(TOKEN_RBRACE);
 
@@ -723,7 +723,7 @@ Ast *Parser::parse_for_stmt() {
         return ast_for_stmt(file, token, {}, nullptr, block);
     }
 
-    Auto_Array<Ast*> lhs = parse_expr_list();
+    Array<Ast*> lhs = parse_expr_list();
 
     if (lhs.count == 0) {
         report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
@@ -751,17 +751,17 @@ Ast_Case_Label *Parser::parse_case_clause() {
 
     expect_token(TOKEN_COLON);
 
-    Auto_Array<Ast*> statements;
+    Array<Ast*> statements;
 
     for (;;) {
         Ast *stmt = parse_stmt();
         if (!stmt) break;
-        statements.push(stmt);
+        array_add(&statements, stmt);
     }
 
     for (Ast *stmt : statements) {
         if (stmt->kind == AST_FALLTHROUGH) {
-            if (stmt != statements.back()) {
+            if (stmt != array_back(statements)) {
                 report_ast_error(stmt, "illegal fallthrough, must be placed at end of a case block.\n");
             }
         }
@@ -784,7 +784,7 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
 
     Token open = expect_token(TOKEN_LBRACE);
 
-    Auto_Array<Ast_Case_Label*> clauses = {};
+    auto clauses = array_make<Ast_Case_Label*>(heap_allocator());
 
     Ast_Case_Label *prev_clause = nullptr;
 
@@ -801,7 +801,7 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
         }
         prev_clause = case_clause;
 
-        clauses.push(case_clause);
+        array_add(&clauses, case_clause);
     }
 
     Token close = expect_token(TOKEN_RBRACE);
@@ -867,7 +867,7 @@ Ast *Parser::parse_import_stmt() {
 }
 
 Ast_Proc_Type *Parser::parse_proc_type() {
-    Auto_Array<Ast_Param*> params = {};
+    auto params = array_make<Ast_Param*>(heap_allocator());
 
     bool has_varargs = false;
 
@@ -880,7 +880,7 @@ Ast_Proc_Type *Parser::parse_proc_type() {
             ident->name = atom_create(str_lit(".."));
             Ast_Param *param = ast_param(file, ident, nullptr);
             param->is_vararg = true;
-            params.push(param);
+            array_add(&params, param);
             continue;
         }
 
@@ -892,7 +892,7 @@ Ast_Proc_Type *Parser::parse_proc_type() {
 
         Ast_Param *param = ast_param(file, ident, type);
 
-        params.push(param);
+        array_add(&params, param);
 
         if (!lexer->eat(TOKEN_COMMA)) {
             break;
@@ -901,7 +901,7 @@ Ast_Proc_Type *Parser::parse_proc_type() {
 
     Token close = expect_token(TOKEN_RPAREN);
 
-    Auto_Array<Ast*> return_types = {};
+    auto return_types = array_make<Ast*>(heap_allocator());
     if (lexer->eat(TOKEN_ARROW)) {
         return_types = parse_type_list();
     }
@@ -923,7 +923,7 @@ Ast *Parser::parse_type() {
     return type;
 }
 
-Ast_Value_Decl *Parser::parse_value_decl(Auto_Array<Ast*> names) {
+Ast_Value_Decl *Parser::parse_value_decl(Array<Ast*> names) {
     allow_value_decl = true;
 
     Ast *type = parse_type();
@@ -940,7 +940,7 @@ Ast_Value_Decl *Parser::parse_value_decl(Auto_Array<Ast*> names) {
 
     bool is_mutable = true;
 
-    Auto_Array<Ast*> values = {};
+    auto values = array_make<Ast*>(heap_allocator());
     
     if (token.kind == TOKEN_COLON || token.kind == TOKEN_EQ) {
         lexer->next_token();
@@ -955,7 +955,7 @@ Ast_Value_Decl *Parser::parse_value_decl(Auto_Array<Ast*> names) {
 
     bool semi = true;
     if (values.count != 0) {
-        Ast *value = values.front();
+        Ast *value = array_front(values);
         if (value->kind == AST_PROC_LIT ||
             value->kind == AST_STRUCT_TYPE || 
             value->kind == AST_ENUM_TYPE) semi = false;
@@ -969,7 +969,7 @@ Ast_Value_Decl *Parser::parse_value_decl(Auto_Array<Ast*> names) {
 }
 
 Ast *Parser::parse_simple_stmt() {
-    Auto_Array<Ast*> lhs = parse_expr_list();
+    Array<Ast*> lhs = parse_expr_list();
 
     if (lhs.count == 0) return nullptr;
 
@@ -988,7 +988,7 @@ Ast *Parser::parse_simple_stmt() {
     case TOKEN_RSHIFT_EQ: {
         lexer->next_token();
         OP op = get_binary_operator(token.kind);
-        Auto_Array<Ast*> rhs = parse_expr_list();
+        Array<Ast*> rhs = parse_expr_list();
         if (rhs.count == 0) {
             report_parser_error(lexer, "missing rhs in assignment statement.\n");
             return ast_bad_stmt(file, token, lexer->current());
@@ -1009,7 +1009,7 @@ Ast *Parser::parse_simple_stmt() {
         report_parser_error(lexer, "expected just one expression.\n");
     }
 
-    Ast_Stmt *expr_stmt = ast_expr_stmt(file, lhs.front());
+    Ast_Stmt *expr_stmt = ast_expr_stmt(file, array_front(lhs));
     return expr_stmt;
 }
 
@@ -1020,7 +1020,7 @@ void Parser::expect_semi() {
 Ast_Return *Parser::parse_return_stmt() {
     Token token = expect_token(TOKEN_RETURN);
 
-    Auto_Array<Ast*> values = parse_expr_list();
+    Array<Ast*> values = parse_expr_list();
 
     expect_semi();
 
@@ -1118,7 +1118,7 @@ Ast_Ident *Parser::parse_ident() {
 }
 
 void Parser::parse() {
-    Auto_Array<Ast*> decls = {};
+    auto decls = array_make<Ast*>(heap_allocator());
 
     for (;;) {
         if (lexer->eof()) {
@@ -1129,7 +1129,7 @@ void Parser::parse() {
 
         Ast *stmt = parse_stmt();
         if (stmt && stmt->kind != AST_EMPTY_STMT) {
-            decls.push(stmt);
+            array_add(&decls, (Ast*)stmt);
         }
     }
 

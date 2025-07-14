@@ -18,9 +18,9 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
         while_stmt->poison();
     }
 
-    breakcont_stack.push(while_stmt);
+    array_add(&breakcont_stack, (Ast *)while_stmt);
     resolve_block(while_stmt->block);
-    breakcont_stack.pop();
+    array_pop(&breakcont_stack);
 }
 
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
@@ -64,11 +64,11 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     }
 
 
-    breakcont_stack.push(for_stmt);
+    array_add(&breakcont_stack, (Ast *)for_stmt);
 
     resolve_block(for_stmt->block);
 
-    breakcont_stack.pop();
+    array_pop(&breakcont_stack);
 
     exit_scope();
 }
@@ -86,7 +86,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         ifcase->switchy = false;
     }
 
-    breakcont_stack.push(ifcase);
+    array_add(&breakcont_stack, (Ast *)ifcase);
 
     for (Ast_Case_Label *case_label : ifcase->cases) {
         resolve_expr(case_label->cond);
@@ -124,7 +124,7 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         exit_scope();
     }
 
-    breakcont_stack.pop();
+    array_pop(&breakcont_stack);
 
     if (ifcase->switchy) {
         //@Todo @Fix Check for signedness of integer
@@ -165,16 +165,16 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
         }
 
         if (ifcase->check_enum_complete && is_enum_type(ifcase->cond->type)) {
-            Auto_Array<Decl*> unused = {};
+            auto unused = array_make<Decl*>(heap_allocator());
             Type_Enum *et = (Type_Enum *)ifcase->cond->type;
 
             for (Decl *field : et->fields) {
                 if (enum_values.find(u64_from_bigint(field->constant_value.value_integer)) == enum_values.end()) {
-                    unused.push(field);
+                    array_add(&unused, field);
                 }
             }
 
-            if (!unused.empty()) {
+            if (unused.count == 0) {
                 report_ast_error(ifcase, "unhandled ifcase enumerations:\n");
                 for (Decl *field : unused) {
                     report_line("\t%s", (char *)field->name->data);
@@ -199,7 +199,7 @@ void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
 
 void Resolver::resolve_break_stmt(Ast_Break *break_stmt) {
     if (breakcont_stack.count > 0) {
-        break_stmt->target = breakcont_stack.back();
+        break_stmt->target = array_back(breakcont_stack);
     } else {
         report_ast_error(break_stmt, "illegal break.\n");
     }
@@ -207,7 +207,7 @@ void Resolver::resolve_break_stmt(Ast_Break *break_stmt) {
 
 void Resolver::resolve_continue_stmt(Ast_Continue *continue_stmt) {
     if (breakcont_stack.count > 0) {
-        Ast *target = breakcont_stack.back();
+        Ast *target = array_back(breakcont_stack);
         if (target->kind == AST_IFCASE) {
             report_ast_error(continue_stmt, "illegal continue.\n");
         }

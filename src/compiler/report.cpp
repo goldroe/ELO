@@ -356,7 +356,7 @@ internal Token ast_end_token(Ast *node) {
     case AST_VALUE_DECL: {
         ast_node_var(vd, Ast_Value_Decl, node);
         if (vd->values.count) {
-            return ast_end_token(vd->values.back());
+            return ast_end_token(array_back(vd->values));
         } else {
             return ast_end_token(vd->typespec);
         }
@@ -372,7 +372,7 @@ internal Token ast_end_token(Ast *node) {
     case AST_ASSIGNMENT: {
         ast_node_var(assignment, Ast_Assignment, node);
         if (assignment->rhs.count) {
-            return ast_end_token(assignment->rhs.back());
+            return ast_end_token(array_back(assignment->rhs));
         }
         return assignment->token;
     }
@@ -385,7 +385,7 @@ internal Token ast_end_token(Ast *node) {
     case AST_CASE_LABEL: {
         ast_node_var(label, Ast_Case_Label, node);
         if (label->statements.count) {
-            return ast_end_token(label->statements.back());
+            return ast_end_token(array_back(label->statements));
         }
         return label->token;
     }
@@ -401,7 +401,7 @@ internal Token ast_end_token(Ast *node) {
     case AST_RETURN: {
         ast_node_var(return_stmt, Ast_Return, node);
         if (return_stmt->values.count > 0) {
-            return ast_end_token(return_stmt->values.back());
+            return ast_end_token(array_back(return_stmt->values));
         } else {
             return return_stmt->token;
         }

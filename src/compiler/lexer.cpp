@@ -26,7 +26,7 @@ u8 Lexer::get_escape_character(u8 c) {
     }
 }
 
-internal Source_Pos make_source_pos(Source_File *file, u64 line, u64 col, u64 index) {
+internal Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index) {
     Source_Pos result;
     result.file = file;
     result.line = line;
@@ -353,13 +353,13 @@ void Lexer::scan_number(Token *token) {
     if (is_floating) {
         f64 f = f64_from_bigint(integer) + mantissa;
         token->kind = TOKEN_FLOAT;
-        token->value = make_constant_value_float(f);
+        token->value = constant_value_float_make(f);
         if (LITERAL_U8 <= token->literal_kind && token->literal_kind <= LITERAL_I64) {
             report_parser_error(this, "illegal integer suffix on floating-point.\n");
         }
     } else {
         token->kind = TOKEN_INTEGER;
-        token->value = make_constant_value_int(integer);
+        token->value = constant_value_int_make(integer);
         if (token->literal_kind == LITERAL_F32 || token->literal_kind == LITERAL_F64) {
             report_parser_error(this, "illegal floating-point suffix on integer.\n");
         }
@@ -371,7 +371,7 @@ lex_start:
     u8 *begin = (u8 *)stream;
 
     Token token = {};
-    token.start = make_source_pos(source_file, line_number, column_number, stream_index);
+    token.start = source_pos_make(source_file, line_number, column_number, stream_index);
     
     switch (*stream) {
     default:
@@ -657,7 +657,7 @@ lex_start:
         eat_char();
 
         token.kind = TOKEN_INTEGER;
-        token.value = make_constant_value_int(bigint_make(c));
+        token.value = constant_value_int_make(bigint_make(c));
         token.literal_kind = LITERAL_U8;
         break;
     }
@@ -679,7 +679,7 @@ lex_start:
         break;
     }
 
-    token.end = make_source_pos(source_file, line_number, column_number, stream_index);
+    token.end = source_pos_make(source_file, line_number, column_number, stream_index);
 
     current_token = token;
 }

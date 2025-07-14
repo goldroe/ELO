@@ -8,7 +8,7 @@ struct Source_File {
     Source_File *prev = nullptr;
     String8 path;
     String8 text;
-    Auto_Array<Report*> reports;
+    Array<Report*> reports;
 };
 
 struct Source_File_Map {

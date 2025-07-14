@@ -110,14 +110,14 @@ internal void bigint_cmp(bigint *dst, const bigint *a, const bigint *b, OP op) {
     mp_init_set(dst, x);
 }
 
-internal Constant_Value make_constant_value_int(bigint value) {
+internal Constant_Value constant_value_int_make(bigint value) {
     Constant_Value result = {};
     result.kind = CONSTANT_VALUE_INTEGER;
     result.value_integer = value;
     return result;
 }
 
-internal Constant_Value make_constant_value_float(f64 value) {
+internal Constant_Value constant_value_float_make(f64 value) {
     Constant_Value result = {};
     result.kind = CONSTANT_VALUE_FLOAT;
     result.value_float = value;
@@ -128,14 +128,14 @@ internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
     switch (value.kind) {
     case CONSTANT_VALUE_INTEGER: {
         if (is_float_type(ct)) {
-            return make_constant_value_float(f64_from_bigint(value.value_integer));
+            return constant_value_float_make(f64_from_bigint(value.value_integer));
         }
         break;
     }
 
     case CONSTANT_VALUE_FLOAT: {
         if (is_integral_type(ct)) {
-            return make_constant_value_int(bigint_from_f64(value.value_float));
+            return constant_value_int_make(bigint_from_f64(value.value_float));
         }
         break;
     }
@@ -176,7 +176,7 @@ internal Constant_Value constant_unary_op_value(OP op, Constant_Value x) {
         case OP_UNARY_MINUS: b = - a; break;
         case OP_NOT: b = !a; break;
         }
-        return make_constant_value_float(b);
+        return constant_value_float_make(b);
     }
     }
 
@@ -210,7 +210,7 @@ internal Constant_Value constant_binary_op_value(OP op, Constant_Value x, Consta
             bigint_cmp(&c, a, b, op);
             break;
         }
-        return make_constant_value_int(c);
+        return constant_value_int_make(c);
     }
 
     case CONSTANT_VALUE_FLOAT: {
@@ -232,7 +232,7 @@ internal Constant_Value constant_binary_op_value(OP op, Constant_Value x, Consta
         case OP_OR:   c = a || b; break;
         case OP_AND:  c = a && b; break;
         }
-        return make_constant_value_float(c);
+        return constant_value_float_make(c);
     }
     }
 

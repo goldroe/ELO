@@ -20,9 +20,9 @@ struct Resolver {
 
     Ast_Proc_Lit *current_proc = nullptr;
 
-    Auto_Array<Ast*> type_complete_path;
+    Array<Ast*> type_complete_path;
 
-    Auto_Array<Ast*> breakcont_stack;
+    Array<Ast*> breakcont_stack;
 
     Resolver(Parser *_parser);
 
@@ -50,7 +50,7 @@ struct Resolver {
 
     void Resolver::resolve_stmt(Ast *stmt);
 
-    Ast_Decl *lookup_overloaded(Atom *name, Auto_Array<Ast*> arguments, bool *overloaded);
+    Ast_Decl *lookup_overloaded(Atom *name, Array<Ast*> arguments, bool *overloaded);
 
     void resolve_user_defined_binary_expr(Ast_Binary *expr);
     void resolve_builtin_binary_expr(Ast_Binary *expr);

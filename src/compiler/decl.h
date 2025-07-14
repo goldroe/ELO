@@ -59,7 +59,7 @@ struct Scope {
     Atom *name = nullptr;
 
     int level = 0;
-    Auto_Array<Decl*> decls;
+    Array<Decl*> decls;
     Ast_Block *block;
 
     Ast_Decl *lookup(Atom *name);

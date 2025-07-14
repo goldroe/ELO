@@ -51,7 +51,7 @@ struct LLVM_Addr {
 struct BE_Struct {
     Atom *name;
     llvm::Type* type;
-    Auto_Array<llvm::Type*> element_types;
+    Array<llvm::Type*> element_types;
     Type_Struct *st = nullptr;
 };
 
@@ -59,11 +59,9 @@ struct BE_Var {
     Atom *name;
     Decl *decl;
     llvm::Type* type;
-    union {
-        llvm::AllocaInst *alloca;
-        llvm::GlobalVariable *global_variable;
-        llvm::Value *value;
-    };
+
+    //@Note AllocaInt, GlobalVariable
+    llvm::Value *storage;
 };
 
 struct BE_Proc {
@@ -73,12 +71,12 @@ struct BE_Proc {
     llvm::Function *fn;
     llvm::FunctionType* type;
     llvm::Type *results;
-    Auto_Array<llvm::Type*> params;
+    Array<llvm::Type*> params;
 
     llvm::IRBuilder<> *builder;
     llvm::BasicBlock *entry;
 
-    Auto_Array<BE_Var*> named_values;
+    Array<BE_Var*> named_values;
 
     llvm::AllocaInst *return_value;
     llvm::BasicBlock *exit_block;
@@ -93,8 +91,8 @@ struct LLVM_Backend {
 
     llvm::IRBuilder<> *Builder;
 
-    Auto_Array<BE_Proc*> global_procedures;
-    Auto_Array<BE_Struct*> global_structs;
+    Array<BE_Proc*> global_procedures;
+    Array<BE_Struct*> global_structs;
 
     BE_Proc *current_proc = nullptr;
     llvm::BasicBlock *current_block = nullptr;
@@ -128,7 +126,7 @@ struct LLVM_Backend {
     void gen_for(Ast_For *for_stmt);
     void gen_block(Ast_Block *block);
 
-    void gen_statement_list(Auto_Array<Ast*> statement_list);
+    void gen_statement_list(Array<Ast*> statement_list);
 
     llvm::BasicBlock *llvm_block_new(const char *s = "");
 
@@ -138,7 +136,7 @@ struct LLVM_Backend {
     BE_Proc *lookup_proc(Atom *name);
     BE_Struct *LLVM_Backend::lookup_struct(Atom *name);
 
-    void get_lazy_expressions(Ast_Binary *root, OP op, Auto_Array<Ast*> *expr_list);
+    void get_lazy_expressions(Ast_Binary *root, OP op, Array<Ast*> *expr_list);
     void lazy_eval(Ast_Binary *root, llvm::PHINode *phi_node, llvm::BasicBlock *exit_block);
 
     bool emit_block_check_branch();

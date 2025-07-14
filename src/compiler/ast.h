@@ -201,7 +201,7 @@ struct Ast {
 struct Ast_Root : Ast {
     Ast_Root() { kind = AST_ROOT; }
     Scope *scope = nullptr;
-    Auto_Array<Ast*> decls;
+    Array<Ast*> decls;
 };
 
 struct Ast_Bad_Expr : Ast {
@@ -247,7 +247,7 @@ struct Ast_Literal : Ast {
 struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
     Ast *typespec;
-    Auto_Array<Ast*> elements;
+    Array<Ast*> elements;
     Token open;
     Token close;
 };
@@ -255,7 +255,7 @@ struct Ast_Compound_Literal : Ast {
 struct Ast_Call : Ast {
     Ast_Call() { kind = AST_CALL; }
     Ast *elem;
-    Auto_Array<Ast*> arguments;
+    Array<Ast*> arguments;
     Token open;
     Token close;
 };
@@ -359,7 +359,7 @@ struct Ast_Proc_Lit : Ast {
 
     Proc_Resolve_State proc_resolve_state = PROC_RESOLVE_STATE_UNSTARTED;
 
-    Auto_Array<Ast*> local_vars;
+    Array<Ast*> local_vars;
     b32 returns;
     BE_Proc *backend_proc;
 };
@@ -387,8 +387,8 @@ struct Ast_Bad_Stmt : Ast_Stmt {
 struct Ast_Assignment : Ast_Stmt {
     Ast_Assignment() { kind = AST_ASSIGNMENT; }
     OP op;
-    Auto_Array<Ast*> lhs;
-    Auto_Array<Ast*> rhs;
+    Array<Ast*> lhs;
+    Array<Ast*> rhs;
     Token token;
 };
 
@@ -404,7 +404,7 @@ struct Ast_Case_Label : Ast_Stmt {
     Ast_Case_Label() { kind = AST_CASE_LABEL; }
     Scope *scope;
     Ast *cond;
-    Auto_Array<Ast*> statements;
+    Array<Ast*> statements;
 
     Token token;
 
@@ -418,7 +418,7 @@ struct Ast_Ifcase : Ast_Stmt {
     Ast_Ifcase() { kind = AST_IFCASE; }
     Ast *cond;
     Ast_Case_Label *default_case;
-    Auto_Array<Ast_Case_Label*> cases;
+    Array<Ast_Case_Label*> cases;
 
     Token token;
     Token open;
@@ -463,7 +463,7 @@ struct Ast_For : Ast_Stmt {
 
     //@Note Range for loop
     // for index, value: expr
-    Auto_Array<Ast*> lhs;
+    Array<Ast*> lhs;
     Ast *range_expr;
     Ast_Block *block;
 
@@ -499,7 +499,7 @@ struct Ast_Import : Ast {
 struct Ast_Block : Ast_Stmt {
     Ast_Block() { kind = AST_BLOCK; }
     Scope *scope;
-    Auto_Array<Ast*> statements;
+    Array<Ast*> statements;
     Token open;
     Token close;
 
@@ -508,7 +508,7 @@ struct Ast_Block : Ast_Stmt {
 
 struct Ast_Return : Ast_Stmt {
     Ast_Return() { kind = AST_RETURN; }
-    Auto_Array<Ast*> values;
+    Array<Ast*> values;
     Token token;
 };
 
@@ -538,9 +538,9 @@ struct Ast_Defer : Ast_Stmt {
 
 struct Ast_Value_Decl : Ast {
     Ast_Value_Decl() { kind = AST_VALUE_DECL; }
-    Auto_Array<Ast*> names;
+    Array<Ast*> names;
     Ast *typespec;
-    Auto_Array<Ast*> values;
+    Array<Ast*> values;
     bool is_mutable;
 };
 
@@ -560,8 +560,8 @@ struct Ast_Array_Type : Ast {
 struct Ast_Proc_Type : Ast {
     Ast_Proc_Type() { kind = AST_PROC_TYPE; }
     Scope *scope;
-    Auto_Array<Ast_Param*> params;
-    Auto_Array<Ast*> results;
+    Array<Ast_Param*> params;
+    Array<Ast*> results;
     Token open;
     Token close;
 
@@ -580,7 +580,7 @@ struct Ast_Enum_Type : Ast {
     Ast_Enum_Type () { kind = AST_ENUM_TYPE; }
     Scope *scope;
     Ast *base_type;
-    Auto_Array<Ast_Enum_Field*> fields;
+    Array<Ast_Enum_Field*> fields;
     Token token;
     Token open;
     Token close;
@@ -590,7 +590,7 @@ struct Ast_Struct_Type : Ast {
     Ast_Struct_Type() { kind = AST_STRUCT_TYPE; }
     Scope *scope;
     Ast_Ident *name;
-    Auto_Array<Ast_Value_Decl*> members;
+    Array<Ast_Value_Decl*> members;
     b32 complete = false;
 
     Token token;
@@ -601,7 +601,7 @@ struct Ast_Struct_Type : Ast {
 struct Ast_Union_Type : Ast {
     Ast_Union_Type() { kind = AST_UNION_TYPE; }
     Scope *scope;
-    Auto_Array<Ast_Value_Decl*> members;
+    Array<Ast_Value_Decl*> members;
 
     Token token;
     Token open;

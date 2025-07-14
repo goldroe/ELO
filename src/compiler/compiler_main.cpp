@@ -17,7 +17,7 @@
 #include "os/os.cpp"
 #include "path/path.cpp"
 
-#include "auto_array.h"
+#include "array.h"
 
 #include "source_file.h"
 #include "constant_value.h"
@@ -32,7 +32,7 @@
 #include "llvm_backend.h"
 
 global bool compiler_dump_IR;
-global Auto_Array<String8> compiler_link_libraries;
+global Array<String8> compiler_link_libraries;
 
 #include "constant_value.cpp"
 #include "source_file.cpp"
@@ -82,7 +82,7 @@ internal void compiler_process_args(int argc, char **args) {
             if (arg.data[0] == 'l') {
                 String8 lib = arg;
                 lib.count--; lib.data++;
-               compiler_link_libraries.push(lib);
+                array_add(&compiler_link_libraries, lib);
             } else if (str8_match(arg, str_lit("dump_ir"), StringMatchFlag_CaseInsensitive)) {
                 compiler_dump_IR = true;
             }
