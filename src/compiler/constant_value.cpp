@@ -1,23 +1,47 @@
 
-internal u64 u64_from_bigint(bigint i) {
-    u64 u = mp_get_u64(&i);
-    return u;
+internal s64 s64_from_bigint(bigint i) {
+    s64 v = mp_get_i64(&i);
+    return v;
 }
+
+internal s64 u64_from_bigint(bigint i) {
+    u64 v = mp_get_u64(&i);
+    return v;
+}
+
 
 internal f64 f64_from_bigint(bigint i) {
     f64 f = mp_get_double(&i);
     return f;
 }
 
-internal bigint bigint_make(int value) {
+internal bigint bigint_u32_make(uint32_t value) {
     bigint i = {};
-    mp_init_set(&i, value);
+    mp_init_u32(&i, value);
     return i;
 }
 
-internal bigint bigint_make(u64 value) {
+internal bigint bigint_i32_make(int32_t value) {
+    bigint i = {};
+    mp_init_i32(&i, value);
+    return i;
+}
+
+internal bigint bigint_u64_make(uint64_t value) {
     bigint i = {};
     mp_init_u64(&i, value);
+    return i;
+}
+
+internal bigint bigint_i64_make(int64_t value) {
+    bigint i = {};
+    mp_init_i64(&i, value);
+    return i;
+}
+
+internal bigint bigint_make(int value) {
+    bigint i = {};
+    mp_init_i32(&i, value);
     return i;
 }
 
@@ -70,9 +94,10 @@ internal void bigint_and(bigint *dst, const bigint *a, const bigint *b) {
 
 internal String string_from_bigint(bigint a) {
     local_persist char buffer[128];
+    // MemoryZero(buffer, 128);
     size_t written = 0;
     int err = mp_to_radix(&a, buffer, 128, &written, 10);
-    String str = str8_copy(heap_allocator(), str8((u8 *)buffer, 128));
+    String str = str8_copy(heap_allocator(), str8((u8 *)buffer, written-1));
     return str;
 }
 
@@ -110,18 +135,32 @@ internal void bigint_cmp(bigint *dst, const bigint *a, const bigint *b, OP op) {
     mp_init_set(dst, x);
 }
 
-internal Constant_Value constant_value_int_make(bigint value) {
-    Constant_Value result = {};
-    result.kind = CONSTANT_VALUE_INTEGER;
-    result.value_integer = value;
-    return result;
+internal Constant_Value constant_value_int_make(bigint i) {
+    Constant_Value value = {};
+    value.kind = CONSTANT_VALUE_INTEGER;
+    value.value_integer = i;
+    return value;
 }
 
-internal Constant_Value constant_value_float_make(f64 value) {
-    Constant_Value result = {};
-    result.kind = CONSTANT_VALUE_FLOAT;
-    result.value_float = value;
-    return result;
+internal Constant_Value constant_value_float_make(f64 f) {
+    Constant_Value value = {};
+    value.kind = CONSTANT_VALUE_FLOAT;
+    value.value_float = f;
+    return value;
+}
+
+internal Constant_Value constant_value_string_make(String string) {
+    Constant_Value value = {};
+    value.kind = CONSTANT_VALUE_STRING;
+    value.value_string = string;
+    return value;
+}
+
+internal Constant_Value constant_value_typeid_make(Type *type) {
+    Constant_Value value = {};
+    value.kind = CONSTANT_VALUE_TYPEID;
+    value.value_typeid = type;
+    return value;
 }
 
 internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
