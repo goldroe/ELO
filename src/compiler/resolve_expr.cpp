@@ -1,3 +1,5 @@
+#include <limits>
+
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
     resolve_expr(address->elem);
@@ -163,17 +165,17 @@ void Resolver::resolve_binary_expr(Ast_Binary *expr) {
 void Resolver::resolve_call_expr(Ast_Call *call) {
     resolve_expr(call->elem);
 
-    Type_Proc *proc_type = nullptr;
+    Type_Proc *tp = nullptr;
     if (call->elem->valid()) {
         if (is_proc_type(call->elem->type)) {
-            proc_type = static_cast<Type_Proc*>(call->elem->type);
+            tp = static_cast<Type_Proc*>(call->elem->type);
         } else {
-            report_ast_error(call, "'%s' does not valueuate to a procedure.\n", string_from_expr(call->elem));
+            report_ast_error(call, "'%s' does not evaluate to a procedure.\n", string_from_expr(call->elem));
             call->poison();
             return;
         }
 
-        call->type = proc_type->results;
+        call->type = tp->results;
     } else {
         call->poison();
     }
@@ -186,36 +188,36 @@ void Resolver::resolve_call_expr(Ast_Call *call) {
         }
     }
 
-    int total_arg_count = get_value_count(call->arguments);
-    int total_param_count = get_value_count(proc_type->params);
-
-    if (total_arg_count < total_param_count) {
+    int total_arg_count = get_total_value_count(call->arguments);
+    int total_param_count = get_value_count(tp->params);
+    if (total_arg_count < total_param_count - tp->is_variadic) {
         report_ast_error(call, "too few arguments for '%s', expected %d arguments, got %d.\n", string_from_expr(call->elem), total_param_count, total_arg_count);
         call->poison();
         return;
     }
-    if (total_arg_count > total_param_count) {
+    if (!tp->is_variadic && (total_arg_count > total_param_count)) {
         report_ast_error(call, "too many arguments for '%s', expected %d arguments, got %d.\n", string_from_expr(call->elem), total_param_count, total_arg_count);
         call->poison();
         return;
     }
 
-    for (int arg_idx = 0, param_idx = 0; arg_idx < call->arguments.count; arg_idx++) {
-        Ast *arg = call->arguments[arg_idx];
+    if (tp->is_variadic) {
+        //@Todo Check variadic arguments
+    } else {
+        for (int a = 0, p = 0; a < call->arguments.count; a++) {
+            Ast *arg = call->arguments[a];
+            int type_count = get_value_count(arg->type);
 
-        int type_count = get_value_count(arg->type);
-
-        for (int i = 0; i < type_count; i++) {
-            Type *param = proc_type->params->types[param_idx];
-            Type *arg_type = type_from_index(arg->type, i);
-            if (!is_convertible(arg_type, param)) {
-                report_ast_error(arg, "cannot pass argument value of '%s' from type '%s' to '%s'.\n", string_from_expr(arg), string_from_type(arg_type), string_from_type(param));
+            for (int i = 0; i < type_count; i++) {
+                Type *param = tp->params->types[p];
+                Type *arg_type = type_from_index(arg->type, i);
+                if (!is_convertible(arg_type, param)) {
+                    report_ast_error(arg, "cannot pass argument value of '%s' from type '%s' to '%s'.\n", string_from_expr(arg), string_from_type(arg_type), string_from_type(param));
+                }
+                p++;
             }
-            param_idx++;
         }
     }
-
-    //@Todo Variadic Procedures
 }
 
 void Resolver::resolve_cast_expr(Ast_Cast *cast) {
@@ -327,6 +329,10 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
         case DECL_CONSTANT:
             ident->mode = ADDRESSING_CONSTANT;
             ident->value = decl->constant_value;
+            if (decl->constant_value.kind == CONSTANT_VALUE_TYPEID) {
+                ident->mode = ADDRESSING_TYPE;
+                ident->type = decl->constant_value.value_typeid;
+            }
             break;
         case DECL_PROCEDURE:
             ident->mode = ADDRESSING_PROCEDURE;
@@ -337,6 +343,58 @@ void Resolver::resolve_ident(Ast_Ident *ident) {
     }
 }
 
+internal bigint get_min_integer_value(Type *type) {
+    Assert(is_integer_type(type));
+    switch (type->kind) {
+    case TYPE_UINT:
+    case TYPE_UINT8:
+    case TYPE_UINT16:
+    case TYPE_UINT32:
+    case TYPE_UINT64:
+    case TYPE_USIZE:
+        return bigint_make(0);
+    case TYPE_INT8:
+        return bigint_make(std::numeric_limits<int8_t>::min());
+    case TYPE_INT16:
+        return bigint_make(std::numeric_limits<int16_t>::min());
+    case TYPE_INT32:
+    case TYPE_INT:
+        return bigint_i32_make(std::numeric_limits<int32_t>::min());
+    case TYPE_INT64:
+    case TYPE_ISIZE:
+        return bigint_i64_make(std::numeric_limits<int64_t>::min());
+    }
+    return {};
+}
+
+internal bigint get_max_integer_value(Type *type) {
+    Assert(is_integer_type(type));
+    switch (type->kind) {
+    case TYPE_UINT8:
+        return bigint_make(std::numeric_limits<uint8_t>::max());
+    case TYPE_UINT16:
+        return bigint_make(std::numeric_limits<uint16_t>::max());
+    case TYPE_UINT32:
+    case TYPE_UINT:
+        return bigint_u32_make(std::numeric_limits<uint32_t>::max());
+    case TYPE_UINT64:
+    case TYPE_USIZE:
+        return bigint_u64_make(std::numeric_limits<uint64_t>::max());
+
+    case TYPE_INT8:
+        return bigint_make(std::numeric_limits<int8_t>::max());
+    case TYPE_INT16:
+        return bigint_make(std::numeric_limits<int16_t>::max());
+    case TYPE_INT32:
+    case TYPE_INT:
+        return bigint_i32_make(std::numeric_limits<int32_t>::max());
+    case TYPE_ISIZE:
+    case TYPE_INT64:
+        return bigint_i64_make(std::numeric_limits<int64_t>::max());
+    }
+    return {};
+}
+
 void Resolver::resolve_literal(Ast_Literal *literal) {
     literal->mode = ADDRESSING_CONSTANT;
 
@@ -345,16 +403,35 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
     Type *type = nullptr;
     switch (literal->value.kind) {
     case CONSTANT_VALUE_INTEGER:
-        switch (literal->token.literal_kind) {
-        case LITERAL_DEFAULT: type = type_int; break;
-        case LITERAL_U8:  type = type_u8; break;
-        case LITERAL_U16: type = type_u16; break;
-        case LITERAL_U32: type = type_u32; break;
-        case LITERAL_U64: type = type_u64; break;
-        case LITERAL_I8:  type = type_i8; break;
-        case LITERAL_I16: type = type_i16; break;
-        case LITERAL_I32: type = type_i32; break;
-        case LITERAL_I64: type = type_i64; break;
+        if (literal->token.literal_kind == LITERAL_DEFAULT) {
+            //@Todo Infer larger range best-fitting type based on value
+            type = type_int;
+        } else {
+            switch (literal->token.literal_kind) {
+            case LITERAL_U8: type = type_u8; break;
+            case LITERAL_U16: type = type_u16; break;
+            case LITERAL_U32: type = type_u32; break;
+            case LITERAL_U64: type = type_u64; break;
+            case LITERAL_I8:  type = type_i8; break;
+            case LITERAL_I16: type = type_i16; break;
+            case LITERAL_I32: type = type_i32; break;
+            case LITERAL_I64: type = type_i64; break;
+            }
+
+            bigint min = get_min_integer_value(type);
+            bigint max = get_max_integer_value(type);
+
+            bool out_of_range = false;
+            if (mp_cmp(&literal->value.value_integer, &min) == MP_LT) {
+                out_of_range = true;
+            } else if (mp_cmp(&literal->value.value_integer, &max) == MP_GT) {
+                out_of_range = true;
+            }
+
+            if (out_of_range) {
+                report_ast_error(literal, "invalid suffix for number literal.\n");
+                report_line("\tnote: the literal '%.*s' does not fit into range of '%.*s' whose range is '%.*s'..='%.*s'.\n", LIT(literal->token.string), LIT(suffix_literals[literal->token.literal_kind].string), LIT(string_from_bigint(min)), LIT(string_from_bigint(max)));
+            }
         }
         break;
 
@@ -367,7 +444,7 @@ void Resolver::resolve_literal(Ast_Literal *literal) {
         break;
         
     case CONSTANT_VALUE_STRING:
-        type = type_string;
+        type = type_cstring;
         break;
     }
 
@@ -560,6 +637,8 @@ void Resolver::resolve_expr_base(Ast *expr) {
     if (!expr) return;
 
     switch (expr->kind) {
+    default: Assert(0); break;
+
     case AST_ADDRESS: {
         Ast_Address *address = static_cast<Ast_Address*>(expr);
         resolve_address_expr(address);
@@ -642,6 +721,14 @@ void Resolver::resolve_expr_base(Ast *expr) {
 
     case AST_STRUCT_TYPE:
         resolve_struct_type((Ast_Struct_Type *)expr);
+        break;
+
+    case AST_PROC_TYPE:
+        resolve_proc_type((Ast_Proc_Type *)expr, false);
+        break;
+
+    case AST_ENUM_TYPE:
+        resolve_enum_type((Ast_Enum_Type *)expr);
         break;
 
     case AST_SUBSCRIPT: {

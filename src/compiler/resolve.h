@@ -113,8 +113,10 @@ struct Resolver {
     void Resolver::resolve_value_decl_stmt(Ast_Value_Decl *vd);
     void Resolver::resolve_global_value_decl(Ast_Value_Decl *vd);
 
-    Type *Resolver::resolve_enum_type(Ast_Enum_Type *type);
-    Type *Resolver::resolve_struct_type(Ast_Struct_Type *type);
+    Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type);
+    Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type);
+    Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit);
+
 
     void resolve();
 };

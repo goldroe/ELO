@@ -74,11 +74,11 @@ void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
 }
 
 void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
-    resolve_expr(ifcase->cond);
-
     ifcase->switchy = true;
 
     if (ifcase->cond) {
+        resolve_expr(ifcase->cond);
+
         if (!is_integral_type(ifcase->cond->type)) {
             ifcase->switchy = false;
         }
@@ -89,9 +89,9 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
     array_add(&breakcont_stack, (Ast *)ifcase);
 
     for (Ast_Case_Label *case_label : ifcase->cases) {
-        resolve_expr(case_label->cond);
-
         if (case_label->cond) {
+            resolve_expr(case_label->cond);
+
             if (case_label->cond->mode != ADDRESSING_CONSTANT) {
                 ifcase->switchy = false;
             }
@@ -227,7 +227,7 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
         resolve_expr(value);
     }
 
-    int total_value_count = get_value_count(return_stmt->values);
+    int total_value_count = get_total_value_count(return_stmt->values);
     int proc_type_count = get_value_count(proc_type->results);
 
     if (total_value_count == proc_type_count) {
@@ -260,7 +260,7 @@ void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
         resolve_expr_base(rhs);
     }
 
-    int total_value_count = get_value_count(assign->rhs);
+    int total_value_count = get_total_value_count(assign->rhs);
 
     if (assign->lhs.count != total_value_count) {
         report_ast_error(assign, "assignment mismatch: %d variables, %d values.\n", (int)assign->lhs.count, total_value_count);
@@ -279,7 +279,7 @@ void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
     if (assign->op == OP_ASSIGN) {
         for (int n = 0, v = 0; v < total_value_count; v++) {
             Ast *val = assign->rhs[v];
-            int value_count = get_value_count(val);
+            int value_count = get_value_count(val->type);
             for (int i = 0; i < value_count; i++, n++) {
                 Ast *lhs = assign->lhs[n];
                 if (!is_convertible(lhs->type, val->type)) {
