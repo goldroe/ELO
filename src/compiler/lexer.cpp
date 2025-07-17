@@ -313,23 +313,6 @@ void Lexer::scan_number(Token *token) {
 
     String suffix = scan_number_suffix();
 
-    struct Suffix_Literal {
-        String string;
-        Literal_Kind literal;
-    } suffix_literals[] = {
-        {str_lit("u8"),  LITERAL_U8},
-        {str_lit("u16"), LITERAL_U16},
-        {str_lit("u32"), LITERAL_U32},
-        {str_lit("u64"), LITERAL_U64},
-        {str_lit("i8"),  LITERAL_I8},
-        {str_lit("i16"), LITERAL_I16},
-        {str_lit("i32"), LITERAL_I32},
-        {str_lit("i64"), LITERAL_I64},
-
-        {str_lit("f32"), LITERAL_F32},
-        {str_lit("f64"), LITERAL_F64}
-    };
-
     token->literal_kind = LITERAL_DEFAULT;
 
     //@Note Encountered suffix to check
@@ -390,24 +373,10 @@ lex_start:
         }
         goto lex_start;
 
-    case '#': {
-        u8 *start = stream;
+    case '#':
+        token.kind = TOKEN_HASH;
         eat_char();
-        while (isalpha(*stream) || *stream == '_') {
-            u8 c = *stream;
-            eat_char();
-        }
-        u64 count = stream - start;
-        String string = str8(start, count);
-        Atom *atom = atom_lookup(string);
-        if (atom) {
-            Assert(atom->flags & ATOM_FLAG_DIRECTIVE);
-            token.kind = atom->token;
-        } else {
-            report_parser_error(this, "unknown directive '%S'.\n", string);
-        }
         break;
-    }
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
     case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
@@ -462,7 +431,7 @@ lex_start:
 
         g_lexer_string_buffer[count] = 0;
         String string = str8_copy(heap_allocator(), str8(g_lexer_string_buffer, count));
-        token.value.value_string = string;
+        token.value = constant_value_string_make(string);
         break;
     }
 
@@ -522,6 +491,9 @@ lex_start:
         if (*stream == '=') {
             eat_char();
             token.kind = TOKEN_PLUS_EQ;
+        } else if (*stream == '+') {
+            eat_char();
+            token.kind = TOKEN_INCREMENT;
         }
         break;
 
@@ -534,6 +506,13 @@ lex_start:
         } else if (*stream == '=') {
             token.kind = TOKEN_MINUS_EQ;
             eat_char();
+        } else if (*stream == '-') {
+            token.kind = TOKEN_DECREMENT;
+            eat_char();
+            if (*stream == '-') {
+                token.kind = TOKEN_UNINIT;
+                eat_char();
+            }
         }
         break;
 
@@ -680,6 +659,7 @@ lex_start:
     }
 
     token.end = source_pos_make(source_file, line_number, column_number, stream_index);
+    token.string = str8(begin, token.end.index - token.start.index);
 
     current_token = token;
 }

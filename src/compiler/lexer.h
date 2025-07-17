@@ -25,14 +25,24 @@ struct Source_Pos {
     TOKEN_KIND(TOKEN_COLON, ":"), \
     TOKEN_KIND(TOKEN_COMMA, ","), \
     TOKEN_KIND(TOKEN_ARROW, "->"), \
+    TOKEN_KIND(TOKEN_LPAREN, "("), \
+    TOKEN_KIND(TOKEN_RPAREN, ")"), \
+    TOKEN_KIND(TOKEN_LBRACE, "{"), \
+    TOKEN_KIND(TOKEN_RBRACE, "}"), \
+    TOKEN_KIND(TOKEN_UNINIT, "---"), \
+                                                            \
     TOKEN_KIND(TOKEN_OPERATOR_BEGIN, "Operator__Begin"), \
     TOKEN_KIND(TOKEN_DOT, "."), \
     TOKEN_KIND(TOKEN_ELLIPSIS, ".."), \
+    TOKEN_KIND(TOKEN_HASH, "#"), \
     TOKEN_KIND(TOKEN_PLUS, "+"), \
     TOKEN_KIND(TOKEN_MINUS, "-"), \
     TOKEN_KIND(TOKEN_STAR, "*"), \
     TOKEN_KIND(TOKEN_SLASH, "/"), \
     TOKEN_KIND(TOKEN_MOD, "%"), \
+    TOKEN_KIND(TOKEN_INCREMENT, "++"), \
+    TOKEN_KIND(TOKEN_DECREMENT, "--"), \
+                                                        \
     TOKEN_KIND(TOKEN_ASSIGN_BEGIN, "Assign__Begin"), \
     TOKEN_KIND(TOKEN_EQ, "="), \
     TOKEN_KIND(TOKEN_PLUS_EQ, "+="), \
@@ -46,6 +56,7 @@ struct Source_Pos {
     TOKEN_KIND(TOKEN_LSHIFT_EQ, "<<="), \
     TOKEN_KIND(TOKEN_RSHIFT_EQ, ">>="), \
     TOKEN_KIND(TOKEN_ASSIGN_END, "Assign__End"), \
+                                                 \
     TOKEN_KIND(TOKEN_EQ2, "=="), \
     TOKEN_KIND(TOKEN_NEQ, "!="), \
     TOKEN_KIND(TOKEN_LT, "<"), \
@@ -65,10 +76,7 @@ struct Source_Pos {
     TOKEN_KIND(TOKEN_RBRACKET, "]"), \
     TOKEN_KIND(TOKEN_DOT_STAR, ".*"), \
     TOKEN_KIND(TOKEN_OPERATOR_END, "Operator__End"), \
-    TOKEN_KIND(TOKEN_LPAREN, "("), \
-    TOKEN_KIND(TOKEN_RPAREN, ")"), \
-    TOKEN_KIND(TOKEN_LBRACE, "{"), \
-    TOKEN_KIND(TOKEN_RBRACE, "}"), \
+                                                        \
     TOKEN_KIND(TOKEN_KEYWORD_BEGIN, "Keyword__Begin"), \
     TOKEN_KIND(TOKEN_ENUM, "enum"), \
     TOKEN_KIND(TOKEN_STRUCT, "struct"), \
@@ -91,13 +99,6 @@ struct Source_Pos {
     TOKEN_KIND(TOKEN_SIZEOF, "sizeof"), \
     TOKEN_KIND(TOKEN_TYPEOF, "typeof"), \
     TOKEN_KIND(TOKEN_KEYWORD_END, "Keyword__End"), \
-    TOKEN_KIND(TOKEN_DIRECTIVE_BEGIN, "Directive__Begin"), \
-    TOKEN_KIND(TOKEN_LOAD, "#load"), \
-    TOKEN_KIND(TOKEN_IMPORT, "#import"), \
-    TOKEN_KIND(TOKEN_FOREIGN, "#foreign"), \
-    TOKEN_KIND(TOKEN_TYPEDEF, "#type"), \
-    TOKEN_KIND(TOKEN_COMPLETE, "#complete"), \
-    TOKEN_KIND(TOKEN_DIRECTIVE_END, "Directive__End"), \
 
 enum Token_Kind {
 #define TOKEN_KIND(K,S) K
@@ -106,30 +107,47 @@ enum Token_Kind {
     TOKEN_COUNT
 };
 
-const char *token_strings[] = {
+global const char *token_strings[] = {
 #define TOKEN_KIND(K,S) S
     TOKEN_KINDS
 #undef TOKEN_KIND
 };
 
+#define LITERAL_KINDS \
+    LITERAL_KIND(LITERAL_U8,  "u8"),   \
+    LITERAL_KIND(LITERAL_U16, "u16"), \
+    LITERAL_KIND(LITERAL_U32, "u32"), \
+    LITERAL_KIND(LITERAL_U64, "u64"), \
+    LITERAL_KIND(LITERAL_I8,  "i8"),   \
+    LITERAL_KIND(LITERAL_I16, "i16"), \
+    LITERAL_KIND(LITERAL_I32, "i32"), \
+    LITERAL_KIND(LITERAL_I64, "i64"), \
+    LITERAL_KIND(LITERAL_F32, "f32"), \
+    LITERAL_KIND(LITERAL_F64, "f64"), \
+
 enum Literal_Kind {
+#define LITERAL_KIND(K,S) K
+    LITERAL_KINDS
+#undef LITERAL_KIND
     LITERAL_DEFAULT,
-    LITERAL_U8,
-    LITERAL_U16,
-    LITERAL_U32,
-    LITERAL_U64,
-    LITERAL_I8,
-    LITERAL_I16,
-    LITERAL_I32,
-    LITERAL_I64,
-    LITERAL_F32,
-    LITERAL_F64,
+};
+
+struct Suffix_Literal {
+    String string;
+    Literal_Kind literal;
+};
+
+global Suffix_Literal suffix_literals[] = {
+#define LITERAL_KIND(K,S) {str_lit(S), K}
+    LITERAL_KINDS
+#undef LITERAL_KIND
 };
 
 struct Token {
     Token_Kind kind = TOKEN_UNKNOWN;
     Source_Pos start = {};
     Source_Pos end = {};
+    String string;
 
     union {
         Atom *name;
