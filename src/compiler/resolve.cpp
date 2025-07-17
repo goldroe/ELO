@@ -37,7 +37,6 @@ internal char *get_name_scoped(Atom *name, Scope *scope) {
 }
 
 internal int get_value_count(Type *type) {
-    // if (!type) return 0;
     if (type->kind == TYPE_TUPLE) {
         Type_Tuple *tuple = (Type_Tuple *)type;
         return (int)tuple->types.count;
@@ -45,14 +44,10 @@ internal int get_value_count(Type *type) {
     return 1;
 }
 
-internal int get_value_count(Ast *value) {
-    return get_value_count(value->type);
-}
-
-internal int get_value_count(Array<Ast*> values) {
+internal int get_total_value_count(Array<Ast*> values) {
     int count = 0;
     for (Ast *v : values) {
-        count += get_value_count(v);
+        count += get_value_count(v->type);
     }
     return count;
 }
@@ -113,21 +108,26 @@ void Resolver::resolve_type_decl(Decl *decl) {
 }
 
 void Resolver::resolve_variable_decl(Decl *decl) {
-    Type *type = resolve_type(decl->type_expr);
-    decl->type = type;
+    if (decl->type_expr) {
+        Type *type = resolve_type(decl->type_expr);
+        decl->type = type;
+    }
 }
 
-void Resolver:: resolve_constant_decl(Decl *decl) {
+void Resolver::resolve_constant_decl(Decl *decl) {
     Ast *init = decl->init_expr;
     resolve_expr_base(init);
 
+    decl->type = init->type;
     if (init->mode == ADDRESSING_CONSTANT) {
-        decl->type = init->type;
         decl->constant_value = init->value;
+    } else if (init->mode == ADDRESSING_TYPE) {
+        decl->constant_value = constant_value_typeid_make(init->type);
     } else {
-        report_ast_error(init, "invalid initializer for constant value, not a constant.\n");
+        report_ast_error(init, "not a compile-time constant.\n");
     }
 }
+
 
 void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
     if (proc_lit->proc_resolve_state >= PROC_RESOLVE_STATE_HEADER) return;
@@ -135,22 +135,10 @@ void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit) {
     Scope *prev_scope = current_scope;
     proc_lit->scope = new_scope(global_scope, SCOPE_PROC);
 
-    auto params = array_make<Type*>(heap_allocator());
-    for (Ast_Param *param : proc_lit->typespec->params) {
-        Decl *param_decl = decl_variable_create(param->name->name);
-        param_decl->type_expr = param->typespec;
-        scope_add(current_scope, param_decl);
-        resolve_decl(param_decl);
-        array_add(&params, param_decl->type);
-        param->name->ref = param_decl;
-    }
-    auto results = array_make<Type*>(heap_allocator());
-    for (Ast *ret : proc_lit->typespec->results) {
-        Type *ret_type = resolve_type(ret);
-        array_add(&results, ret_type);
-    }
-    Type_Proc *proc_type = proc_type_create(params, results);
-    proc_lit->type = proc_type;
+    Ast_Proc_Type *proc_type = proc_lit->typespec;
+    Type_Proc *pt = resolve_proc_type(proc_type, true);
+
+    proc_lit->type = pt;
 
     current_scope = prev_scope;
 
@@ -170,7 +158,9 @@ void Resolver::resolve_proc_body(Ast_Proc_Lit *proc_lit) {
     current_proc = proc_lit;
     current_scope = proc_lit->scope;
 
-    resolve_block(proc_lit->body);
+    if (proc_lit->body) {
+        resolve_block(proc_lit->body);
+    }
 
     current_scope = prev_scope;
     current_proc = prev_proc;
@@ -264,8 +254,56 @@ internal Select lookup_field(Type *type, Atom *name, bool is_type) {
     return {};
 }
 
+Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit) {
+    int variadic_index = -1;
 
-Type *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
+    auto params = array_make<Type*>(heap_allocator());
+    for (int i = 0; i < proc_type->params.count; i++) {
+        Ast_Param *param = proc_type->params[i];
+
+        if (param->is_variadic) {
+            variadic_index = i;
+            // @Note Should be last for now...
+            // Maybe allow parameters after variadic if default-value, or ensure callee specifies param field name.
+            break;
+        }
+
+        Type *type = nullptr;
+        if (in_proc_lit) {
+            Decl *param_decl = decl_variable_create(param->name->name);
+            param_decl->type_expr = param->typespec;
+            scope_add(current_scope, param_decl);
+            resolve_decl(param_decl);
+            param->name->ref = param_decl;
+            type = param_decl->type;
+        } else {
+            type = resolve_type(param->typespec);
+        }
+
+        param->type = type;
+        array_add(&params, type);
+    }
+
+    auto results = array_make<Type*>(heap_allocator());
+    for (Ast *ret : proc_type->results) {
+        Type *ret_type = resolve_type(ret);
+        array_add(&results, ret_type);
+    }
+
+    Type_Proc *pt = proc_type_create(params, results);
+    pt->is_variadic = proc_type->is_variadic;
+    pt->is_foreign  = proc_type->is_foreign;
+    pt->variadic_index = variadic_index;
+
+    if (!in_proc_lit) {
+        proc_type->mode = ADDRESSING_CONSTANT;
+        proc_type->value = constant_value_typeid_make(pt);
+    }
+
+    return pt;
+}
+
+Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
     Decl *type_decl = nullptr;
     Atom *name = nullptr;
 
@@ -309,7 +347,7 @@ Type *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
     return st;
 }
 
-Type *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
+Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
     type->scope = new_scope(current_scope, SCOPE_ENUM);
 
     Type *base_type = type_int;
@@ -369,8 +407,14 @@ Type *Resolver::resolve_type(Ast *type) {
         type_complete_path_clear();
 
         Decl *decl = ident->ref;
-        if (decl && decl->kind == DECL_TYPE) {
-            return decl->type;
+        if (decl) {
+            if (decl->kind == DECL_TYPE) {
+                return decl->type;
+            } else if (decl->kind == DECL_CONSTANT) {
+                if (decl->constant_value.kind == CONSTANT_VALUE_TYPEID) {
+                    return decl->constant_value.value_typeid;
+                }
+            }
         }
         break;
     }
@@ -408,23 +452,9 @@ Type *Resolver::resolve_type(Ast *type) {
 
     case AST_PROC_TYPE: {
         Ast_Proc_Type *proc = (Ast_Proc_Type *)type;
-
-        auto params = array_make<Type*>(heap_allocator());
-        for (Ast_Param *param : proc->params) {
-            Type *param_type = resolve_type(param->typespec);
-            array_add(&params, param_type);
-        }
-
-        auto results = array_make<Type*>(heap_allocator());
-        for (Ast *t : proc->results) {
-            Type *ret = resolve_type(t);
-            array_add(&results, ret);
-        }
-
+        Type_Proc *tp = resolve_proc_type(proc, false);
         type_complete_path_clear();
-
-        Type_Proc *pt = proc_type_create(params, results);
-        return pt;
+        return tp;
     }
 
     case AST_ENUM_TYPE: {
@@ -470,7 +500,7 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
         resolve_expr_base(value);
     }
 
-    int total_values_count = get_value_count(vd->values);
+    int total_values_count = get_total_value_count(vd->values);
     if (vd->is_mutable && total_values_count != 0) {
         if (vd->names.count != total_values_count) {
             report_ast_error(vd, "assignment mismatch: %d variables, %d values.\n", (int)vd->names.count, total_values_count);
@@ -589,8 +619,8 @@ void Resolver::register_global_declarations() {
     global_scope = new_scope(current_scope, SCOPE_GLOBAL);
     root->scope = global_scope;
 
-    add_global_constant(str_lit("true"), type_bool,  constant_value_int_make(bigint_make(0)));
-    add_global_constant(str_lit("false"), type_bool, constant_value_int_make(bigint_make(1)));
+    add_global_constant(str_lit("true"), type_bool,  constant_value_int_make(bigint_make(1)));
+    add_global_constant(str_lit("false"), type_bool, constant_value_int_make(bigint_make(0)));
 
     add_global_constant(str_lit("null"), type_null, constant_value_int_make(bigint_make(0)));
 

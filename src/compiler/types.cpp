@@ -8,6 +8,8 @@ global Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
 global Type *type_isize, *type_usize;
 global Type *type_f32, *type_f64;
 global Type *type_string;
+global Type *type_cstring;
+global Type *type_any;
 
 internal Type_Pointer *pointer_type_create(Type *elem) {
     Type_Pointer *type = TYPE_NEW(Type_Pointer);
@@ -66,6 +68,10 @@ internal void register_builtin_types() {
     array_init(&g_builtin_types, heap_allocator());
     type_invalid = builtin_type_create(TYPE_INVALID, str_lit("builtin(invalid)"), 0);
     type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);//, TYPE_FLAG_VOID);
+    type_null  = pointer_type_create(type_void);
+
+    type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
+
     type_u8    = builtin_type_create(TYPE_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
     type_u16   = builtin_type_create(TYPE_UINT16,   str_lit("u16"),    2);//, TYPE_FLAG_INTEGER);
     type_u32   = builtin_type_create(TYPE_UINT32,   str_lit("u32"),    4);//, TYPE_FLAG_INTEGER);
@@ -76,20 +82,17 @@ internal void register_builtin_types() {
     type_i64   = builtin_type_create(TYPE_INT64,    str_lit("i64"),    8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_uint  = builtin_type_create(TYPE_UINT,     str_lit("uint"),   4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
     type_int   = builtin_type_create(TYPE_INT,      str_lit("int"),    4);//, TYPE_FLAG_INTEGER);
-    type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
+
     type_usize = builtin_type_create(TYPE_USIZE,    str_lit("usize"),  8);//, TYPE_FLAG_INTEGER);
     type_isize = builtin_type_create(TYPE_ISIZE,    str_lit("isize"),  8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+
     type_f32   = builtin_type_create(TYPE_FLOAT32,  str_lit("f32"),    4);//, TYPE_FLAG_FLOAT);
     type_f64   = builtin_type_create(TYPE_FLOAT64,  str_lit("f64"),    8);//, TYPE_FLAG_FLOAT);
-    type_null  = pointer_type_create(type_void);
 
+    type_cstring = pointer_type_create(type_u8);
     type_string = builtin_type_create(TYPE_STRING, str_lit("string"), 16);
-    {
-    //     type_string->aggregate.fields = {
-    //         { atom_create(str_lit("data")), pointer_type(type_u8) },
-    //         { atom_create(str_lit("count")), type_i32 }
-    //     };
-    }
+
+    type_any = builtin_type_create(TYPE_ANY, str_lit("any"), 16);
 }
 
 internal Type *type_untuple_maybe(Type *type) {
@@ -123,6 +126,29 @@ internal bool is_convertible(Type *t0, Type *t1) {
         } else {
             return false;
         }
+    }
+
+    if (is_proc_type(t0) && is_proc_type(t1)) {
+        Type_Proc *a = (Type_Proc *)t0;
+        Type_Proc *b = (Type_Proc *)t1;
+        if (a->params->types.count != b->params->types.count) {
+            return false;
+        }
+        if (a->results->types.count != b->results->types.count) {
+            return false;
+        }
+
+        for (int i = 0; i < a->params->types.count; i++) {
+            if (!is_convertible(a->params->types[i], b->params->types[i])) {
+                return false;
+            }
+        }
+        for (int i = 0; i < a->results->types.count; i++) {
+            if (!is_convertible(a->results->types[i], b->results->types[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     //@Note Indirection testing
@@ -161,7 +187,6 @@ internal bool is_convertible(Type *t0, Type *t1) {
             return true;
         }
     }
-
     return false;
 }
 
@@ -209,19 +234,26 @@ internal char *string_from_type(Type *ty) {
             break;
 
         case TYPE_TUPLE: {
-            Type_Tuple *tuple_type = (Type_Tuple *)type;
-            for (Type *type : tuple_type->types) {
-                cstring_append(&string, string_from_type(type));
-                if (type == array_back(tuple_type->types)) cstring_append(&string, ",");
+            Type_Tuple *tup = (Type_Tuple *)type;
+
+            cstring_append(&string, "(");
+
+            for (int i = 0; i < tup->types.count; i++) {
+                Type *t = tup->types[i];
+                cstring_append(&string, string_from_type(t));
+                if (i < tup->types.count-1) {
+                    cstring_append(&string, ",");
+                }
             }
+
+            cstring_append(&string, ")");
+
             break;
         }
 
         case TYPE_PROC: {
             Type_Proc *proc_type = static_cast<Type_Proc*>(type);
-            cstring_append(&string, "(");
-
-            cstring_append(&string, ")");
+            cstring_append(&string, string_from_type(proc_type->params));
 
             if (proc_type->results) {
                 cstring_append(&string, "->");

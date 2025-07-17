@@ -348,7 +348,7 @@ struct Ast_Param : Ast {
     Ast_Param() { kind = AST_PARAM; }
     Ast_Ident *name;
     Ast *typespec;
-    b32 is_vararg;
+    b32 is_variadic;
 };
 
 struct Ast_Proc_Lit : Ast {
@@ -565,8 +565,8 @@ struct Ast_Proc_Type : Ast {
     Token open;
     Token close;
 
-    b32 foreign;
-    b32 variadic;
+    b32 is_foreign;
+    b32 is_variadic;
 };
 
 struct Ast_Enum_Field : Ast {

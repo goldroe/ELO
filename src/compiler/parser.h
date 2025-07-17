@@ -46,8 +46,8 @@ struct Parser {
 
     Array<Ast*> parse_expr_list();
 
-    Ast *parse_import_stmt();
-    Ast *parse_load_stmt();
+    Ast *parse_import_stmt(Token token);
+    Ast *parse_load_stmt(Token token);
 
 
 

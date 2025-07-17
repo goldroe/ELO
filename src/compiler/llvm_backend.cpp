@@ -452,7 +452,12 @@ LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value constant_value, Type 
     value.type = ty;
     switch (constant_value.kind) {
     case CONSTANT_VALUE_INTEGER: {
-        value.value = llvm::ConstantInt::get(ty, u64_from_bigint(constant_value.value_integer), is_signed_type(type));
+        bool sign = is_signed_type(type);
+        if (sign) {
+            value.value = llvm::ConstantInt::get(ty, (u64)s64_from_bigint(constant_value.value_integer), sign);
+        } else {
+            value.value = llvm::ConstantInt::get(ty, u64_from_bigint(constant_value.value_integer), sign);
+        }
         break;
     }
     case CONSTANT_VALUE_FLOAT: {
@@ -463,7 +468,6 @@ LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value constant_value, Type 
         llvm::Constant *constant_string = llvm::ConstantDataArray::getString(*Ctx, (char *)constant_value.value_string.data, false);
         llvm::Value *var = Builder->CreateGlobalString((char *)constant_value.value_string.data);
         value.value = var;
-        value.type = llvm::ArrayType::get(llvm::Type::getInt8Ty(*Ctx), constant_value.value_string.count);
         break;
     }
     }
@@ -899,6 +903,19 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
             return st;
         }
     }
+
+    case TYPE_ANY: {
+        llvm::StructType *t_any = llvm::StructType::getTypeByName(*Ctx, ".any");
+        if (t_any == nullptr) {
+            t_any = llvm::StructType::create(*Ctx, ".any");
+            llvm::Type *fields[] = {
+                llvm::PointerType::get(*Ctx, 0),  // pointer
+                get_type(type_i64)                // typeid
+            };
+            t_any->setBody(llvm::ArrayRef(fields, 2), false);
+        }
+        return t_any;
+    }
     }
 }
 
@@ -999,6 +1016,7 @@ void LLVM_Backend::gen_ifcase_switch(Ast_Ifcase *ifcase) {
                 u64 c = u64_from_bigint(i);
                 llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, is_signed));
                 switch_inst->addCase(case_constant, (llvm::BasicBlock *)label->backend_block);
+                bigint_add(&i, &i, 1);
             }
         } else {
             LLVM_Value case_cond = gen_expr(label->cond);
@@ -1112,11 +1130,7 @@ void LLVM_Backend::gen_ifcase(Ast_Ifcase *ifcase) {
     if (!ifcase->switchy && ifcase->default_case) {
         emit_block((llvm::BasicBlock *)ifcase->default_case->backend_block);
         for (Ast *stmt : ifcase->default_case->statements) {
-            // if (stmt->is_stmt()) {
-                gen_stmt((Ast_Stmt *)stmt);
-            // } else if (stmt->is_decl()) {
-                // gen_decl((Ast_Decl *)stmt);
-            // }
+            gen_stmt((Ast_Stmt *)stmt);
         }
         gen_branch(switch_exit);
     }
@@ -1352,13 +1366,12 @@ void LLVM_Backend::gen_decl_procedure(Decl *decl) {
     Type_Proc *tp = (Type_Proc *)proc_lit->type;
 
     for (Type *param : tp->params->types) {
-        // if (param->is_vararg) break;
         array_add(&be_proc->params, get_type(param));
     }
 
     be_proc->results = get_type(tp->results);
 
-    bool variadic = false;
+    bool variadic = tp->is_variadic;
 
     llvm::FunctionType *function_type = llvm::FunctionType::get(be_proc->results, llvm::ArrayRef(be_proc->params.data, be_proc->params.count), variadic);
     be_proc->type = function_type;
@@ -1372,7 +1385,8 @@ void LLVM_Backend::gen_decl_procedure(Decl *decl) {
     // if (proc->has_varargs) {
     //     fn->setCallingConv(llvm::CallingConv::C);
     // }
-    // if (!proc->foreign) {
+
+    // if (!proc->is_foreign) {
     // }
 
     if (proc_lit->body) {
@@ -1392,7 +1406,7 @@ void LLVM_Backend::set_procedure(BE_Proc *procedure) {
 
 void LLVM_Backend::gen_procedure_body(Decl *proc_decl) {
     Ast_Proc_Lit *proc_lit = proc_decl->proc_lit;
-    if (!proc_lit) return;
+    if (proc_lit->body == nullptr) return;
 
     BE_Proc *procedure = proc_lit->backend_proc;
 

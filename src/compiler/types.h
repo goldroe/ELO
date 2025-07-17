@@ -3,23 +3,22 @@
 
 enum Type_Kind {
     TYPE_INVALID,
+
     TYPE_VOID,
     TYPE_NULL,
-    TYPE_POISON,
 
     TYPE_INTEGER_BEGIN,
     TYPE_UINT8,
     TYPE_UINT16,
     TYPE_UINT32,
+    TYPE_UINT,
     TYPE_UINT64,
 
     TYPE_INT8,
     TYPE_INT16,
     TYPE_INT32,
-    TYPE_INT64,
-
-    TYPE_UINT,
     TYPE_INT,
+    TYPE_INT64,
 
     TYPE_BOOL,
     TYPE_ISIZE,
@@ -39,6 +38,8 @@ enum Type_Kind {
     TYPE_STRUCT,
     TYPE_UNION,
     TYPE_STRING,
+
+    TYPE_ANY
 };
 
 enum Type_Flags {
@@ -82,8 +83,9 @@ struct Type_Proc : Type {
     Type_Proc() { kind = TYPE_PROC; }
     Type_Tuple *params;
     Type_Tuple *results;
-    b32 variadic = false;
-    b32 foreign = false;
+    int variadic_index = -1;
+    b32 is_variadic = false;
+    b32 is_foreign = false;
 };
 
 struct Type_Struct : Type {

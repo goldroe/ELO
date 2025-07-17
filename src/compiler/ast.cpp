@@ -112,10 +112,11 @@ internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *e
     return node;
 }
 
-internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec) {
+internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec, bool is_variadic) {
     Ast_Param *node = AST_NEW(f, Ast_Param);
     node->name = name;
     node->typespec = typespec;
+    node->is_variadic = is_variadic;
     return node;
 }
 
@@ -345,10 +346,11 @@ internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, 
     return node;
 }
 
-internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results) {
+internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results, bool is_variadic) {
     Ast_Proc_Type *node = AST_NEW(f, Ast_Proc_Type);
     node->params = params;
     node->results = results;
+    node->is_variadic = is_variadic;
     node->open = open;
     node->close = close;
     return node;
@@ -417,7 +419,8 @@ internal char *string_from_expr(Ast *expr) {
             break;
         case CONSTANT_VALUE_STRING: {
             String string = literal->value.value_string;
-            result = make_cstring_len((const char *)string.data, string.count);
+            result = cstring_fmt("\"%S\"", literal->value.value_string);
+            // result = make_cstring_len((const char *)string.data, string.count);
             break;
         }
         }

@@ -491,28 +491,27 @@ Ast *Parser::parse_operand() {
 
         Ast_Proc_Type *type = parse_proc_type();
 
-        bool is_foreign = false;
-        if (lexer->eat(TOKEN_FOREIGN)) {
-            is_foreign = true;
+        while (lexer->eat(TOKEN_HASH)) {
+            Token tag = expect_token(TOKEN_IDENT);
+            if (tag.string == "foreign") {
+                type->is_foreign = true;
+            } else {
+                report_parser_error(lexer, "unknown procedure directive '%S'.\n", tag.string); 
+            }
         }
-
-        type->foreign = is_foreign;
 
         if (allow_type) {
             return type;
         }
 
-        Ast_Block *body = nullptr;
         if (lexer->match(TOKEN_LBRACE)) {
-            body = parse_block();
+            Ast_Block *body = parse_block();
+            return ast_proc_lit(file, type, body);
+        } else if (lexer->eat(TOKEN_UNINIT)) {
+            return ast_proc_lit(file, type, nullptr);
+        } else {
+            return type;
         }
-
-        if (is_foreign && body) {
-            report_parser_error(lexer, "body not set for foreign procedure.\n");
-        } else if (!is_foreign && !body) {
-            report_parser_error(lexer, "missing procedure body.\n");
-        }
-        return ast_proc_lit(file, type, body);
     }
 
     case TOKEN_UNION:
@@ -551,9 +550,9 @@ Ast *Parser::parse_operand() {
         return ast_enum_type(file, token, open, close, base_type, field_list);
     }
 
-    case TOKEN_TYPEDEF: {
+    // case TOKEN_TYPEDEF: {
         // return parse_type_decl(name);
-    }
+    // }
 
     case TOKEN_SIZEOF: {
         expect_token(TOKEN_SIZEOF);
@@ -591,6 +590,7 @@ Ast *Parser::parse_unary_expr() {
     case TOKEN_MINUS:
     case TOKEN_BANG:
     case TOKEN_SQUIGGLE: {
+        lexer->next_token();
         OP op = get_unary_operator(token.kind);
         Ast *elem = parse_unary_expr();
         Ast_Unary *expr = ast_unary_expr(file, token, op, elem);
@@ -751,7 +751,7 @@ Ast_Case_Label *Parser::parse_case_clause() {
 
     expect_token(TOKEN_COLON);
 
-    Array<Ast*> statements;
+    auto statements = array_make<Ast*>(heap_allocator());
 
     for (;;) {
         Ast *stmt = parse_stmt();
@@ -774,13 +774,18 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
     Token token = lexer->current();
     expect_token(TOKEN_IFCASE);
 
-    Ast *cond = parse_expr();
-
     bool check_complete = false;
 
-    if (lexer->eat(TOKEN_COMPLETE)) {
-        check_complete = true;
+    while (lexer->eat(TOKEN_HASH)) {
+        Token tag = expect_token(TOKEN_IDENT);
+        if (tag.string == "complete") {
+            check_complete = true;
+        } else {
+            report_parser_error(lexer, "unknown directive tag for ifcase statement '%S'.\n", tag.string);
+        }
     }
+
+    Ast *cond = parse_expr();
 
     Token open = expect_token(TOKEN_LBRACE);
 
@@ -809,9 +814,7 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
     return ast_ifcase_stmt(file, token, open, close, cond, clauses, check_complete);
 }
 
-Ast *Parser::parse_load_stmt() {
-    Token token = expect_token(TOKEN_LOAD);
-
+Ast *Parser::parse_load_stmt(Token token) {
     if (!lexer->match(TOKEN_STRING)) {
         report_parser_error(lexer, "missing filename after '#load'.\n");
         return ast_bad_stmt(file, token, token);
@@ -826,7 +829,7 @@ Ast *Parser::parse_load_stmt() {
     }
     Source_File *source_file = source_file_create(file_path);
 
-    if (!file) {
+    if (!source_file) {
         report_line("path does not exit: %s", file_path.data);
         return ast_bad_stmt(file, file_token, file_token);
     }
@@ -838,8 +841,7 @@ Ast *Parser::parse_load_stmt() {
     return ast_load_stmt(file, token, file_token, file_path);
 }
 
-Ast *Parser::parse_import_stmt() {
-    Token token = expect_token(TOKEN_IMPORT);
+Ast *Parser::parse_import_stmt(Token token) {
     if (!lexer->match(TOKEN_STRING)) {
         report_parser_error(lexer, "missing filename after '#import'.\n");
         return ast_bad_stmt(file, token, token);
@@ -854,7 +856,7 @@ Ast *Parser::parse_import_stmt() {
     import_path = path_join(heap_allocator(), import_path, file_path);
     Source_File *source_file = source_file_create(import_path);
 
-    if (!file) {
+    if (!source_file) {
         report_line("path does not exit: %s", file_path.data);
         return ast_bad_stmt(file, file_token, file_token);
     }
@@ -874,24 +876,24 @@ Ast_Proc_Type *Parser::parse_proc_type() {
     Token open = expect_token(TOKEN_LPAREN);
 
     while (!lexer->match(TOKEN_RPAREN)) {
-        if (lexer->match(TOKEN_ELLIPSIS)) {
-            Token token = expect_token(TOKEN_ELLIPSIS);
-            Ast_Ident *ident = ast_ident(file, token);
-            ident->name = atom_create(str_lit(".."));
-            Ast_Param *param = ast_param(file, ident, nullptr);
-            param->is_vararg = true;
-            array_add(&params, param);
-            continue;
-        }
-
         Ast_Ident *ident = parse_ident();
 
         expect_token(TOKEN_COLON);
 
+        bool is_variadic = false;
+        if (lexer->match(TOKEN_ELLIPSIS)) {
+            Token ellipsis = expect_token(TOKEN_ELLIPSIS);
+            is_variadic = true;
+            has_varargs = true;
+        }
+
         Ast *type = parse_type();
 
-        Ast_Param *param = ast_param(file, ident, type);
+        if (is_variadic && !type) {
+            report_parser_error(lexer, "missing type after variadic field prefix '..'.\n");
+        }
 
+        Ast_Param *param = ast_param(file, ident, type, is_variadic);
         array_add(&params, param);
 
         if (!lexer->eat(TOKEN_COMMA)) {
@@ -906,7 +908,7 @@ Ast_Proc_Type *Parser::parse_proc_type() {
         return_types = parse_type_list();
     }
 
-    return ast_proc_type(file, open, close, params, return_types);
+    return ast_proc_type(file, open, close, params, return_types, has_varargs);
 }
 
 Ast *Parser::parse_type() {
@@ -1091,13 +1093,19 @@ Ast *Parser::parse_stmt() {
         stmt = ast_empty_stmt(file, token);
         return stmt;
 
-    case TOKEN_IMPORT:
-        stmt = parse_import_stmt();
-        return stmt;
-
-    case TOKEN_LOAD:
-        stmt = parse_load_stmt();
-        return stmt;
+    case TOKEN_HASH: {
+        expect_token(TOKEN_HASH);
+        Token directive = expect_token(TOKEN_IDENT);
+        if (directive.string == "load") {
+            return parse_load_stmt(token);
+        } else if (directive.string == "import") {
+            return parse_import_stmt(token);
+        } else {
+            report_parser_error(lexer, "unknown directive '%S'.\n", directive.string);
+            return ast_bad_stmt(file, lexer->current(), lexer->current());
+        }
+        break;
+    }
     }
 
     stmt = parse_simple_stmt();
