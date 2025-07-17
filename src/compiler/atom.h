@@ -5,7 +5,6 @@ enum Atom_Flags {
     ATOM_FLAG_NIL       = 0,
     ATOM_FLAG_IDENT     = (1<<0),
     ATOM_FLAG_KEYWORD   = (1<<1),
-    ATOM_FLAG_DIRECTIVE = (1<<2),
 };
 EnumDefineFlagOperators(Atom_Flags);
 

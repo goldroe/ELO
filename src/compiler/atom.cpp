@@ -66,13 +66,6 @@ internal Atom *atom_keyword(Token_Kind token, String8 string) {
     return atom;
 }
 
-internal Atom *atom_directive(Token_Kind token, String8 string) {
-    Atom *atom = atom_create(string);
-    atom->flags = ATOM_FLAG_DIRECTIVE;
-    atom->token = token;
-    return atom;
-}
-
 internal void atom_init() {
     g_atom_arena = arena_create();
 
@@ -107,10 +100,4 @@ internal void atom_init() {
     atom_keyword(TOKEN_IN,          str_lit("in"));
     atom_keyword(TOKEN_SIZEOF,      str_lit("size_of"));
     atom_keyword(TOKEN_TYPEOF,      str_lit("type_of"));
-
-    atom_directive(TOKEN_LOAD,      str_lit("#load"));
-    atom_directive(TOKEN_IMPORT,    str_lit("#import"));
-    atom_directive(TOKEN_FOREIGN,   str_lit("#foreign"));
-    atom_directive(TOKEN_TYPEDEF,   str_lit("#type"));
-    atom_directive(TOKEN_COMPLETE,  str_lit("#complete"));
 }
