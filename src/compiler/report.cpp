@@ -462,8 +462,13 @@ internal Token ast_end_token(Ast *node) {
         return ast_end_token(ast_node(Ast_Pointer_Type, node)->elem);
     case AST_ARRAY_TYPE:
         return ast_end_token(ast_node(Ast_Array_Type, node)->elem);
-    case AST_PROC_TYPE:
+    case AST_PROC_TYPE: {
+        ast_node_var(pt, Ast_Proc_Type, node);
+        if (pt->results.count > 0) {
+            return ast_end_token(array_back(pt->results));
+        }
         return ast_node(Ast_Proc_Type, node)->close;
+    }
     case AST_ENUM_TYPE:
         return ast_node(Ast_Enum_Type, node)->close;
     case AST_STRUCT_TYPE:
