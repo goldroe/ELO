@@ -137,6 +137,11 @@ internal bool operator==(String first, String second) {
     return str8_equal(first, second);
 }
 
+internal bool operator==(String first, const char *cstr) {
+    String second = str8((u8 *)cstr, strlen(cstr));
+    return str8_equal(first, second);
+}
+
 internal cstring make_cstring_len(const char *str, u64 len) {
     cstring_header *header = (cstring_header *)malloc(offsetof(cstring_header, data) + len + 1);
     header->len = len;
