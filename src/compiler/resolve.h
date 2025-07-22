@@ -36,6 +36,7 @@ struct Resolver {
     void resolve_block(Ast_Block *block);
 
     void resolve_for_stmt(Ast_For *for_stmt);
+    void resolve_range_stmt(Ast_Range_Stmt *range_stmt);
     void resolve_while_stmt(Ast_While *while_stmt);
     void resolve_decl_stmt(Ast_Decl *decl);
     void resolve_if_stmt(Ast_If *if_stmt);
@@ -45,8 +46,6 @@ struct Resolver {
     void resolve_break_stmt(Ast_Break *break_stmt);
     void resolve_continue_stmt(Ast_Continue *continue_stmt);
     void resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough);
-
-    void resolve_stmt(Ast_Stmt *stmt);
 
     void Resolver::resolve_stmt(Ast *stmt);
 
@@ -87,7 +86,7 @@ struct Resolver {
     Constant_Value eval_unary_expr(Ast_Unary *u);
     Constant_Value eval_binary_expr(Ast_Binary *b);
 
-    Scope *new_scope(Scope *parent, Scope_Flags flags);
+    Scope *Resolver::new_scope(Scope *parent, Scope_Kind kind);
     void exit_scope();
 
     bool in_global_scope();
@@ -116,6 +115,7 @@ struct Resolver {
     Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type);
     Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type);
     Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit);
+    Type_Union *Resolver::resolve_union_type(Ast_Union_Type *type);
 
 
     void resolve();
