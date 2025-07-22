@@ -1,0 +1,48 @@
+
+Vector2 :: union {
+    struct { x, y: f32; }
+    struct { u, v: f32; }
+    elems: [2]f32;
+}
+
+Vector3 :: union {
+    struct { x, y, z: f32; }
+    struct { r, g, b: f32; }
+    elems: [3]f32;
+}
+
+Vector4 :: union {
+    struct { x, y, z, w: f32; }
+    struct { r, g, b, a: f32; }
+    elems: [4]f32;
+}
+
+Matrix2 :: union {
+    struct {
+        _00, _01,
+        _10, _11 : f32;
+    }
+    columns: [2]Vector2;
+    elems: [4]f32;
+}
+
+Matrix3 :: union {
+    struct {
+        _00, _01, _02,
+        _10, _11, _12,
+        _20, _21, _22: f32;
+    }
+    columns: [3]Vector3;
+    elems: [9]f32;
+}
+
+Matrix4 :: union {
+    struct {
+        _00, _01, _02, _03,
+        _10, _11, _12, _13,
+        _20, _21, _22, _23,
+        _30, _31, _32, _33: f32;
+    }
+    columns: [4]Vector4;
+    elems: [16]f32;
+}
