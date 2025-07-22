@@ -26,47 +26,105 @@ void Resolver::resolve_while_stmt(Ast_While *while_stmt) {
 void Resolver::resolve_for_stmt(Ast_For *for_stmt) {
     Scope *scope = new_scope(current_scope, SCOPE_BLOCK);
 
-    if (for_stmt->range_expr) {
-        resolve_expr(for_stmt->range_expr);
-
-        if (for_stmt->range_expr->kind != AST_RANGE && !is_array_type(for_stmt->range_expr->type)) {
-            report_ast_error(for_stmt->range_expr, "'%s' of type '%s' is not iterable.\n", string_from_expr(for_stmt->range_expr), string_from_type(for_stmt->type));
-        }
-    }
-
-    if (for_stmt->lhs.count > 0) {
-        if (for_stmt->lhs.count > 2) {
-            report_ast_error(for_stmt, "exceeded number of lhs in for-loop.\n");
-        }
-
-        for (int i = 0; i < for_stmt->lhs.count; i++) {
-            Ast *name = for_stmt->lhs[i];
-            if (name->kind != AST_IDENT) {
-                report_ast_error(name, "'%s' found where for-loop iterator name expected.\n", string_from_expr(name));
-                continue;
-            }
-            Ast_Ident *ident = (Ast_Ident *)name;
-            Decl *decl = decl_variable_create(ident->name);
-            decl->node = name;
-            decl->init_expr = for_stmt->range_expr;
-            decl->resolve_state = RESOLVE_DONE;
-            scope_add(scope, decl);
-
-            if (i == 0) { // index
-                decl->type = type_int;
-                for_stmt->index_variable = decl;
-            } else { // value
-                decl->type = for_stmt->range_expr->type;
-                for_stmt->value_variable = decl;
-            }
-            ident->ref = decl;
-        }
-    }
-
-
     array_add(&breakcont_stack, (Ast *)for_stmt);
 
+    resolve_stmt(for_stmt->init);
+
+    resolve_expr_base(for_stmt->condition);
+
+    if (!is_conditional_type(for_stmt->condition->type)) {
+        report_ast_error(for_stmt->condition, "condition does not resoolve to boolean.\n");
+    }
+
+    resolve_stmt(for_stmt->post);
+
     resolve_block(for_stmt->block);
+
+    array_pop(&breakcont_stack);
+
+    exit_scope();
+}
+
+void Resolver::resolve_range_stmt(Ast_Range_Stmt *range_stmt) {
+    Scope *scope = new_scope(current_scope, SCOPE_BLOCK);
+
+    array_add(&breakcont_stack, (Ast *)range_stmt);
+
+    Ast_Assignment *init = range_stmt->init;
+
+    array_add(&current_proc->local_vars, (Ast *)init);
+
+    if (init->lhs.count > 2) {
+        report_ast_error(init, "range statement allows up to two iterator variables.\n");
+        return;
+    }
+
+    for (Ast *lhs : init->lhs) {
+        if (lhs->kind != AST_IDENT) {
+            report_ast_error(lhs, "iterator variable not a name.\n");
+            return;
+        }
+    }
+
+    bool is_single = false;
+
+    // resolve_stmt(init);
+
+    Ast *range_expr = init->rhs[0];
+    resolve_expr(range_expr);
+
+    if (range_expr->kind == AST_RANGE) {
+        is_single = true;
+    }
+
+    bool is_range_value = range_expr->kind == AST_RANGE || is_array_type(range_expr->type);
+    if (!is_range_value) {
+        report_ast_error(range_expr, "'%s' of type '%s' is not iterable.\n", string_from_expr(range_expr), string_from_type(range_expr->type));
+        return;
+    }
+
+    if (is_single && init->lhs.count > 1) {
+        report_ast_error(init, "single iterator allowed for range expression '%s'.\n", string_from_expr(range_expr));
+        return;
+    }
+
+    Assert(init->lhs.count > 0);
+    Ast *index = nullptr;
+    Ast *value = nullptr;
+
+    if (init->lhs.count == 1) {
+        value = init->lhs[0];
+    } else {
+        index = init->lhs[0];
+        value = init->lhs[1];
+    }
+
+    if (index) {
+        Ast_Ident *ident = static_cast<Ast_Ident*>(index);
+        Decl *decl = decl_variable_create(ident->name);
+        ident->ref = decl;
+        decl->node = ident;
+        decl->init_expr = range_expr;
+        decl->resolve_state = RESOLVE_DONE;
+        decl->type = type_int; //@Todo Infer based on range expression iterator
+        scope_add(scope, decl);
+        range_stmt->index = decl;
+    }
+
+    // value
+    {
+        Ast_Ident *ident = static_cast<Ast_Ident*>(value);
+        Decl *decl = decl_variable_create(ident->name);
+        ident->ref = decl;
+        decl->node = ident;
+        decl->init_expr = range_expr;
+        decl->resolve_state = RESOLVE_DONE;
+        decl->type = range_expr->type;
+        scope_add(scope, decl);
+        range_stmt->value = decl;
+    }
+
+    resolve_block(range_stmt->block);
 
     array_pop(&breakcont_stack);
 
@@ -186,7 +244,9 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
 
 void Resolver::resolve_if_stmt(Ast_If *if_stmt) {
     Ast *cond = if_stmt->cond;
-    resolve_expr(cond);
+    if (cond) {
+        resolve_expr(cond);
+    }
 
     if (cond &&
         cond->valid() &&
@@ -260,13 +320,6 @@ void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
         resolve_expr_base(rhs);
     }
 
-    int total_value_count = get_total_value_count(assign->rhs);
-
-    if (assign->lhs.count != total_value_count) {
-        report_ast_error(assign, "assignment mismatch: %d variables, %d values.\n", (int)assign->lhs.count, total_value_count);
-        return;
-    }
-
     for (Ast *lhs : assign->lhs) {
         resolve_expr(lhs);
         if (lhs->valid()) {
@@ -275,6 +328,19 @@ void Resolver::resolve_assignment_stmt(Ast_Assignment *assign) {
             }
         }
     }
+
+    if (assign->op == OP_IN) {
+        
+        return;
+    }
+
+    int total_value_count = get_total_value_count(assign->rhs);
+
+    if (assign->lhs.count != total_value_count) {
+        report_ast_error(assign, "assignment mismatch: %d variables, %d values.\n", (int)assign->lhs.count, total_value_count);
+        return;
+    }
+
 
     if (assign->op == OP_ASSIGN) {
         for (int n = 0, v = 0; v < total_value_count; v++) {
@@ -396,6 +462,11 @@ void Resolver::resolve_stmt(Ast *stmt) {
     case AST_FOR: {
         Ast_For *for_stmt = static_cast<Ast_For*>(stmt);
         resolve_for_stmt(for_stmt);
+        break;
+    }
+    case AST_RANGE_STMT: {
+        Ast_Range_Stmt *range_stmt = static_cast<Ast_Range_Stmt*>(stmt);
+        resolve_range_stmt(range_stmt);
         break;
     }
     case AST_BLOCK: {
