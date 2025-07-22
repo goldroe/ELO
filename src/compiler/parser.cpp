@@ -1,3 +1,5 @@
+//@Todo Fix paren expression parsing. Conflicts with procedure type.
+//@Todo Fix compound literal parsing. Conflicts with control-statements ?
 
 Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
@@ -379,19 +381,6 @@ Ast *Parser::parse_operand() {
 
         return ast_enum_type(file, token, open, close, base_type, field_list);
     }
-
-    case TOKEN_SIZEOF: {
-        expect_token(TOKEN_SIZEOF);
-
-        Token open = expect_token(TOKEN_LPAREN);
-
-        Ast *elem = parse_expr();
-
-        Token close = expect_token(TOKEN_RPAREN);
-
-        Ast_Sizeof *size_of = ast_sizeof_expr(file, token, open, close, elem);
-        return size_of;
-    }
     }
 
     return operand;
@@ -412,6 +401,13 @@ Ast *Parser::parse_unary_expr() {
         return expr;
     }
 
+    case TOKEN_SIZEOF: {
+        expect_token(TOKEN_SIZEOF);
+        Ast *elem = parse_unary_expr();
+        Ast_Sizeof *expr = ast_sizeof_expr(file, token, elem);
+        return expr;
+    }
+        
     case TOKEN_PLUS:
     case TOKEN_MINUS:
     case TOKEN_BANG:

@@ -97,6 +97,7 @@ struct Type_Union : Type {
     Type_Union() { kind = TYPE_UNION; }
     Scope *scope;
     Array<Decl*> members;
+    Type *base_type = nullptr;
 
     void *backend_type = nullptr;
 };

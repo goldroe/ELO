@@ -39,6 +39,8 @@ enum OP {
     OP_NOT,
     OP_BIT_NOT,
 
+    OP_SIZEOF,
+
     // Binary
     OP_ADD,
     OP_SUB,
@@ -307,8 +309,6 @@ struct Ast_Sizeof : Ast {
     Ast_Sizeof() { kind = AST_SIZEOF; }
     Ast *elem;
     Token token;
-    Token open;
-    Token close;
 };
 
 enum Resolve_State {

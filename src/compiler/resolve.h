@@ -21,12 +21,12 @@ struct Resolver {
 
     Resolver(Parser *_parser);
 
-    void Resolver::type_complete_path_add(Ast *type);
-    void Resolver::type_complete_path_clear();
+    void type_complete_path_add(Ast *type);
+    void type_complete_path_clear();
 
 
-    void Resolver::resolve_expr_base(Ast *expr);
-    void Resolver::resolve_single_value(Ast *expr);
+    void resolve_expr_base(Ast *expr);
+    void resolve_single_value(Ast *expr);
 
     void resolve_block(Ast_Block *block);
 
@@ -42,7 +42,7 @@ struct Resolver {
     void resolve_continue_stmt(Ast_Continue *continue_stmt);
     void resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough);
 
-    void Resolver::resolve_stmt(Ast *stmt);
+    void resolve_stmt(Ast *stmt);
 
     Ast_Decl *lookup_overloaded(Atom *name, Array<Ast*> arguments, bool *overloaded);
 
@@ -54,7 +54,7 @@ struct Resolver {
     void resolve_builtin_unary_expr(Ast_Unary *expr);
     void resolve_unary_expr(Ast_Unary *unary);
 
-    void Resolver::resolve_assignment_stmt(Ast_Assignment *assign);
+    void resolve_assignment_stmt(Ast_Assignment *assign);
 
     void resolve_ident(Ast_Ident *ident);
     void resolve_range_expr(Ast_Range *range);
@@ -67,21 +67,12 @@ struct Resolver {
     void resolve_subscript_expr(Ast_Subscript *subscript);
     void resolve_compound_literal(Ast_Compound_Literal *literal);
     void resolve_expr(Ast *expr);
-
-    // void resolve_proc_header(Ast_Proc *proc);
-    // void resolve_proc(Ast_Proc *proc);
-    // void resolve_struct(Ast_Struct *struct_decl);
-    // void resolve_enum(Ast_Enum *enum_decl);
-    // void resolve_var(Ast_Var *var);
-    // void resolve_param(Ast_Param *param);
-    // void resolve_decl(Ast_Decl *decl);
-    // void resolve_overloaded_proc(Ast_Proc *proc);
-    // void resolve_type_decl(Ast_Type_Decl *type_decl);
+    void resolve_sizeof_expr(Ast_Sizeof *size_of);
 
     Constant_Value eval_unary_expr(Ast_Unary *u);
     Constant_Value eval_binary_expr(Ast_Binary *b);
 
-    Scope *Resolver::new_scope(Scope *parent, Scope_Kind kind);
+    Scope *new_scope(Scope *parent, Scope_Kind kind);
     void exit_scope();
 
     bool in_global_scope();
@@ -89,29 +80,28 @@ struct Resolver {
 
     Type *resolve_type(Ast *type);
     
-    void Resolver::add_global_constant(String name, Type *type, Constant_Value value);
+    void add_global_constant(String name, Type *type, Constant_Value value);
 
-    void Resolver::resolve_proc_header(Ast_Proc_Lit *proc_lit);
-    void Resolver::resolve_proc_body(Ast_Proc_Lit *proc_lit);
-    void Resolver::resolve_proc_lit(Ast_Proc_Lit *proc_lit);
+    void resolve_proc_header(Ast_Proc_Lit *proc_lit);
+    void resolve_proc_body(Ast_Proc_Lit *proc_lit);
+    void resolve_proc_lit(Ast_Proc_Lit *proc_lit);
 
-    void Resolver::resolve_type_decl(Decl *decl);
-    void Resolver::resolve_proc_decl(Decl *decl);
-    void Resolver::resolve_decl(Decl *decl);
-    void Resolver:: resolve_variable_decl(Decl *decl);
-    void Resolver:: resolve_constant_decl(Decl *decl);
-    void Resolver::resolve_global_decl(Ast *decl);
+    void resolve_type_decl(Decl *decl);
+    void resolve_proc_decl(Decl *decl);
+    void resolve_decl(Decl *decl);
+    void resolve_variable_decl(Decl *decl);
+    void resolve_constant_decl(Decl *decl);
+    void resolve_global_decl(Ast *decl);
 
-    void Resolver::resolve_value_decl_preamble(Ast_Value_Decl *vd);
-    void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global);
-    void Resolver::resolve_value_decl_stmt(Ast_Value_Decl *vd);
-    void Resolver::resolve_global_value_decl(Ast_Value_Decl *vd);
+    void resolve_value_decl_preamble(Ast_Value_Decl *vd);
+    void resolve_value_decl(Ast_Value_Decl *vd, bool is_global);
+    void resolve_value_decl_stmt(Ast_Value_Decl *vd);
+    void resolve_global_value_decl(Ast_Value_Decl *vd);
 
-    Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type);
-    Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type);
-    Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit);
-    Type_Union *Resolver::resolve_union_type(Ast_Union_Type *type);
-
+    Type_Enum *resolve_enum_type(Ast_Enum_Type *type);
+    Type_Struct *resolve_struct_type(Ast_Struct_Type *type);
+    Type_Proc *resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit);
+    Type_Union *resolve_union_type(Ast_Union_Type *type);
 
     void resolve();
 };

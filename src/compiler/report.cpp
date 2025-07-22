@@ -456,7 +456,7 @@ internal Token ast_end_token(Ast *node) {
         return ast_start_token(range->lhs);
     }
     case AST_SIZEOF:
-        return ast_node(Ast_Sizeof, node)->token;
+        return ast_end_token(ast_node(Ast_Sizeof, node)->elem);
 
     case AST_POINTER_TYPE:
         return ast_end_token(ast_node(Ast_Pointer_Type, node)->elem);

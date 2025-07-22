@@ -16,6 +16,20 @@ void Resolver::resolve_address_expr(Ast_Address *address) {
     }
 }
 
+void Resolver::resolve_sizeof_expr(Ast_Sizeof *size_of) {
+    Ast *elem = size_of->elem;
+    resolve_expr_base(elem);
+
+    if (elem->valid()) {
+        Type *type = elem->type;
+        size_of->mode = ADDRESSING_CONSTANT;
+        size_of->type = type_usize;
+        size_of->value = constant_value_int_make(bigint_u64_make(type->size));
+    } else {
+        size_of->poison();
+    }
+}
+
 void Resolver::resolve_builtin_binary_expr(Ast_Binary *expr) {
     Ast *lhs = expr->lhs;
     Ast *rhs = expr->rhs;
@@ -597,12 +611,13 @@ void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
 }
 
 void Resolver::resolve_unary_expr(Ast_Unary *expr) {
-    resolve_expr(expr->elem);
-    if (expr->elem->valid()) {
+    Ast *elem = expr->elem;
+    resolve_expr(elem);
+    if (elem->valid()) {
         resolve_builtin_unary_expr(expr);
-        if (expr->valid() && expr->elem->mode == ADDRESSING_CONSTANT) {
+        if (expr->valid() && elem->mode == ADDRESSING_CONSTANT) {
             expr->mode = ADDRESSING_CONSTANT;
-            expr->value = constant_unary_op_value(expr->op, expr->elem->value);
+            expr->value = constant_unary_op_value(expr->op, elem->value);
         }
     } else {
         expr->poison();
@@ -644,6 +659,12 @@ void Resolver::resolve_expr_base(Ast *expr) {
     case AST_ADDRESS: {
         Ast_Address *address = static_cast<Ast_Address*>(expr);
         resolve_address_expr(address);
+        break;
+    }
+
+    case AST_SIZEOF: {
+        Ast_Sizeof *size_of = static_cast<Ast_Sizeof*>(expr);
+        resolve_sizeof_expr(size_of);
         break;
     }
 

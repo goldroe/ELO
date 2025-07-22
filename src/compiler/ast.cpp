@@ -268,12 +268,10 @@ internal Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token clo
     return node;
 }
 
-internal Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Token open, Token close, Ast *elem) {
+internal Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Ast *elem) {
     Ast_Sizeof *node = AST_NEW(f, Ast_Sizeof);
     node->elem = elem;
     node->token = token;
-    node->open = open;
-    node->close = close;
     return node;
 }
 
@@ -536,6 +534,8 @@ internal char *string_from_operator(OP op) {
         return "-";
     case OP_UNARY_PLUS:
         return "+";
+    case OP_SIZEOF:
+        return "size_of";
     case OP_EQ:
         return "==";
     case OP_NEQ:
@@ -588,6 +588,8 @@ internal char *string_from_operator(OP op) {
         return "<<=";
     case OP_RSH_ASSIGN:
         return ">>=";
+    case OP_IN:
+        return "in";
     case OP_ADDRESS:
         return "*";
     case OP_DEREF:
@@ -615,6 +617,8 @@ internal inline OP get_unary_operator(Token_Kind kind) {
         return OP_NOT;
     case TOKEN_SQUIGGLE:
         return OP_BIT_NOT;
+    case TOKEN_SIZEOF:
+        return OP_SIZEOF;
     }
 }
 
@@ -707,6 +711,7 @@ internal inline int get_operator_precedence(OP op) {
     case OP_DEREF:
     case OP_ADDRESS:
     case OP_CAST:
+    case OP_SIZEOF:
         return 12000;
 
     case OP_MUL:

@@ -919,16 +919,7 @@ llvm::Type* LLVM_Backend::get_type(Type *type) {
 
     case TYPE_UNION: {
         Type_Union *tu = (Type_Union *)type;
-        Type *align_type = nullptr;
-        for (Decl *member : tu->members) {
-            if (member->kind == DECL_VARIABLE) {
-                if (!align_type || align_type->size < member->type->size) {
-                    align_type = member->type;
-                }
-            }
-        }
-        Assert(align_type);
-        llvm::Type *ty = get_type(align_type);
+        llvm::Type *ty = get_type(tu->base_type);
         tu->backend_type = (void *)ty;
         return ty;
     }

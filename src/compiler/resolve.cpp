@@ -422,11 +422,21 @@ Type_Union *Resolver::resolve_union_type(Ast_Union_Type *type) {
         }
     }
 
+    Type *base_type = nullptr;
     for (Decl *member : ut->members) {
         if (member->kind != DECL_PROCEDURE) {
             resolve_decl(member);
         }
+
+        if (member->kind == DECL_VARIABLE) {
+            if (!base_type || base_type->size < member->type->size) {
+                base_type = member->type;
+            }
+        }
     }
+
+    ut->base_type = base_type;
+    ut->size = base_type->size;
 
     if (type_decl) {
         exit_scope();
