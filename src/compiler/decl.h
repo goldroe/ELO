@@ -38,17 +38,17 @@ struct Decl {
     };
 };
 
-enum Scope_Flags {
-    SCOPE_GLOBAL  = (1<<0),
-    SCOPE_PROC    = (1<<1),
-    SCOPE_BLOCK   = (1<<2),
-    SCOPE_STRUCT  = (1<<3),
-    SCOPE_ENUM    = (1<<4),
+enum Scope_Kind {
+    SCOPE_GLOBAL,
+    SCOPE_PROC,
+    SCOPE_STRUCT,
+    SCOPE_UNION,
+    SCOPE_ENUM,
+    SCOPE_BLOCK,
 };
-EnumDefineFlagOperators(Scope_Flags);
 
 struct Scope {
-    Scope_Flags scope_flags;
+    Scope_Kind kind;
 
     Scope *parent = nullptr;
     Scope *first = nullptr;

@@ -1,3 +1,7 @@
+internal bool is_anonymous(Decl *decl) {
+    return decl->name == nullptr;
+}
+
 internal Decl *decl_type_create(Atom *name) {
     Decl *decl = DECL_NEW(Decl);
     decl->kind = DECL_TYPE;
@@ -26,9 +30,9 @@ internal Decl *decl_procedure_create(Atom *name) {
     return decl;
 }
 
-internal Scope *scope_create(Scope_Flags flags) {
+internal Scope *scope_create(Scope_Kind kind) {
     Scope *scope = new Scope();
-    scope->scope_flags = flags;
+    scope->kind = kind;
     array_init(&scope->decls, heap_allocator());
     return scope;
 }
