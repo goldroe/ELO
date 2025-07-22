@@ -1,0 +1,15 @@
+
+isalnum  :: (c: int) -> int #foreign ---
+isalpha  :: (c: int) -> int #foreign ---
+isblank  :: (c: int) -> int #foreign ---
+iscntrl  :: (c: int) -> int #foreign ---
+isdigit  :: (c: int) -> int #foreign ---
+isgraph  :: (c: int) -> int #foreign ---
+islower  :: (c: int) -> int #foreign ---
+isprint  :: (c: int) -> int #foreign ---
+ispunct  :: (c: int) -> int #foreign ---
+isspace  :: (c: int) -> int #foreign ---
+isupper  :: (c: int) -> int #foreign ---
+isxdigit :: (c: int) -> int #foreign ---
+tolower  :: (c: int) -> int #foreign ---
+toupper  :: (c: int) -> int #foreign ---
