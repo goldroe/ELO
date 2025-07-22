@@ -66,7 +66,7 @@ Array<Ast*> Parser::parse_type_list() {
     return type_list;
 }
 
-Ast_Compound_Literal *Parser::parse_compound_literal(Ast *operand) {
+Ast_Compound_Literal *Parser::parse_compound_literal(Token token, Ast *type) {
     Token open = expect_token(TOKEN_LBRACE);
 
     auto elements = array_make<Ast*>(heap_allocator());
@@ -82,19 +82,8 @@ Ast_Compound_Literal *Parser::parse_compound_literal(Ast *operand) {
 
     Token close = expect_token(TOKEN_RBRACE);
 
-    Ast_Compound_Literal *compound = ast_compound_literal(file, open, close, operand, elements);
+    Ast_Compound_Literal *compound = ast_compound_literal(file, token, open, close, type, elements);
     return compound;
-}
-
-Ast_Selector *Parser::parse_selector_expr(Ast *base) {
-    Token token = expect_token(TOKEN_DOT);
-
-    Token name = lexer->current();
-    if (!lexer->eat(TOKEN_IDENT)) {
-        report_parser_error(lexer, "missing name after '.'\n");
-    }
-
-    return ast_selector_expr(file, token, base, ast_ident(file, name));
 }
 
 Ast_Subscript *Parser::parse_subscript_expr(Ast *base) {
@@ -164,8 +153,6 @@ Ast *Parser::parse_range_expr() {
 }
 
 Ast_Value_Decl *Parser::parse_struct_member() {
-    auto lhs = array_make<Ast*>(heap_allocator());
-
     Token token = lexer->current();
 
     //@Note Anonymous members
@@ -174,27 +161,15 @@ Ast_Value_Decl *Parser::parse_struct_member() {
 
         auto values = array_make<Ast*>(heap_allocator(), {operand});
 
-        return ast_value_decl(file, lhs, nullptr, values, false);
+        bool is_mutable = true;
+        return ast_value_decl(file, {}, nullptr, values, is_mutable);
     }
-    
-    Ast *type = nullptr;
+
+    Array<Ast*> lhs = parse_expr_list();
     auto values = array_make<Ast*>(heap_allocator());
-    lhs = parse_expr_list();
+    Ast *type = nullptr;
 
     expect_token(TOKEN_COLON);
-
-    //@Note Multiple values require type, '::' constants not allowed
-    if (lhs.count > 1) {
-        type = parse_type();
-
-        if (!type) {
-            report_parser_error(lexer, "expected a type.\n");
-        }
-
-        expect_semi();
-
-        return ast_value_decl(file, lhs, type, values, true);
-    }
 
     return parse_value_decl(lhs);
 }
@@ -205,6 +180,10 @@ Array<Ast_Value_Decl*> Parser::parse_struct_members() {
         Ast_Value_Decl *member = parse_struct_member();
         if (!member) break;
         array_add(&members, member);
+
+        if (member->is_mutable && member->names.count > 0) {
+            expect_semi();
+        }
     }
     return members;
 }
@@ -231,178 +210,6 @@ Array<Ast_Enum_Field*> Parser::parse_enum_field_list() {
     return field_list;
 }
 
-// Ast_Type_Decl *Parser::parse_type_decl(Atom *name) {
-//     expect_token(TOKEN_TYPEDEF);
-
-//     Ast_Type_Decl *type_decl = ast_type_decl(name, nullptr);
-
-//     Ast *type = parse_type();
-//     type_decl->type_defn = type_defn;
-
-//     if (!type) {
-//         report_parser_error(lexer, "missing type after #type.\n");
-//         type_decl->poison();
-//         return type_decl;
-//     }
-
-//     type_decl->mark_end(type->end);
-
-//     return type_decl;
-// }
-
-// Ast_Var *Parser::parse_var(Atom *name) {
-//     Ast *init = NULL;
-//     Ast *type = NULL;
-
-//     if (lexer->eat(TOKEN_COLON)) {
-//         type = parse_type();
-//         if (!type) {
-//             report_parser_error(lexer, "expected type after ':'.\n");
-//             goto ERROR_BLOCK;
-//         }
-//         if (lexer->eat(TOKEN_EQ)) {
-//             init = parse_expr();
-//             if (!init) {
-//                 report_parser_error(lexer, "expected expression after '='.\n");
-//                 goto ERROR_BLOCK;
-//             }
-//         }
-//     } else if (lexer->eat(TOKEN_COLON_EQ)) {
-//         init = parse_expr();
-//         if (!init) {
-//             report_parser_error(lexer, "expected expression after ':='.\n");
-//             goto ERROR_BLOCK;
-//         }
-//     } else {
-//         Assert(0);
-//     }
-
-//     Ast_Var *var = ast_var(name, init, type);
-//     if (var->init) {
-//         var->mark_end(init->end);
-//     } else {
-//         var->mark_end(type_defn->end);
-//     }
-//     return var;
-
-// ERROR_BLOCK:
-//     Ast_Var *err = ast_var(name, init, type);
-//     err->poison();
-//     return err;
-// }
-
-// Ast_Proc *Parser::parse_proc(Token name) {
-//     bool has_varargs = false;
-//     Array<Ast_Param*> parameters;
-//     expect_token(TOKEN_LPAREN);
-//     while (!lexer->match(TOKEN_RPAREN)) {
-//         Ast_Param *param = parse_param();
-//         if (param == NULL) break;
-//         parameters.push(param);
-
-//         if (has_varargs && param->is_vararg) {
-//             report_parser_error(lexer, "Variadic parameter must be used only once.\n");
-//         } else if (has_varargs) {
-//             report_parser_error(lexer, "Variadic parameter must be last.\n");
-//         }
-
-//         if (param->is_vararg) has_varargs = true;
-
-//         if (!lexer->eat(TOKEN_COMMA)) {
-//             break;
-//         }
-//     }
-//     expect_token(TOKEN_RPAREN);
-
-//     Ast *return_type = NULL;
-//     if (lexer->eat(TOKEN_ARROW)) {
-//         return_type = parse_type();
-//     }
-
-//     bool is_foreign = false;
-//     Ast_Block *block = NULL;
-//     if (lexer->match(TOKEN_LBRACE)) {
-//         block = parse_block();
-//     } else if (lexer->eat(TOKEN_FOREIGN)) {
-//         is_foreign = true;
-//     }
-//     Source_Pos end = lexer->current().start;
-    
-//     Ast_Proc *proc = ast_proc(name, parameters, return_type, block);
-//     proc->foreign = is_foreign;
-//     proc->has_varargs = has_varargs;
-//     proc->mark_end(end);
-//     return proc;
-// }
-
-// Ast_Operator_Proc *Parser::parse_operator_proc() {
-//     Source_Pos start = lexer->current().start;
-    
-//     expect_token(TOKEN_OPERATOR);
-
-//     Ast_Operator_Proc *proc = NULL;
-
-//     Token op_tok = lexer->current();
-
-//     Array<Ast_Param*> parameters;
-
-//     if (is_operator(op_tok.kind)) {
-//         OP op = {}; //@todo get operator
-//         lexer->next_token();
-
-//         if (op_tok.kind == TOKEN_LBRACKET) {
-//             expect_token(TOKEN_RBRACKET);
-//         }
-
-//         if (!lexer->eat(TOKEN_COLON2)) {
-//             report_parser_error(lexer, "missing '::', got '%s'.\n", string_from_token(lexer->peek()));
-//         }
-
-//         if (operator_is_overloadable(op_tok.kind)) {
-//             if (!lexer->eat(TOKEN_LPAREN)) {
-//                 report_parser_error(lexer, "missing '('.\n");
-//                 goto ERROR_HANDLE;
-//             }
-
-//             while (!lexer->match(TOKEN_RPAREN)) {
-//                 Ast_Param *param = parse_param();
-//                 if (param == NULL) break;
-//                 parameters.push(param);
-//                 if (!lexer->eat(TOKEN_COMMA)) {
-//                     break;
-//                 }
-//             }
-
-//             Source_Pos end = lexer->current().end;
-
-//             if (!lexer->eat(TOKEN_RPAREN)) {
-//                 report_parser_error(lexer, "missing ')'.\n");
-//                 goto ERROR_HANDLE;
-//             }
-
-//             Ast *return_type = NULL;
-//             if (lexer->eat(TOKEN_ARROW)) {
-//                 return_type = parse_type();
-//             }
-
-//             Ast_Block *block = parse_block();
-//             proc = ast_operator_proc(op, parameters, return_type, block);
-//             proc->mark_range(start, end);
-//         } else {
-//             report_parser_error(lexer, "invalid operator, cannot overload '%s'.\n", string_from_token(op_tok.kind));
-//             goto ERROR_HANDLE;
-//         }
-//     } else {
-//         report_parser_error(lexer, "expected operator, got '%s'.\n", string_from_token(op_tok.kind));
-//         goto ERROR_HANDLE;
-//     } 
-
-//     return proc;
-
-// ERROR_HANDLE:
-//     return NULL;
-// }
-
 Ast_Paren *Parser::parse_paren_expr() {
     Token open = expect_token(TOKEN_LPAREN);
     Ast *elem = parse_expr();
@@ -411,6 +218,14 @@ Ast_Paren *Parser::parse_paren_expr() {
     }
     Token close = expect_token(TOKEN_RPAREN);
     return ast_paren_expr(file, open, close, elem);
+}
+
+Ast_Selector *Parser::parse_selector_expr(Token token, Ast *base) {
+    Token name = lexer->current();
+    if (!lexer->eat(TOKEN_IDENT)) {
+        report_parser_error(lexer, "missing name after '.'\n");
+    }
+    return ast_selector_expr(file, token, base, ast_ident(file, name));
 }
 
 Ast *Parser::parse_primary_expr(Ast *operand) {
@@ -425,15 +240,15 @@ Ast *Parser::parse_primary_expr(Ast *operand) {
             loop = false;
             break;
 
-        //@Fix Breaks control structure expressions
-        // case TOKEN_LBRACE: {
-        //     Ast_Compound_Literal *compound = parse_compound_literal(operand);
-        //     return compound;
-        // }
-
-        case TOKEN_DOT:
-            operand = parse_selector_expr(operand);
+        case TOKEN_DOT: {
+            Token token = expect_token(TOKEN_DOT);
+            if (lexer->match(TOKEN_LBRACE)) {
+                operand = parse_compound_literal(token, operand);
+            } else {
+                operand = parse_selector_expr(token, operand);
+            }
             break;
+        }
 
         case TOKEN_DOT_STAR:
             expect_token(TOKEN_DOT_STAR);
@@ -477,16 +292,31 @@ Ast *Parser::parse_operand() {
     }
     case TOKEN_LBRACKET: {
         expect_token(TOKEN_LBRACKET);
-        Ast *length = parse_expr();
+        Ast *array_size = nullptr;
+        bool is_dynamic = false;
+        if (lexer->eat(TOKEN_ELLIPSIS)) {
+            is_dynamic = true;
+        } else {
+            array_size = parse_expr();
+        }
         expect_token(TOKEN_RBRACKET);
         Ast *type = parse_type();
-        operand = ast_array_type(file, token, type, length);
-        return operand;
+        if (!type) {
+            report_parser_error(lexer, "missing type of array or slice type.\n");
+        }
+
+        Ast_Array_Type *array_type = ast_array_type(file, token, type, array_size);
+        array_type->is_dynamic = is_dynamic;
+        array_type->array_size = array_size;
+        if (!is_dynamic && array_size == nullptr) {
+            array_type->is_view = true; 
+        }
+        return array_type;
     }
 
     case TOKEN_LPAREN: {
         if (!allow_value_decl) {
-            Ast_Paren *paren = parse_paren_expr();
+            return parse_paren_expr();
         }
 
         Ast_Proc_Type *type = parse_proc_type();
@@ -549,10 +379,6 @@ Ast *Parser::parse_operand() {
 
         return ast_enum_type(file, token, open, close, base_type, field_list);
     }
-
-    // case TOKEN_TYPEDEF: {
-        // return parse_type_decl(name);
-    // }
 
     case TOKEN_SIZEOF: {
         expect_token(TOKEN_SIZEOF);
@@ -717,31 +543,49 @@ Ast_While *Parser::parse_while_stmt() {
 Ast *Parser::parse_for_stmt() {
     Token token = expect_token(TOKEN_FOR);
 
+    bool is_range = false;
+
+    Ast *init = nullptr;
+    Ast *condition = nullptr;
+    Ast *post = nullptr;
+    Ast_Block *block = nullptr;
+
     //@Note for {..}
     if (lexer->match(TOKEN_LBRACE)) {
         Ast_Block *block = parse_block();
-        return ast_for_stmt(file, token, {}, nullptr, block);
+        return ast_for_stmt(file, token, nullptr, nullptr, nullptr, block);
     }
 
-    Array<Ast*> lhs = parse_expr_list();
-
-    if (lhs.count == 0) {
-        report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
-        return ast_bad_stmt(file, lexer->current(), lexer->current());
+    init = parse_simple_stmt();
+    if (init && init->kind == AST_ASSIGNMENT) {
+        Ast_Assignment *assignment = (Ast_Assignment *)init;
+        if (assignment->op == OP_IN) {
+            is_range = true;
+        }
     }
 
-    expect_token(TOKEN_COLON);
+    if (!is_range) {
+        expect_semi();
 
-    Ast *init = parse_range_expr();
+        condition = parse_expr();
 
-    if (!init) {
-        report_parser_error(lexer, "expected expression, got '%s'.\n", string_from_token(lexer->peek()));
-        return ast_bad_stmt(file, lexer->current(), lexer->current());
+        expect_semi();
+
+        post = parse_simple_stmt();
     }
 
-    Ast_Block *block = parse_block();
 
-    return ast_for_stmt(file, token, lhs, init, block);
+    if (lexer->match(TOKEN_LBRACE)) {
+        block = parse_block();
+    } else {
+        report_parser_error(lexer, "missing for statement block.\n");
+    }
+
+    if (is_range) {
+        return ast_range_stmt(file, token, (Ast_Assignment *)init, block);
+    }
+
+    return ast_for_stmt(file, token, init, condition, post, block);
 }
 
 Ast_Case_Label *Parser::parse_case_clause() {
@@ -917,7 +761,8 @@ Ast *Parser::parse_type() {
 
     Ast *type = parse_operand();
     while (lexer->match(TOKEN_DOT)) {
-        Ast_Selector *selector = parse_selector_expr(type);
+        Token token = expect_token(TOKEN_DOT);
+        Ast_Selector *selector = parse_selector_expr(token, type);
         type = selector;
     }
 
@@ -955,18 +800,6 @@ Ast_Value_Decl *Parser::parse_value_decl(Array<Ast*> names) {
         allow_value_decl = false;
     }
 
-    bool semi = true;
-    if (values.count != 0) {
-        Ast *value = array_front(values);
-        if (value->kind == AST_PROC_LIT ||
-            value->kind == AST_STRUCT_TYPE || 
-            value->kind == AST_ENUM_TYPE) semi = false;
-    }
-
-    if (semi) {
-        expect_semi();
-    }
-
     return ast_value_decl(file, names, type, values, is_mutable);
 }
 
@@ -995,7 +828,6 @@ Ast *Parser::parse_simple_stmt() {
             report_parser_error(lexer, "missing rhs in assignment statement.\n");
             return ast_bad_stmt(file, token, lexer->current());
         }
-        expect_semi();
         Ast_Assignment *assignment = ast_assignment_stmt(file, token, op, lhs, rhs);
         return assignment;
     }
@@ -1004,6 +836,14 @@ Ast *Parser::parse_simple_stmt() {
         expect_token(TOKEN_COLON);
         Ast_Value_Decl *value_decl = parse_value_decl(lhs);
         return value_decl;
+    }
+
+    case TOKEN_IN: {
+        expect_token(TOKEN_IN);
+        Ast *expr = parse_range_expr();
+        Array<Ast*> rhs = array_make<Ast*>(heap_allocator(), {expr});
+        Ast_Assignment *assignment = ast_assignment_stmt(file, token, OP_IN, lhs, rhs);
+        return assignment;
     }
     }
 
@@ -1109,8 +949,16 @@ Ast *Parser::parse_stmt() {
     }
 
     stmt = parse_simple_stmt();
-    if (stmt && stmt->kind == AST_EXPR_STMT) {
-        expect_semi();
+
+    if (stmt) {
+        if (stmt->kind == AST_EXPR_STMT || stmt->kind == AST_ASSIGNMENT) {
+            expect_semi();
+        } else if (stmt->kind == AST_VALUE_DECL) {
+            Ast_Value_Decl *vd = static_cast<Ast_Value_Decl*>(stmt);
+            if (vd->is_mutable) {
+                expect_semi();
+            }
+        }
     }
     return stmt;
 }

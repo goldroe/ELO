@@ -29,8 +29,8 @@ struct Parser {
 
     Ast_Ident *Parser::parse_ident();
 
-    Ast_Compound_Literal *parse_compound_literal(Ast *operand);
-    Ast_Selector *parse_selector_expr(Ast *base);
+    Ast_Compound_Literal *parse_compound_literal(Token token, Ast *operand);
+    Ast_Selector *Parser::parse_selector_expr(Token token, Ast *base);
     Ast_Subscript *parse_subscript_expr(Ast *base);
     Ast_Call *parse_call_expr(Ast *expr);
 
