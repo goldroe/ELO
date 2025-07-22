@@ -116,9 +116,9 @@ LLVM_Value LLVM_Backend::gen_binary_op(Ast_Binary *binop) {
             } else if (is_pointer_type(binop->type)) {
                 llvm::Type *type = get_type(binop->type->base);
                 if (is_pointer_type(binop->lhs->type)) {
-                    result.value = Builder->CreateGEP(type, lhs.value, rhs.value);
+                    result.value = llvm_pointer_offset(type, lhs.value, rhs.value);
                 } else {
-                    result.value = Builder->CreateGEP(type, rhs.value, lhs.value);
+                    result.value = llvm_pointer_offset(type, rhs.value, lhs.value);
                 }
             }
             break;
@@ -815,28 +815,15 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast *expr) {
                 LLVM_Value value = gen_field_select(base_addr.value, ts, name, 0);
                 result.value = value.value;
                 return result;
-                // Select select = lookup_field(ts, selector->name->name, false);
-                // printf("%s %d\n", selector->name->name->data, select.index);
-                // llvm::Type *ptr_type = get_type(base->type);
-                // llvm::Value *access_ptr = Builder->CreateStructGEP(be_struct->type, base_addr.value, (unsigned)select.index);
-                // result.value = access_ptr;
-            } else if (base->type->kind == TYPE_UNION) {
-                Type_Union *tu = (Type_Union *)base->type;
-                LLVM_Value value = gen_field_select(base_addr.value, tu, name, 0);
-                result.value = value.value;
-                return result;
 
-                // llvm::Type *type = get_type(base->type);
-                // llvm::Value *ptr = Builder->CreateGEP(type, base_addr.value, llvm_const_int(get_type(type_int), 0));
-                // result.value = ptr;
             } else if (base->type->kind == TYPE_POINTER) {
-                Type_Struct *ts = (Type_Struct *)type_deref(base->type);
-                BE_Struct *be_struct = ts->backend_struct;
-                Select select = lookup_field(ts, selector->name->name, false);
                 llvm::Type *ptr_type = get_type(base->type);
                 llvm::Value *addr = Builder->CreateLoad(ptr_type, base_addr.value);
-                llvm::Value *access_ptr = Builder->CreateStructGEP(be_struct->type, addr, (unsigned)select.index);
-                result.value = access_ptr;
+
+                Type *type = type_deref(base->type);
+                LLVM_Value value = gen_field_select(addr, type, name, 0);
+                result.value = value.value;
+                return result;
             }
             break;
         }
@@ -861,7 +848,7 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast *expr) {
             llvm::Type *pointer_type = get_type(subscript->expr->type);
             llvm::PointerType* load_type = llvm::PointerType::get(pointer_type, 0);
             llvm::LoadInst *load = Builder->CreateLoad(load_type, addr.value);
-            llvm::Value *ptr = Builder->CreateGEP(pointer_type, load, rhs.value);
+            llvm::Value *ptr = llvm_pointer_offset(pointer_type, load, rhs.value);
             result.value = ptr;
         }
         break;
@@ -1280,6 +1267,10 @@ void LLVM_Backend::gen_while(Ast_While *while_stmt) {
     emit_block((llvm::BasicBlock *)while_stmt->exit_block);
 }
 
+llvm::Value *LLVM_Backend::llvm_pointer_offset(llvm::Type *type, llvm::Value *ptr, llvm::Value *value) {
+    return Builder->CreateGEP(type, ptr, value);
+}
+
 llvm::Value *LLVM_Backend::llvm_pointer_offset(llvm::Type *type, llvm::Value *ptr, unsigned index) {
     return Builder->CreateGEP(type, ptr, llvm_const_int(get_type(type_i32), index));
 }
@@ -1361,8 +1352,8 @@ void LLVM_Backend::gen_return(Ast_Return *return_stmt) {
         } else {
             for (int i = 0; i < return_stmt->values.count; i++) {
                 LLVM_Value value = gen_expr(return_stmt->values[i]);
-                llvm::Value* addr = Builder->CreateStructGEP(current_proc->results, retval, (unsigned)i);
-                Builder->CreateStore(value.value, addr);
+                llvm::Value* addr = llvm_struct_gep(current_proc->results, retval, (unsigned)i);
+                llvm_store(value.value, addr);
             }
         }
     }

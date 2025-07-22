@@ -129,6 +129,7 @@ struct LLVM_Backend {
     llvm::BasicBlock *llvm_block_new(const char *s = "");
 
 
+    llvm::Value *LLVM_Backend::llvm_pointer_offset(llvm::Type *type, llvm::Value *ptr, llvm::Value *value);
     llvm::Value *LLVM_Backend::llvm_pointer_offset(llvm::Type *type, llvm::Value *ptr, unsigned index);
     llvm::Value *llvm_struct_gep(llvm::Type *type, llvm::Value *ptr, unsigned index);
     void llvm_store(llvm::Value *value, llvm::Value *address);
