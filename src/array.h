@@ -71,7 +71,7 @@ internal void array_clear(Array<T> *array) {
 
 template <typename T>
 internal void array_reserve(Array<T> *array, size_t new_capacity) {
-    assert(num > 0);
+    assert(new_capacity > 0);
     if (array->capacity < new_capacity) {
         array__grow(array, new_capacity);
     }
