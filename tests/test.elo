@@ -1,65 +1,7 @@
 #import "libc/stdio.elo";
-
-g: int;
-
-VALUE :: 10;
-VALUE1 :: VALUE;
-
-A :: struct {
-    x: int;
-    y: int;
-}
-
-test :: () {
-    // exo : struct {
-    //     x: int;
-    //     y: int;
-    //     z: int;
-    // };
-
-    // exo.x = 0;
-    // exo.y = 10;
-    // exo.z = 100;
-    // exo.c = -1;
-}
+#import "math.elo";
 
 main :: () -> int {
-
-    a: A;
-    a.x = 20;
-    a.y = 10;
-    a.x = printf("%d\n", a.x + a.y);
-
-
-    A :: struct {
-        a: f32;
-        b: f32;
-    }
-
-
-
-    {
-        aa: A;
-        aa.a = 10.0;
-        aa.b = 2394.0;
-        printf("%f\n", cast(f64)(aa.a + aa.b));
-    }
-
-    // {
-    //     a : struct {
-    //         a: int;
-    //         b: int;
-    //     };
-    // }
-
-    // {
-    //     a, b := 0, 1;
-    // }
-    // {
-    //     a := 0;
-    // }
-    // {
-    //     a: int = 0;
-    // }
+    
     return 0;
 }
