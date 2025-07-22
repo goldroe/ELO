@@ -63,6 +63,7 @@ enum OP {
 
     // Assign
     OP_ASSIGN,
+    OP_IN,
     OP_ADD_ASSIGN,
     OP_SUB_ASSIGN,
     OP_MUL_ASSIGN,
@@ -76,7 +77,6 @@ enum OP {
     OP_LSH_ASSIGN,
     OP_RSH_ASSIGN,
     OP_ASSIGN_END,
-
 };
 
 #define AST_KINDS \
@@ -129,6 +129,7 @@ enum OP {
     AST_KIND(AST_BINARY           , "BinaryExpr"), \
     AST_KIND(AST_SELECTOR         , "SelectorExpr"), \
     AST_KIND(AST_RANGE            , "RangeExpr"), \
+    AST_KIND(AST_RANGE_STMT       , "RangeStmt"), \
     AST_KIND(AST_SIZEOF           , "SizeofExpr"), \
     AST_KIND(AST_EXPR_END         , "Expr__End"), \
     AST_KIND(AST_TYPE_BEGIN       , "Type__Begin"), \
@@ -193,9 +194,9 @@ struct Ast {
     bool valid() { return !is_poisoned; }
     void poison() { is_poisoned = true; }
 
-    bool is_decl() { return AST_DECL_BEGIN <= kind && kind <= AST_DECL_END; }
-    bool is_expr() { return AST_EXPR_BEGIN <= kind && kind <= AST_EXPR_END; }
-    bool is_stmt() { return AST_STMT_BEGIN <= kind && kind <= AST_STMT_END; }
+    // bool is_decl() { return AST_DECL_BEGIN <= kind && kind <= AST_DECL_END; }
+    // bool is_expr() { return AST_EXPR_BEGIN <= kind && kind <= AST_EXPR_END; }
+    // bool is_stmt() { return AST_STMT_BEGIN <= kind && kind <= AST_STMT_END; }
 };
 
 struct Ast_Root : Ast {
@@ -248,6 +249,7 @@ struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
     Ast *typespec;
     Array<Ast*> elements;
+    Token token;
     Token open;
     Token close;
 };
@@ -455,22 +457,27 @@ struct Ast_Do_While : Ast_Stmt {
 struct Ast_For : Ast_Stmt {
     Ast_For() { kind = AST_FOR; }
 
-    //@Todo Regular for loop
-    // for init; condition; post { .. }
-    // Ast *init;
-    // Ast *condition;
-    // Ast *post;
-
-    //@Note Range for loop
-    // for index, value: expr
-    Array<Ast*> lhs;
-    Ast *range_expr;
+    Ast *init;
+    Ast *condition;
+    Ast *post;
     Ast_Block *block;
 
-    Decl *index_variable = nullptr;
-    Decl *value_variable = nullptr;
+    Token token;
+
+    void *entry_block;
+    void *retry_block;
+    void *exit_block;
+};
+
+struct Ast_Range_Stmt : Ast_Stmt {
+    Ast_Range_Stmt() { kind = AST_RANGE_STMT; }
+    Ast_Assignment *init;
+    Ast_Block *block;
 
     Token token;
+
+    Decl *index = nullptr;
+    Decl *value = nullptr;
 
     void *entry_block;
     void *retry_block;
@@ -553,7 +560,9 @@ struct Ast_Pointer_Type : Ast {
 struct Ast_Array_Type : Ast {
     Ast_Array_Type() { kind = AST_ARRAY_TYPE; }
     Ast *elem;
-    Ast *length;
+    Ast *array_size;
+    bool is_dynamic;
+    bool is_view;
     Token token;
 };
 
@@ -581,6 +590,7 @@ struct Ast_Enum_Type : Ast {
     Scope *scope;
     Ast *base_type;
     Array<Ast_Enum_Field*> fields;
+
     Token token;
     Token open;
     Token close;
@@ -591,7 +601,6 @@ struct Ast_Struct_Type : Ast {
     Scope *scope;
     Ast_Ident *name;
     Array<Ast_Value_Decl*> members;
-    b32 complete = false;
 
     Token token;
     Token open;

@@ -13,6 +13,10 @@ internal bool is_ast_type(Ast *node) {
     return false;
 }
 
+internal bool is_ast_stmt(Ast *node) {
+    return AST_STMT_BEGIN < node->kind && node->kind < AST_STMT_END;
+}
+
 internal inline Allocator ast_allocator() {
     return arena_allocator(g_ast_arena);
 }
@@ -134,10 +138,11 @@ internal Ast_Literal *ast_literal(Source_File *f, Token token) {
     return node;
 }
 
-internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Array<Ast*> elements) {
+internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements) {
     Ast_Compound_Literal *node = AST_NEW(f, Ast_Compound_Literal);
     node->elements = elements;
     node->typespec = typespec;
+    node->token = token;
     node->open = open;
     node->close = close;
     return node;
@@ -322,10 +327,19 @@ internal Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_B
     return node;
 }
 
-internal Ast_For *ast_for_stmt(Source_File *f, Token token, Array<Ast*> lhs, Ast *range_expr, Ast_Block *block) {
+internal Ast_For *ast_for_stmt(Source_File *f, Token token, Ast *init, Ast *condition, Ast *post, Ast_Block *block) {
     Ast_For *node = AST_NEW(f, Ast_For);
-    node->lhs = lhs;
-    node->range_expr = range_expr;
+    node->init = init;
+    node->condition = condition;
+    node->post = post;
+    node->block = block;
+    node->token = token;
+    return node;
+}
+
+internal Ast_Range_Stmt *ast_range_stmt(Source_File *f, Token token, Ast_Assignment *init, Ast_Block *block) {
+    Ast_Range_Stmt *node = AST_NEW(f, Ast_Range_Stmt);
+    node->init = init;
     node->block = block;
     node->token = token;
     return node;
@@ -338,10 +352,10 @@ internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *el
     return node;
 }
 
-internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *length) {
+internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *array_size) {
     Ast_Array_Type *node = AST_NEW(f, Ast_Array_Type);
     node->elem = elem;
-    node->length = length;
+    node->array_size = array_size;
     node->token = token;
     return node;
 }
@@ -651,6 +665,8 @@ internal inline OP get_binary_operator(Token_Kind kind) {
 
     case TOKEN_EQ:
         return OP_ASSIGN;
+    case TOKEN_IN:
+        return OP_IN;
     case TOKEN_PLUS_EQ:
         return OP_ADD_ASSIGN;
     case TOKEN_MINUS_EQ:
