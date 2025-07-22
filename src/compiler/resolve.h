@@ -1,11 +1,6 @@
 #ifndef RESOLVE_H
 #define RESOLVE_H
 
-struct Select {
-    Decl *decl = nullptr;
-    int index = 0;
-};
-
 struct Resolver {
     Arena *arena;
 

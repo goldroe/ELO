@@ -494,12 +494,9 @@ void Resolver::resolve_selector_expr(Ast_Selector *selector) {
         return;
     }
 
-    Decl *decl = nullptr;
-
     Type *type = type_deref(base->type);
 
-    Select sel = lookup_field(type, selector->name->name, base->mode == ADDRESSING_TYPE);
-    decl = sel.decl;
+    Decl *decl = lookup_field(type, selector->name->name, base->mode == ADDRESSING_TYPE);
 
     if (decl == nullptr) {
         if (base->mode == ADDRESSING_TYPE) {

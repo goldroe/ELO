@@ -214,78 +214,49 @@ void Resolver::resolve_decl(Decl *decl) {
     current_decl = prev_decl;
 }
 
-internal Select lookup_field(Type *type, Atom *name, bool is_type) {
-    Select select = {};
-
+internal Decl *lookup_field(Type *type, Atom *name, bool is_type) {
+    Decl *select = nullptr;
     if (is_type) {
         if (is_struct_type(type)) {
             Type_Struct *ts = (Type_Struct *)type;
             Decl *member = scope_find(ts->scope, name);
             if (member && member->kind != DECL_VARIABLE) {
-                select.decl = member;
-                return select;
+                select = member;
             }
         } else if (is_struct_type(type)) {
             Type_Union *tu = (Type_Union *)type;
             Decl *member = scope_find(tu->scope, name);
             if (member && member->kind != DECL_VARIABLE) {
-                select.decl = member;
-                return select;
+                select = member;
             }
         } else if (is_enum_type(type)) {
             Type_Enum *et = (Type_Enum *)type;
-            Decl *field = scope_find(et->scope, name);
-            select.decl = field;
-            return select;
+            select = scope_find(et->scope, name);
         }
-    } else if (is_struct_type(type)) {
-        Type_Struct *ts = (Type_Struct *)type;
-        Decl *member = nullptr;
-        for (Decl *decl : ts->members) {
+    } else if (is_struct_type(type) || is_union_type(type)) {
+        Array<Decl*> members;
+        if (is_struct_type(type)) {
+            members = ((Type_Struct *)type)->members;
+        } else if (is_union_type(type)) {
+            members = ((Type_Union *)type)->members;
+        }
+
+        for (Decl *decl : members) {
             if (is_anonymous(decl)) {
-                Select s = lookup_field(decl->type, name, is_type);
-                if (s.decl) {
-                    return s;
+                Decl *member = lookup_field(decl->type, name, is_type);
+                if (member && member->kind == DECL_VARIABLE) {
+                    select = member;
                 }
             } else {
                 if (atoms_match(decl->name, name)) {
-                    member = decl;
-                    break;
-                }
-                if (decl->kind == DECL_VARIABLE) {
-                    select.index++;
+                    if (decl->kind == DECL_VARIABLE) {
+                        select = decl;
+                    }
                 }
             }
         }
-
-        if (member && member->kind == DECL_VARIABLE) {
-            select.decl = member;
-            return select;
-        }
-    } else if (is_union_type(type)) {
-        Type_Union *tu = (Type_Union *)type;
-        Decl *member = nullptr;
-        for (Decl *decl : tu->members) {
-            if (is_anonymous(decl)) {
-                Select s = lookup_field(decl->type, name, is_type);
-                if (s.decl) {
-                    return s;
-                }
-            } else {
-                if (atoms_match(decl->name, name)) {
-                    member = decl;
-                    break;
-                }
-            }
-        }
-
-        if (member && member->kind == DECL_VARIABLE) {
-            select.decl = member;
-            return select;
-        }
-    } else if (is_enum_type(type)) {
     }
-    return {};
+    return select;
 }
 
 Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit) {
