@@ -445,7 +445,7 @@ internal Token ast_end_token(Ast *node) {
         return ast_node(Ast_Deref, node)->token;
     case AST_BINARY: {
         ast_node_var(binary, Ast_Binary, node);
-        return ast_start_token(binary->lhs);
+        return ast_end_token(binary->rhs);
     }
     case AST_SELECTOR: {
         ast_node_var(selector, Ast_Selector, node);
