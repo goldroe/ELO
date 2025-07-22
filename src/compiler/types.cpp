@@ -17,8 +17,21 @@ internal Type_Pointer *pointer_type_create(Type *elem) {
     return type;
 }
 
-internal Type_Array *array_type_create(Type *elem) {
+internal Type_Array *array_type_create(Type *elem, u64 array_size) {
     Type_Array *type = TYPE_NEW(Type_Array);
+    type->base = elem;
+    type->array_size = array_size;
+    return type;
+}
+
+internal Type_Array_View *array_view_type_create(Type *elem) {
+    Type_Array_View *type = TYPE_NEW(Type_Array_View);
+    type->base = elem;
+    return type;
+}
+
+internal Type_Dynamic_Array *dynamic_array_type_create(Type *elem) {
+    Type_Dynamic_Array *type = TYPE_NEW(Type_Dynamic_Array);
     type->base = elem;
     return type;
 }
@@ -44,6 +57,14 @@ internal Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope
     return type;
 }
 
+internal Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
+    Type_Union *type = TYPE_NEW(Type_Union);
+    type->name = name;
+    type->members = members;
+    type->scope = scope;
+    return type;
+}
+
 internal Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope) {
     Type_Enum *type = TYPE_NEW(Type_Enum);
     type->base_type = base_type;
@@ -52,42 +73,49 @@ internal Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope
     return type;
 }
 
-internal Type *builtin_type_create(Type_Kind kind, String8 name, int bytes, Type_Flags flags = (Type_Flags)0) {
+internal Type *builtin_type_create(Type_Kind kind, String8 name, int size) {
     Atom *atom = atom_create(name);
     Type *type = TYPE_NEW(Type);
     type->name = atom;
     type->kind = kind;
-    type->type_flags = flags;
-    type->bytes = bytes;
+    type->size = size;
     array_add(&g_builtin_types, type);
     return type;
+}
+
+internal s64 size_from_type(Type *type) {
+    switch (type->kind) {
+    case TYPE_STRUCT: {
+        break;
+    }
+    }
 }
 
 internal void register_builtin_types() {
     int system_max_bytes = 8;
     array_init(&g_builtin_types, heap_allocator());
     type_invalid = builtin_type_create(TYPE_INVALID, str_lit("builtin(invalid)"), 0);
-    type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);//, TYPE_FLAG_VOID);
+    type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);
     type_null  = pointer_type_create(type_void);
 
-    type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_BOOLEAN);
+    type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);
 
-    type_u8    = builtin_type_create(TYPE_UINT8,    str_lit("u8"),     1);//, TYPE_FLAG_INTEGER);
-    type_u16   = builtin_type_create(TYPE_UINT16,   str_lit("u16"),    2);//, TYPE_FLAG_INTEGER);
-    type_u32   = builtin_type_create(TYPE_UINT32,   str_lit("u32"),    4);//, TYPE_FLAG_INTEGER);
-    type_u64   = builtin_type_create(TYPE_UINT64,   str_lit("u64"),    8);//, TYPE_FLAG_INTEGER);
-    type_i8    = builtin_type_create(TYPE_INT8,     str_lit("i8"),     1);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i16   = builtin_type_create(TYPE_INT16,    str_lit("i16"),    2);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i32   = builtin_type_create(TYPE_INT32,    str_lit("i32"),    4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_i64   = builtin_type_create(TYPE_INT64,    str_lit("i64"),    8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_uint  = builtin_type_create(TYPE_UINT,     str_lit("uint"),   4);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
-    type_int   = builtin_type_create(TYPE_INT,      str_lit("int"),    4);//, TYPE_FLAG_INTEGER);
+    type_u8    = builtin_type_create(TYPE_UINT8,    str_lit("u8"),     1);
+    type_u16   = builtin_type_create(TYPE_UINT16,   str_lit("u16"),    2);
+    type_u32   = builtin_type_create(TYPE_UINT32,   str_lit("u32"),    4);
+    type_u64   = builtin_type_create(TYPE_UINT64,   str_lit("u64"),    8);
+    type_i8    = builtin_type_create(TYPE_INT8,     str_lit("i8"),     1);
+    type_i16   = builtin_type_create(TYPE_INT16,    str_lit("i16"),    2);
+    type_i32   = builtin_type_create(TYPE_INT32,    str_lit("i32"),    4);
+    type_i64   = builtin_type_create(TYPE_INT64,    str_lit("i64"),    8);
+    type_uint  = builtin_type_create(TYPE_UINT,     str_lit("uint"),   4);
+    type_int   = builtin_type_create(TYPE_INT,      str_lit("int"),    4);
 
-    type_usize = builtin_type_create(TYPE_USIZE,    str_lit("usize"),  8);//, TYPE_FLAG_INTEGER);
-    type_isize = builtin_type_create(TYPE_ISIZE,    str_lit("isize"),  8);//, TYPE_FLAG_INTEGER | TYPE_FLAG_SIGNED);
+    type_usize = builtin_type_create(TYPE_USIZE,    str_lit("usize"),  8);
+    type_isize = builtin_type_create(TYPE_ISIZE,    str_lit("isize"),  8);
 
-    type_f32   = builtin_type_create(TYPE_FLOAT32,  str_lit("f32"),    4);//, TYPE_FLAG_FLOAT);
-    type_f64   = builtin_type_create(TYPE_FLOAT64,  str_lit("f64"),    8);//, TYPE_FLAG_FLOAT);
+    type_f32   = builtin_type_create(TYPE_FLOAT32,  str_lit("f32"),    4);
+    type_f64   = builtin_type_create(TYPE_FLOAT64,  str_lit("f64"),    8);
 
     type_cstring = pointer_type_create(type_u8);
     type_string = builtin_type_create(TYPE_STRING, str_lit("string"), 16);
@@ -183,7 +211,7 @@ internal bool is_convertible(Type *t0, Type *t1) {
     }
 
     if (is_integral_type(t0) == is_integral_type(t1)) {
-        if (t0->bytes == t1->bytes) {
+        if (t0->size == t1->size) {
             return true;
         }
     }
@@ -208,7 +236,6 @@ internal bool typecheck_castable(Type *t0, Type *t1) {
     }
 }
 
-
 internal Type *type_deref(Type *t) {
     if (t) {
         if (t->base) {
@@ -217,7 +244,6 @@ internal Type *type_deref(Type *t) {
     }
     return t;
 }
-
 
 internal char *string_from_type(Type *ty) {
     cstring string = NULL;
@@ -229,7 +255,17 @@ internal char *string_from_type(Type *ty) {
             cstring_append(&string, "*");
             break;
 
-        case TYPE_ARRAY:
+        case TYPE_ARRAY: {
+            Type_Array *ta = static_cast<Type_Array*>(type);
+            cstring_append_fmt(&string, "[%llu]", ta->array_size);
+            break;
+        }
+
+        case TYPE_ARRAY_VIEW:
+            cstring_append(&string, "[]");
+            break;
+
+        case TYPE_DYNAMIC_ARRAY:
             cstring_append(&string, "[..]");
             break;
 
@@ -254,7 +290,6 @@ internal char *string_from_type(Type *ty) {
         case TYPE_PROC: {
             Type_Proc *proc_type = static_cast<Type_Proc*>(type);
             cstring_append(&string, string_from_type(proc_type->params));
-
             if (proc_type->results) {
                 cstring_append(&string, "->");
                 cstring_append(&string, string_from_type(proc_type->results));
@@ -299,4 +334,3 @@ internal char *string_from_type(Type *ty) {
     }
     return string;
 }
-
