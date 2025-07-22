@@ -91,9 +91,6 @@ struct LLVM_Backend {
 
     llvm::IRBuilder<> *Builder;
 
-    Array<BE_Proc*> global_procedures;
-    Array<BE_Struct*> global_structs;
-
     BE_Proc *current_proc = nullptr;
     llvm::BasicBlock *current_block = nullptr;
 
@@ -123,13 +120,16 @@ struct LLVM_Backend {
     void gen_stmt(Ast *stmt);
     void gen_if(Ast_If *if_stmt);
     void gen_while(Ast_While *while_stmt);
-    void gen_for(Ast_For *for_stmt);
+    void gen_for_stmt(Ast_For *for_stmt);
+    void gen_range_stmt(Ast_Range_Stmt *range_stmt);
     void gen_block(Ast_Block *block);
 
     void gen_statement_list(Array<Ast*> statement_list);
 
     llvm::BasicBlock *llvm_block_new(const char *s = "");
 
+
+    llvm::Value *LLVM_Backend::llvm_pointer_offset(llvm::Type *type, llvm::Value *ptr, unsigned index);
     llvm::Value *llvm_struct_gep(llvm::Type *type, llvm::Value *ptr, unsigned index);
     void llvm_store(llvm::Value *value, llvm::Value *address);
 
@@ -155,8 +155,8 @@ struct LLVM_Backend {
     void gen_ifcase_switch(Ast_Ifcase *ifcase);
     void gen_ifcase_if_else(Ast_Ifcase *ifcase);
 
+    LLVM_Value LLVM_Backend::gen_field_select(llvm::Value *base, Type *type, Atom *name, int index);
 
-    llvm::Value *LLVM_Backend::emit_gep_offset(llvm::Value *ptr, llvm::Value *offset);
     LLVM_Value LLVM_Backend::gen_literal(Ast_Literal *literal);
 
     void LLVM_Backend::gen_assignment(Ast_Assignment *assignment);
@@ -172,7 +172,9 @@ struct LLVM_Backend {
 
 
     LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value value, Type *type);
-    void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd);
+
+    void LLVM_Backend::init_value_decl(Ast_Value_Decl *vd, bool is_global);
+    void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd, bool is_global);
 
     void LLVM_Backend::gen_decl_procedure(Decl *decl);
 };
