@@ -1,5 +1,6 @@
-#load "stdlib.elo"
-#load "stdio.elo"
+#import "libc/stdlib.elo";
+#import "libc/stdio.elo";
+#import "libc/ctype.elo";
 
 Token_Kind :: enum {
     UNKNOWN,
@@ -15,7 +16,11 @@ Token :: struct {
     line: int;
     col:  int;
     lexeme: *u8;
-    integer: u64;
+    union {
+        integer: u64;
+        float: f64;
+        str: *u8;
+    }
 }
 
 Lexer :: struct {
@@ -23,29 +28,12 @@ Lexer :: struct {
     tok: Token;
 }
 
-is_space :: (ch: u8) -> bool {
-    ifcase ch {
-    case:
-        return false;
-    case ' ': case '\t': case '\f': case '\v': case '\n': case '\r':
-        return true;
-    }
-}
-
-is_alpha :: (ch: u8) -> bool {
-    return 'A' <= ch && ch <= 'Z' || 'a' <= ch && ch <= 'z';
-}
-
-is_digit :: (ch: u8) -> bool {
-    return '0' <= ch && ch <= '9';
-}
-
 eat_char :: (lexer: *Lexer) {
     lexer.stream = lexer.stream + 1;
 }
 
 eat_whitespace :: (lexer: *Lexer) {
-    while (is_space(lexer.stream.*)) {
+    while isspace(cast(int)lexer.stream.*) {
         eat_char(lexer);
     }
 }
@@ -56,7 +44,7 @@ advance :: (lexer: *Lexer) {
     ifcase lexer.stream.* {
     case:
         lexer.tok.kind = Token_Kind.UNKNOWN;
-        printf("error: unexpected char '%c'.\n", lexer.stream.*);
+        printf("error: unexpected char '%c'.\n", cast(int)lexer.stream.*);
         eat_char(lexer);
 
     case 0u8:
@@ -66,13 +54,13 @@ advance :: (lexer: *Lexer) {
     case 'A'..'Z':
     case '_':
         lexer.tok.kind = Token_Kind.NAME;
-        while is_alpha(lexer.stream.*) {
+        while isalpha(cast(int)lexer.stream.*) {
             eat_char(lexer);
         }
 
     case '0'..'9':
         lexer.tok.kind = Token_Kind.NUMBER;
-        while is_digit(lexer.stream.*) {
+        while isdigit(cast(int)lexer.stream.*) {
             eat_char(lexer);
         }
 
@@ -83,11 +71,11 @@ advance :: (lexer: *Lexer) {
 }
 
 main :: () -> int {
-    lexer: Lexer;
-    lexer.stream = "This is some 1002 text. 1 21 1223. * 12";;
+    lexer: *Lexer = cast(*Lexer)malloc(64u64);
+    lexer.stream = "This is some 1002 text. 1 21 1223. * 12";
 
-    while 1 {
-        advance(*lexer);
+    while true {
+        advance(lexer);
         ifcase lexer.tok.kind {
         case:
             puts("UNKNOWN");
