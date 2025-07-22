@@ -1,28 +1,31 @@
+#import "libc/cstring.elo";
 #import "libc/stdio.elo";
 
 main :: () -> int {
-    cells: [32][32]int;
-    cells_copy: [32][32]int;
+    W :: 8;
+    H :: 8;
+    count :: 8;
 
-    cells[5][6] = 1;
-    cells[5][7] = 1;
-    cells[5][8] = 1;
-    cells[6][7] = 1;
+    cells: [H][W]int;
+    cells_copy: [H][W]int;
 
-    map_width  := 32;
-    map_height := 32;
+    memset(cast(*void)cells, 0, cast(usize)(4 * W * H));
+    memset(cast(*void)cells_copy, 0, cast(usize)(4 * W * H));
 
-    iterations := 100;
+    cells[3][3] = 1;
+    cells[4][3] = 1;
+    cells[3][2] = 1;
+    cells[3][4] = 1;
 
     fp := fopen("gol.out", "w");
 
     fprintf(fp, "*** GAME OF LIFE ***\n\n");
-    fprintf(fp, "Iterations: %d\n", iterations);
+    fprintf(fp, "Count: %d\n", count);
 
-    for i in 0..iterations {
+    for i in 0..count {
         fprintf(fp, "========== IT:%d ============\n", i);
-        for y in 0..map_height {
-            for x in 0..map_width {
+        for y in 0..H {
+            for x in 0..W {
                 if cells[y][x] {
                     fputc(cast(int)'*', fp);
                 } else {
@@ -33,19 +36,19 @@ main :: () -> int {
         }
 
         // copy cells
-        for y in 0..map_height {
-            for x in 0..map_width {
+        for y in 0..H {
+            for x in 0..W {
                 cells_copy[y][x] = cells[y][x];
             }
         }
 
-        for y in 0..map_height {
-            for x in 0..map_width {
+        for y in 0..H {
+            for x in 0..W {
                 live := 0;
                 if x > 0 {
                     live += cells_copy[y][x-1];
                 }
-                if x < map_width - 1 {
+                if x < W - 1 {
                     live += cells_copy[y][x + 1];
                 }
                 if y > 0 {
@@ -53,23 +56,30 @@ main :: () -> int {
                     if x > 0 {
                         live += cells_copy[y-1][x-1];
                     }
-                    if x < map_width - 1 {
+                    if x < W - 1 {
                         live += cells_copy[y-1][x+1];
                     }
                 }
-                if y < map_height - 1 {
+                if y < H - 1 {
                     live += cells_copy[y + 1][x];
                     if x > 0 {
                         live += cells_copy[y+1][x-1];
                     }
-                    if x < map_width - 1 {
+                    if x < W - 1 {
                         live += cells_copy[y+1][x+1];
                     }
                 }
 
-                cell := *cells[y][x];
+                if cells[y][x] == 1 {
+                    if live < 2 || live > 3 {
+                        cells[y][x] = 0;
+                    }
+                } else if live == 3 {
+                    cells[y][x] = 1;
+                }
 
-                if cell.* {
+                cell := *cells[y][x];
+                if cell.* == 1 {
                     if live < 2 || live > 3 {
                         cell.* = 0;
                     }
