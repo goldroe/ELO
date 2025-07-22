@@ -71,8 +71,8 @@ Resolver::Resolver(Parser *_parser) {
     array_init(&breakcont_stack, heap_allocator());
 }
 
-Scope *Resolver::new_scope(Scope *parent, Scope_Flags scope_flags) {
-    Scope *scope = scope_create(scope_flags);
+Scope *Resolver::new_scope(Scope *parent, Scope_Kind kind) {
+    Scope *scope = scope_create(kind);
     if (parent) {
         scope->parent = parent;
         scope->level = parent->level + 1;
@@ -225,6 +225,13 @@ internal Select lookup_field(Type *type, Atom *name, bool is_type) {
                 select.decl = member;
                 return select;
             }
+        } else if (is_struct_type(type)) {
+            Type_Union *tu = (Type_Union *)type;
+            Decl *member = scope_find(tu->scope, name);
+            if (member && member->kind != DECL_VARIABLE) {
+                select.decl = member;
+                return select;
+            }
         } else if (is_enum_type(type)) {
             Type_Enum *et = (Type_Enum *)type;
             Decl *field = scope_find(et->scope, name);
@@ -234,13 +241,41 @@ internal Select lookup_field(Type *type, Atom *name, bool is_type) {
     } else if (is_struct_type(type)) {
         Type_Struct *ts = (Type_Struct *)type;
         Decl *member = nullptr;
-        for (Decl *decl : ts->scope->decls) {
-            if (atoms_match(decl->name, name)) {
-                member = decl;
-                break;
+        for (Decl *decl : ts->members) {
+            if (is_anonymous(decl)) {
+                Select s = lookup_field(decl->type, name, is_type);
+                if (s.decl) {
+                    return s;
+                }
+            } else {
+                if (atoms_match(decl->name, name)) {
+                    member = decl;
+                    break;
+                }
+                if (decl->kind == DECL_VARIABLE) {
+                    select.index++;
+                }
             }
-            if (decl->kind == DECL_VARIABLE) {
-                select.index++;
+        }
+
+        if (member && member->kind == DECL_VARIABLE) {
+            select.decl = member;
+            return select;
+        }
+    } else if (is_union_type(type)) {
+        Type_Union *tu = (Type_Union *)type;
+        Decl *member = nullptr;
+        for (Decl *decl : tu->members) {
+            if (is_anonymous(decl)) {
+                Select s = lookup_field(decl->type, name, is_type);
+                if (s.decl) {
+                    return s;
+                }
+            } else {
+                if (atoms_match(decl->name, name)) {
+                    member = decl;
+                    break;
+                }
             }
         }
 
@@ -250,7 +285,6 @@ internal Select lookup_field(Type *type, Atom *name, bool is_type) {
         }
     } else if (is_enum_type(type)) {
     }
-
     return {};
 }
 
@@ -294,6 +328,7 @@ Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_li
     pt->is_variadic = proc_type->is_variadic;
     pt->is_foreign  = proc_type->is_foreign;
     pt->variadic_index = variadic_index;
+    pt->size = 8; //@Todo Type Sizes
 
     if (!in_proc_lit) {
         proc_type->mode = ADDRESSING_CONSTANT;
@@ -304,30 +339,33 @@ Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_li
 }
 
 Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
-    Decl *type_decl = nullptr;
-    Atom *name = nullptr;
+    Assert(current_decl);
 
-    if (current_decl->kind == DECL_TYPE) {
-        name = current_decl->name;
-        type_decl = current_decl;
-    }
+    Atom *name = current_decl->name;
 
-    if (type_decl) {
-        type->scope = new_scope(current_scope, SCOPE_STRUCT);
-    } else {
-        type->scope = current_scope;
-    }
+    type->scope = new_scope(current_scope, SCOPE_STRUCT);
     type->scope->name = name;
 
-    Type_Struct *st = struct_type_create(name, {}, type->scope);
+    Type_Struct *st = struct_type_create(name, array_make<Decl*>(heap_allocator()), type->scope);
 
     for (Ast_Value_Decl *member : type->members) {
-        resolve_value_decl_preamble(member);
-
-        for (Ast *name : member->names) {
-            Ast_Ident *ident = (Ast_Ident *)name;
-            Decl *decl = ident->ref;
-            Assert(decl);
+        if (member->names.count > 0) {
+            resolve_value_decl_preamble(member);
+            for (Ast *name : member->names) {
+                Ast_Ident *ident = (Ast_Ident *)name;
+                Decl *decl = ident->ref;
+                Assert(decl);
+                array_add(&st->members, decl);
+            }
+        } else {
+            //@Todo Cleanup anonymous members
+            Ast *value = member->values[0];
+            Assert(member->is_mutable);
+            Decl *decl = nullptr;
+            decl = decl_variable_create(nullptr);
+            decl->node = member;
+            decl->type_expr = value;
+            scope_add(type->scope, decl);
             array_add(&st->members, decl);
         }
     }
@@ -338,13 +376,94 @@ Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
         }
     }
 
+    array_init(&st->offsets, heap_allocator());
+    if (st->members.count > 0) {
+        array_reserve(&st->offsets, st->members.count);
+    }
+
+    int struct_align = 0;
+    int field_offset = 0;
+    for (Decl *member : st->members) {
+        if (member->kind == DECL_VARIABLE) {
+            Type *field_type = member->type;
+            int alignment = (int)field_type->size;
+            if (alignment > struct_align) {
+                struct_align = alignment;
+            }
+            field_offset = AlignForward(field_offset, alignment);
+            array_add(&st->offsets, (s64)field_offset);
+            field_offset += (int)field_type->size;
+        }
+    }
+    st->size = AlignForward(field_offset, struct_align);
+
+    // printf("STRUCT %s\n", st->name ? st->name->data : "");
+    // for (s64 offset : st->offsets) {
+    //     printf("offset: %lld\n", offset);
+    // }
+    // printf("---%lld\n", st->size);
+
+    exit_scope();
+
+    if (current_decl->kind == DECL_TYPE) current_decl->type_complete = true;
+
+    type->type = st;
+    return st;
+}
+
+Type_Union *Resolver::resolve_union_type(Ast_Union_Type *type) {
+    Decl *type_decl = nullptr;
+    Atom *name = nullptr;
+
+    if (current_decl->kind == DECL_TYPE) {
+        name = current_decl->name;
+        type_decl = current_decl;
+    }
+
+    type->scope = current_scope;
+    if (type_decl) {
+        type->scope = new_scope(current_scope, SCOPE_UNION);
+        type->scope->name = name;
+        current_scope = type->scope;
+    }
+
+    Type_Union *ut = union_type_create(name, array_make<Decl*>(heap_allocator()), type->scope);
+
+    for (Ast_Value_Decl *member : type->members) {
+        if (member->names.count > 0) {
+            resolve_value_decl_preamble(member);
+            for (Ast *name : member->names) {
+                Ast_Ident *ident = (Ast_Ident *)name;
+                Decl *decl = ident->ref;
+                Assert(decl);
+                array_add(&ut->members, decl);
+            }
+        } else {
+            //@Todo Cleanup anonymous members
+            Ast *value = member->values[0];
+            Assert(member->is_mutable);
+            Decl *decl = nullptr;
+            decl = decl_variable_create(nullptr);
+            decl->node = member;
+            decl->type_expr = value;
+            scope_add(type->scope, decl);
+            array_add(&ut->members, decl);
+        }
+    }
+
+    for (Decl *member : ut->members) {
+        if (member->kind != DECL_PROCEDURE) {
+            resolve_decl(member);
+        }
+    }
+
     if (type_decl) {
         exit_scope();
         type_decl->type_complete = true;
     }
 
-    type->type = st;
-    return st;
+    type->type = ut;
+    return ut;
 }
 
 Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
@@ -390,6 +509,8 @@ Type_Enum *Resolver::resolve_enum_type(Ast_Enum_Type *type) {
         array_add(&et->fields, decl);
         bigint_add(&enumerant, &enumerant, 1);
     }
+
+    et->size = base_type->size;
 
     exit_scope();
 
@@ -441,13 +562,23 @@ Type *Resolver::resolve_type(Ast *type) {
         Ast_Array_Type *array = (Ast_Array_Type *)type;
         type_complete_path_add(array);
 
-        Type *elem = resolve_type(array->elem);
-        Type_Array *array_type = array_type_create(elem);
-        if (array->length) {
-            
+        if (array->array_size) {
+            resolve_expr(array->array_size);
+            if (!is_integral_type(array->array_size->type)) {
+                report_ast_error(array->array_size, "array size must be of integral type.\n");
+            }
         }
-        // array_type->array_size = (u64)array->length->value.int_val;
-        return array_type;
+
+        Type *elem = resolve_type(array->elem);
+
+        if (array->array_size) {
+            return array_type_create(elem, u64_from_bigint(array->array_size->value.value_integer));
+        }
+        if (array->is_view) {
+            return array_view_type_create(elem);
+        }
+        Assert(array->is_dynamic);
+        return dynamic_array_type_create(elem);
     }
 
     case AST_PROC_TYPE: {
@@ -469,6 +600,13 @@ Type *Resolver::resolve_type(Ast *type) {
         Type *ts = resolve_struct_type(st);
         type_complete_path_clear();
         return ts;
+    }
+
+    case AST_UNION_TYPE: {
+        Ast_Union_Type *ut = (Ast_Union_Type *)type;
+        Type *tu = resolve_union_type(ut);
+        type_complete_path_clear();
+        return tu;
     }
     }
 

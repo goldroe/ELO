@@ -295,6 +295,7 @@ void Resolver::resolve_deref_expr(Ast_Deref *deref) {
     resolve_expr(deref->elem);
     if (is_indirection_type(deref->elem->type)) {
         deref->type = deref->elem->type->base;
+        deref->mode = ADDRESSING_VARIABLE;
     } else {
         report_ast_error(deref, "cannot dereference '%s', not a pointer type.\n", string_from_expr(deref->elem));
         deref->poison();
@@ -495,7 +496,9 @@ void Resolver::resolve_selector_expr(Ast_Selector *selector) {
 
     Decl *decl = nullptr;
 
-    Select sel = lookup_field(base->type, selector->name->name, base->mode == ADDRESSING_TYPE);
+    Type *type = type_deref(base->type);
+
+    Select sel = lookup_field(type, selector->name->name, base->mode == ADDRESSING_TYPE);
     decl = sel.decl;
 
     if (decl == nullptr) {
@@ -537,7 +540,7 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
 
     if (subscript->expr->valid()) {
         if (is_indirection_type(subscript->expr->type)) {
-            subscript->type = subscript->expr->type->base;
+            subscript->type = type_deref(subscript->expr->type);
         } else {
             report_ast_error(subscript->expr, "'%s' is not a pointer or array type.\n", string_from_expr(subscript->expr));
             subscript->poison();
@@ -554,6 +557,8 @@ void Resolver::resolve_subscript_expr(Ast_Subscript *subscript) {
     } else {
         subscript->poison();
     }
+
+    subscript->mode = ADDRESSING_VARIABLE;
 }
 
 void Resolver::resolve_builtin_unary_expr(Ast_Unary *expr) {
@@ -719,8 +724,16 @@ void Resolver::resolve_expr_base(Ast *expr) {
         break;
     }
 
+    case AST_ARRAY_TYPE:
+        resolve_type(expr);
+        break;
+
     case AST_STRUCT_TYPE:
         resolve_struct_type((Ast_Struct_Type *)expr);
+        break;
+
+    case AST_UNION_TYPE:
+        resolve_union_type((Ast_Union_Type *)expr);
         break;
 
     case AST_PROC_TYPE:
