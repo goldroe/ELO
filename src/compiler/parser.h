@@ -1,6 +1,8 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#include "ast.h"
+
 struct Parser {
     Lexer *lexer = NULL;
     Ast_Root *root = NULL;

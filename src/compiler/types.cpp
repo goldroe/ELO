@@ -1,15 +1,19 @@
-global Array<Type*> g_builtin_types;
-global Type *type_invalid;
-global Type *type_void;
-global Type *type_null;
-global Type *type_bool;
-global Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
-global Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
-global Type *type_isize, *type_usize;
-global Type *type_f32, *type_f64;
-global Type *type_string;
-global Type *type_cstring;
-global Type *type_any;
+#include "atom.h"
+#include "base/base_strings.h"
+#include "types.h"
+
+Array<Type*> g_builtin_types;
+Type *type_invalid;
+Type *type_void;
+Type *type_null;
+Type *type_bool;
+Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
+Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
+Type *type_isize, *type_usize;
+Type *type_f32, *type_f64;
+Type *type_string;
+Type *type_cstring;
+Type *type_any;
 
 internal Type_Pointer *pointer_type_create(Type *elem) {
     Type_Pointer *type = TYPE_NEW(Type_Pointer);
@@ -89,6 +93,7 @@ internal s64 size_from_type(Type *type) {
         break;
     }
     }
+    return 0;
 }
 
 internal void register_builtin_types() {

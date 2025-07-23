@@ -68,17 +68,15 @@ inline ENUMTYPE &operator ^=(ENUMTYPE &a, ENUMTYPE b) { return (ENUMTYPE &)(((in
 #define DebugTrap() __builtin_trap()
 #endif
 
-void AssertMessage(const char *message, const char *file, int line) {
-    printf("Assert failed: %s, file %s, line %d\n", message, file, line);
-}
+void AssertMessage(const char *message, const char *file, int line);
 
 #define Assert(cond) if (!(cond)) { \
     AssertMessage(#cond, __FILE__, __LINE__); \
     DebugTrap(); \
 } \
 
-#define internal static
-#define global static
+#define internal
+#define global
 #define local_persist static
 
 #define Swap(T,a,b) do{T __t = a; a = b; b = __t;}while(0)
@@ -289,18 +287,11 @@ union RGBA {
     u8 e[4];
 };
 
-#define MAX_PROFILES 32
-struct Profile_Scope {
-    char *name;
-    s64 start_clock;
-    f32 ms_elapsed;
-};
 
-struct Profile_Manager {
-    Profile_Scope scopes[MAX_PROFILES];
-    int scope_count;
-};
-#define ProfileScope(Name) DeferLoop(profile_scope_begin(Name), profile_scope_end())
+Rng_U64 rng_u64(u64 min, u64 max);
+u64 rng_u64_len(Rng_U64 rng);
+Rng_S64 rng_s64(s64 min, s64 max);
+s64 rng_s64_len(Rng_S64 rng);
 
 #endif // BASE_CORE_H
 

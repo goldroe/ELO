@@ -1,9 +1,12 @@
+#include "os/os.h"
 #include "os_core_win32.h"
 
-global OS_Key keycode_table[256];
-global s64 win32_performance_frequency;
+#include "path/path.h"
 
-internal OS_Event_Flags os_event_flags() {
+OS_Key keycode_table[256];
+s64 win32_performance_frequency;
+
+OS_Event_Flags os_event_flags() {
     OS_Event_Flags result = (OS_Event_Flags)0;
     if (GetKeyState(VK_MENU)  & 0x8000) result |= OS_EventFlag_Alt; 
     if (GetKeyState(VK_CONTROL) & 0x8000) result |= OS_EventFlag_Control;
@@ -12,7 +15,7 @@ internal OS_Event_Flags os_event_flags() {
     return result;
 }
 
-internal OS_Key os_key_from_vk(u32 vk) {
+OS_Key os_key_from_vk(u32 vk) {
     local_persist bool first_call = true;
     if (first_call) {
         for (int i = 0; i < 26; i++) {
@@ -52,33 +55,33 @@ internal OS_Key os_key_from_vk(u32 vk) {
     return keycode_table[vk];
 }
 
-internal inline s64 get_wall_clock() {
+inline s64 get_wall_clock() {
     LARGE_INTEGER result;
     QueryPerformanceCounter(&result);
     return (s64)result.QuadPart;
 }
 
-internal inline f32 get_ms_elapsed(s64 start, s64 end) {
+inline f32 get_ms_elapsed(s64 start, s64 end) {
     f32 result = 1000.0f * ((f32)(end - start) / (f32)win32_performance_frequency);
     return result;
 }
  
-internal bool os_chdir(String8 path) {
+bool os_chdir(String path) {
     BOOL result = SetCurrentDirectory((LPCSTR)path.data);
     return result;
 }
 
-internal bool os_file_exists(String8 file_name) {
+bool os_file_exists(String file_name) {
     bool result = PathFileExistsA((LPCSTR)file_name.data);
     return result;
 }
 
-internal bool os_valid_handle(OS_Handle handle) {
+bool os_valid_handle(OS_Handle handle) {
     bool result = (HANDLE)handle != INVALID_HANDLE_VALUE;
     return result;
 }
 
-internal bool os_create_directory(String8 path) {
+bool os_create_directory(String path) {
     BOOL result = false;
     if (CreateDirectory((LPCSTR)path.data, NULL)) {
         result = true;
@@ -91,7 +94,7 @@ internal bool os_create_directory(String8 path) {
     return result;
 }
 
-internal OS_Handle os_open_file(String8 file_name, OS_Access_Flags flags) {
+OS_Handle os_open_file(String file_name, OS_Access_Flags flags) {
     DWORD access = 0, shared = 0, creation = 0;
     if (flags & OS_AccessFlag_Read)    access  |= GENERIC_READ;
     if (flags & OS_AccessFlag_Write)   access  |= GENERIC_WRITE;
@@ -108,7 +111,7 @@ internal OS_Handle os_open_file(String8 file_name, OS_Access_Flags flags) {
     return handle;
 }
 
-internal void os_set_file_pointer(OS_Handle file_handle, u32 position) {
+void os_set_file_pointer(OS_Handle file_handle, u32 position) {
     DWORD dwPosition = SetFilePointer((HANDLE)file_handle, position, NULL, FILE_BEGIN);
     if (dwPosition == INVALID_SET_FILE_POINTER) {
         DWORD err = GetLastError();
@@ -116,7 +119,7 @@ internal void os_set_file_pointer(OS_Handle file_handle, u32 position) {
     }
 }
 
-internal void os_write_file(OS_Handle file_handle, void *data, u64 size) {
+void os_write_file(OS_Handle file_handle, void *data, u64 size) {
     DWORD bytes_written = 0;
     if (WriteFile((HANDLE)file_handle, data, (DWORD)size, &bytes_written, NULL)) {
     } else {
@@ -125,7 +128,7 @@ internal void os_write_file(OS_Handle file_handle, void *data, u64 size) {
     }
 }
 
-internal u64 os_read_entire_file(OS_Handle file_handle, void **out_data) {
+u64 os_read_entire_file(OS_Handle file_handle, void **out_data) {
     void *data = NULL;
     u64 size = 0;
     if ((HANDLE)file_handle != INVALID_HANDLE_VALUE) {
@@ -149,7 +152,7 @@ internal u64 os_read_entire_file(OS_Handle file_handle, void **out_data) {
     return size;
 }
 
-internal String8 os_read_file_string(OS_Handle file_handle) {
+String os_read_file_string(OS_Handle file_handle) {
     u8 *data = NULL;
     u64 size = 0;
     if ((HANDLE)file_handle != INVALID_HANDLE_VALUE) {
@@ -170,21 +173,21 @@ internal String8 os_read_file_string(OS_Handle file_handle) {
     } else {
         //@Todo Error handling
     }
-    String8 result = str8(data, size);
+    String result = str8(data, size);
     return result;
 }
 
-internal void os_close_handle(OS_Handle handle) {
+void os_close_handle(OS_Handle handle) {
     if ((HANDLE)handle != INVALID_HANDLE_VALUE) {
         CloseHandle((HANDLE)handle);
     }
 }
 
-internal void os_quit(int exit_code) {
+void os_quit(int exit_code) {
     PostQuitMessage(exit_code);
 }
 
-internal void os_local_time(int *hour, int *minute, int *second) {
+void os_local_time(int *hour, int *minute, int *second) {
     SYSTEMTIME system_time;
     GetLocalTime(&system_time);
     if (hour) *hour = system_time.wHour;
@@ -192,7 +195,7 @@ internal void os_local_time(int *hour, int *minute, int *second) {
     if (second) *second = system_time.wSecond; 
 }
 
-internal OS_File_Flags os_file_attributes(String8 file_name) {
+OS_File_Flags os_file_attributes(String file_name) {
     OS_File_Flags flags = OS_FileFlag_Nil;
     DWORD attribs = GetFileAttributesA((char *)file_name.data);
     if (attribs & FILE_ATTRIBUTE_READONLY)    flags |= OS_FileFlag_ReadOnly;
@@ -203,7 +206,7 @@ internal OS_File_Flags os_file_attributes(String8 file_name) {
     return flags;
 }
 
-internal OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA win32_data) {
+OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA win32_data) {
     OS_File file{};
     file.file_name = str8_copy(allocator, str8_cstring(win32_data.cFileName));
     file.file_size = ((u64)win32_data.nFileSizeHigh<<32) | win32_data.nFileSizeLow;
@@ -218,8 +221,8 @@ internal OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA w
     return file;
 }
 
-internal OS_Handle os_find_first_file(Allocator allocator, String8 path, OS_File *file) {
-    String8 find_path = str8_concat(allocator, path, str8_lit("\\*"));
+OS_Handle os_find_first_file(Allocator allocator, String path, OS_File *file) {
+    String find_path = str8_concat(allocator, path, str8_lit("\\*"));
     WIN32_FIND_DATAA win32_data;
     HANDLE find_file_handle = FindFirstFileA((const char *)find_path.data, &win32_data);
     if (find_file_handle) {
@@ -231,7 +234,7 @@ internal OS_Handle os_find_first_file(Allocator allocator, String8 path, OS_File
     return (OS_Handle)find_file_handle;
 }
 
-internal bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file) {
+bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file) {
     if ((HANDLE)find_file_handle == INVALID_HANDLE_VALUE) {
         return false;
     }
@@ -248,22 +251,22 @@ internal bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle,
     }
 }
 
-internal void os_find_close(OS_Handle find_file_handle) {
+void os_find_close(OS_Handle find_file_handle) {
     FindClose((HANDLE)find_file_handle);
 }
 
-internal bool os_path_exists(String8 path) {
+bool os_path_exists(String path) {
     return PathFileExistsA((char *)path.data);
 }
 
-internal String8 os_home_path(Allocator allocator) {
+String os_home_path(Allocator allocator) {
     char buffer[MAX_PATH];
     GetEnvironmentVariableA("USERPROFILE", buffer, MAX_PATH);
-    String8 result = str8_copy(allocator, str8_cstring(buffer));
+    String result = str8_copy(allocator, str8_cstring(buffer));
     return result;
 }
 
-internal String8 os_current_dir(Allocator allocator) {
+String os_current_dir(Allocator allocator) {
     DWORD length = GetCurrentDirectoryA(0, NULL);
     u8 *buffer = array_alloc(allocator, u8, length + 2);
     DWORD ret = GetCurrentDirectoryA(length, (LPSTR)buffer);
@@ -271,13 +274,13 @@ internal String8 os_current_dir(Allocator allocator) {
         if (buffer[i] == '\\') buffer[i] = '/';
     }
     buffer[ret] = '/';
-    String8 result = str8(buffer, (u64)ret + 1);
+    String result = str8(buffer, (u64)ret + 1);
     return result;
 }
 
-internal String8 os_exe_path(Allocator allocator) {
+String os_exe_path(Allocator allocator) {
     char buffer[MAX_PATH] = {};
     DWORD len = GetModuleFileNameA(NULL, buffer, MAX_PATH);
-    String8 result = path_strip_dir_name(allocator, str8((u8 *)buffer, len));
+    String result = path_strip_dir_name(allocator, str8((u8 *)buffer, len));
     return result;
 }

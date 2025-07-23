@@ -1,3 +1,6 @@
+#include "base/base_strings.h"
+#include "source_file.h"
+#include "os/os.h"
 
 global Source_File_Map source_file_map;
 
@@ -11,7 +14,7 @@ internal Source_File *source_file_create(String8 file_path) {
     Source_File *file = nullptr;
     OS_Handle file_handle = os_open_file(file_path, OS_AccessFlag_Read);
     if (os_valid_handle(file_handle)) {
-        file = new Source_File;
+    file = new Source_File;
         file->text = os_read_file_string(file_handle);
         file->path = str8_copy(heap_allocator(), file_path);
         os_close_handle(file_handle);

@@ -2,13 +2,19 @@
 #define ANSI_UNDERLINE "\x1B[4m"
 #define ANSI_ITALIC    "\x1B[3m"
 
-internal Token ast_start_token(Ast *node);
-internal Token ast_end_token(Ast *node);
+#include <cctype>
+#include <cstdarg>
+
+#include "atom.h"
+#include "ast.h"
+
+Token ast_start_token(Ast *node);
+Token ast_end_token(Ast *node);
 
 global Arena *g_report_arena;
 global int g_error_count;
 
-internal u64 get_line_start_after_spaces(String8 string, u64 start) {
+u64 get_line_start_after_spaces(String8 string, u64 start) {
     for (u64 i = start; i < string.count; i++) {
         if (string.data[i] == '\n' || string.data[i] == '\r') {
             return start;
@@ -20,7 +26,7 @@ internal u64 get_line_start_after_spaces(String8 string, u64 start) {
     return start;
 }
 
-internal u64 get_next_line_boundary(String8 string, u64 start) {
+u64 get_next_line_boundary(String8 string, u64 start) {
     for (u64 i = start; i < string.count; i++) {
         if (string.data[i] == '\n' || string.data[i] == '\r') {
             return i;
@@ -29,18 +35,18 @@ internal u64 get_next_line_boundary(String8 string, u64 start) {
     return string.count - 1;
 }
 
-internal void report_out_va(const char *fmt, va_list args) {
+void report_out_va(const char *fmt, va_list args) {
     vfprintf(stderr, fmt, args);
 }
 
-internal void report_out(const char *fmt, ...) {
+void report_out(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     report_out_va(fmt, args);
     va_end(args);
 }
 
-internal void report_line(const char *fmt, ...) {
+void report_line(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     report_out_va(fmt, args);
@@ -48,7 +54,7 @@ internal void report_line(const char *fmt, ...) {
     va_end(args);
 }
 
-internal void report_error_line(Source_File *file, Source_Pos pos) {
+void report_error_line(Source_File *file, Source_Pos pos) {
     String8 buffer = file->text; 
     u64 line_pos = pos.index - pos.col;
     u64 line_end = get_next_line_boundary(buffer, pos.index);
@@ -69,7 +75,7 @@ internal void report_error_line(Source_File *file, Source_Pos pos) {
     report_out("\n");
 }
 
-internal void report_parser_error_va(Source_Pos pos, const char *fmt, va_list va) {
+void report_parser_error_va(Source_Pos pos, const char *fmt, va_list va) {
     report_out("\x1B[38;2;204;36;29m");
     report_out("syntax error: ");
     report_out(ANSI_RESET);
@@ -82,7 +88,7 @@ internal void report_parser_error_va(Source_Pos pos, const char *fmt, va_list va
     }
 }
 
-internal void report_parser_error(Token token, const char *fmt, ...) {
+void report_parser_error(Token token, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     report_parser_error_va(token.start, fmt, args);
@@ -90,7 +96,7 @@ internal void report_parser_error(Token token, const char *fmt, ...) {
     g_error_count++;
 }
 
-internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
+void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     Token token = lexer->current();
     va_list args;
     va_start(args, fmt);
@@ -99,7 +105,7 @@ internal void report_parser_error(Lexer *lexer, const char *fmt, ...) {
     g_error_count++;
 }
 
-internal void report_ast_error_va(Ast *node, const char *fmt, va_list va) {
+void report_ast_error_va(Ast *node, const char *fmt, va_list va) {
     Source_File *file = nullptr;
     Token start_token = {};
     Token end_token = {};
@@ -153,7 +159,7 @@ internal void report_ast_error_va(Ast *node, const char *fmt, va_list va) {
     }
 }
 
-internal void report_ast_error(Ast *node, const char *fmt, ...) {
+void report_ast_error(Ast *node, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     report_ast_error_va(node, fmt, args);
@@ -161,12 +167,12 @@ internal void report_ast_error(Ast *node, const char *fmt, ...) {
     g_error_count++;
 }
 
-internal void report_note_va(Source_Pos pos, const char *fmt, va_list va) {
+void report_note_va(Source_Pos pos, const char *fmt, va_list va) {
     report_out("%s:%llu:%llu: note: ", pos.file->path.data, pos.line, pos.col);
     report_out_va(fmt, va);
 }
 
-internal void report_note(Source_Pos pos, const char *fmt, ...) {
+void report_note(Source_Pos pos, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     report_note_va(pos, fmt, args);
@@ -181,7 +187,7 @@ void report_redeclaration(Ast_Decl *decl) {
     report_ast_error(decl, "redeclaration of '%s'.\n", decl->name->data);
 }
 
-internal Token ast_start_token(Ast *node) {
+Token ast_start_token(Ast *node) {
     switch (node->kind) {
     default:
         Assert(0);
@@ -326,7 +332,7 @@ internal Token ast_start_token(Ast *node) {
     return {};
 }
 
-internal Token ast_end_token(Ast *node) {
+Token ast_end_token(Ast *node) {
     switch (node->kind) {
     default:
         Assert(0);

@@ -1,11 +1,7 @@
 #ifndef OS_CORE_H
 #define OS_CORE_H
 
-#if OS_WINDOWS
-#include "win32/os_core_win32.h"
-#elif OS_LINUX
-#include "linux/os_core_linux.h"
-#endif
+#include "base/base_strings.h"
 
 typedef u64 OS_Handle;
 
@@ -144,7 +140,7 @@ struct OS_Event {
     OS_Event_Kind kind = OS_EventKind_Error;
     OS_Event_Flags flags;
     OS_Key key;
-    String8 text;
+    String text;
     V2_S32 delta;
     V2_S32 pos;
 };
@@ -167,7 +163,7 @@ EnumDefineFlagOperators(OS_File_Flags)
 
 struct OS_File {
     OS_File_Flags flags;
-    String8 file_name;
+    String file_name;
     u64 file_size;
     u64 creation_time;
     u64 last_access_time;
@@ -185,14 +181,35 @@ struct OS_File_List {
     int count;
 };
 
-internal V2_F32 os_get_window_dim(OS_Handle window_handle);
-internal void os_quit_application(int exit_code);
+#if OS_WINDOWS
+#include "win32/os_core_win32.h"
+#elif OS_LINUX
+#include "linux/os_core_linux.h"
+#endif
 
-internal OS_Handle os_find_first_file(Allocator allocator, String8 path, OS_File *file);
-internal bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file);
-internal void os_find_close(OS_Handle find_file_handle);
-
-internal inline s64 get_wall_clock();
-internal inline f32 get_ms_elapsed(s64 start, s64 end);
+OS_Event_Flags os_event_flags();
+OS_Key os_key_from_vk(u32 vk);
+inline s64 get_wall_clock();
+inline f32 get_ms_elapsed(s64 start, s64 end);
+bool os_chdir(String path);
+bool os_file_exists(String file_name);
+bool os_valid_handle(OS_Handle handle);
+bool os_create_directory(String path);
+OS_Handle os_open_file(String file_name, OS_Access_Flags flags);
+void os_set_file_pointer(OS_Handle file_handle, u32 position);
+void os_write_file(OS_Handle file_handle, void *data, u64 size);
+u64 os_read_entire_file(OS_Handle file_handle, void **out_data);
+String os_read_file_string(OS_Handle file_handle);
+void os_close_handle(OS_Handle handle);
+void os_quit(int exit_code);
+void os_local_time(int *hour, int *minute, int *second);
+OS_File_Flags os_file_attributes(String file_name);
+OS_Handle os_find_first_file(Allocator allocator, String path, OS_File *file);
+bool os_find_next_file(Allocator allocator, OS_Handle find_file_handle, OS_File *file);
+void os_find_close(OS_Handle find_file_handle);
+bool os_path_exists(String path);
+String os_exe_path(Allocator allocator);
+String os_home_path(Allocator allocator);
+String os_current_dir(Allocator allocator);
 
 #endif // OS_CORE_H

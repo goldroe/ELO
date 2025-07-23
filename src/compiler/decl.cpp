@@ -1,3 +1,6 @@
+#include "atom.h"
+#include "decl.h"
+
 internal bool is_anonymous(Decl *decl) {
     return decl->name == nullptr;
 }

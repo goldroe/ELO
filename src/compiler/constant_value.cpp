@@ -1,3 +1,19 @@
+#include <cmath>
+#include "base/base_core.h"
+#include "base/base_strings.h"
+
+#include "constant_value.h"
+#include "OP.h"
+#include "types.h"
+
+internal String string_from_bigint(bigint a) {
+    local_persist char buffer[128];
+    // MemoryZero(buffer, 128);
+    size_t written = 0;
+    int err = mp_to_radix(&a, buffer, 128, &written, 10);
+    String str = str8_copy(heap_allocator(), str8((u8 *)buffer, written-1));
+    return str;
+}
 
 internal s64 s64_from_bigint(bigint i) {
     s64 v = mp_get_i64(&i);
@@ -9,10 +25,21 @@ internal s64 u64_from_bigint(bigint i) {
     return v;
 }
 
-
 internal f64 f64_from_bigint(bigint i) {
     f64 f = mp_get_double(&i);
     return f;
+}
+
+internal bigint bigint_copy(const bigint *a) {
+    bigint i = {};
+    mp_init_copy(&i, a);
+    return i;
+}
+
+internal bigint bigint_make(int value) {
+    bigint i = {};
+    mp_init_i32(&i, value);
+    return i;
 }
 
 internal bigint bigint_u32_make(uint32_t value) {
@@ -39,19 +66,7 @@ internal bigint bigint_i64_make(int64_t value) {
     return i;
 }
 
-internal bigint bigint_make(int value) {
-    bigint i = {};
-    mp_init_i32(&i, value);
-    return i;
-}
-
-internal bigint bigint_copy(const bigint *a) {
-    bigint i = {};
-    mp_init_copy(&i, a);
-    return i;
-}
-
-internal bigint bigint_from_f64(f64 f) {
+internal bigint bigint_f64_make(f64 f) {
     bigint i = {};
     mp_init(&i);
     u64 u = (u64)f;
@@ -92,13 +107,8 @@ internal void bigint_and(bigint *dst, const bigint *a, const bigint *b) {
     mp_and(a, b, dst);
 }
 
-internal String string_from_bigint(bigint a) {
-    local_persist char buffer[128];
-    // MemoryZero(buffer, 128);
-    size_t written = 0;
-    int err = mp_to_radix(&a, buffer, 128, &written, 10);
-    String str = str8_copy(heap_allocator(), str8((u8 *)buffer, written-1));
-    return str;
+internal void bigint_mod(bigint *dst, const bigint *a, const bigint *b) {
+    mp_mod(a, b, dst);
 }
 
 internal void bigint_lazy_or(bigint *dst, const bigint *a, const bigint *b) {
@@ -107,10 +117,6 @@ internal void bigint_lazy_or(bigint *dst, const bigint *a, const bigint *b) {
     } else {
         mp_set(dst, 1);
     }
-}
-
-internal void bigint_mod(bigint *dst, const bigint *a, const bigint *b) {
-    mp_mod(a, b, dst);
 }
 
 internal void bigint_lazy_and(bigint *dst, const bigint *a, const bigint *b) {
@@ -174,7 +180,7 @@ internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
 
     case CONSTANT_VALUE_FLOAT: {
         if (is_integral_type(ct)) {
-            return constant_value_int_make(bigint_from_f64(value.value_float));
+            return constant_value_int_make(bigint_f64_make(value.value_float));
         }
         break;
     }

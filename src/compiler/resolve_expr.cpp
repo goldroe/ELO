@@ -1,5 +1,10 @@
 #include <limits>
 
+#include "atom.h"
+#include "common.h"
+#include "resolve.h"
+#include "report.h"
+#include "types.h"
 
 void Resolver::resolve_address_expr(Ast_Address *address) {
     resolve_expr(address->elem);

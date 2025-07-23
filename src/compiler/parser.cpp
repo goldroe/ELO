@@ -1,6 +1,16 @@
 //@Todo Fix paren expression parsing. Conflicts with procedure type.
 //@Todo Fix compound literal parsing. Conflicts with control-statements ?
 
+#include "path/path.h"
+
+#include "atom.h"
+#include "token.h"
+#include "lexer.h"
+#include "parser.h"
+#include "report.h"
+
+#include "os/os.h"
+
 Parser::Parser(Lexer *_lexer) {
     this->lexer = _lexer;
     _lexer->parser = this;

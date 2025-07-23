@@ -2,6 +2,11 @@
 #include <initializer_list>
 #include <assert.h>
 
+#include "base/base_memory.h"
+
+#ifndef ARRAY_H
+#define ARRAY_H
+
 template <class T>
 class Array {
 public:
@@ -180,3 +185,5 @@ internal Array<T> array_copy(Array<T> &array) {
     }
     return copy;
 }
+
+#endif // ARRAY_H

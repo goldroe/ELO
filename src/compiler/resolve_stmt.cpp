@@ -1,3 +1,11 @@
+#include <unordered_set>
+
+#include "array.h"
+
+#include "atom.h"
+#include "common.h"
+#include "resolve.h"
+#include "report.h"
 
 void Resolver::resolve_block(Ast_Block *block) {
     block->scope = new_scope(current_scope, SCOPE_BLOCK);

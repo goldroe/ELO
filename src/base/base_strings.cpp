@@ -1,3 +1,12 @@
+#include <cctype>
+#include <cstdarg>
+
+#include "base/base_core.h"
+#include "base/base_memory.h"
+#include "base_strings.h"
+
+#include <stb_sprintf.h>
+
 internal u64 cstr8_length(const char *c) {
     if (c == nullptr) return 0;
     u64 result = 0;
@@ -15,10 +24,6 @@ internal String8 str8_zero() {
 internal String8 str8(u8 *c, u64 count) {
     String8 result = {(u8 *)c, count};
     return result;
-}
-
-internal inline bool str8_equal(String8 first, String8 second) {
-    return first.count == second.count && (memcmp(first.data, second.data, first.count) == 0);
 }
 
 internal String8 str8_cstring(const char *c) {
@@ -131,15 +136,6 @@ internal u64 djb2_hash_string(String8 string) {
         result = ((result << 5) + result) + string.data[i];
     }
     return result;
-}
-
-internal bool operator==(String first, String second) {
-    return str8_equal(first, second);
-}
-
-internal bool operator==(String first, const char *cstr) {
-    String second = str8((u8 *)cstr, strlen(cstr));
-    return str8_equal(first, second);
 }
 
 internal cstring make_cstring_len(const char *str, u64 len) {

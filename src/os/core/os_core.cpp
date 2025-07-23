@@ -1,13 +1,5 @@
 #include "os_core.h"
 
-#ifdef OS_WINDOWS
-#include "win32/os_core_win32.cpp"
-#endif
-
-#ifdef OS_LINUX
-#include "linux/os_core_linux.cpp"
-#endif
-
 global String8 os_key_names[] = {
     str8_lit("Nil"),
     str8_lit("A"),

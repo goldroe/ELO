@@ -13,4 +13,6 @@
 #undef OS_WINDOWS
 #define OS_WINDOWS 1
 
+OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA win32_data);
+
 #endif // OS_CORE_WIN32_H

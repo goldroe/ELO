@@ -11,8 +11,4 @@
 
 #include "core/os_core.h"
 
-#ifdef OS_INCLUDE_GFX
-#include "gfx/os_gfx.h"
-#endif
-
 #endif // OS_H

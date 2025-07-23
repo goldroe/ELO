@@ -1,3 +1,20 @@
+#include <cctype>
+
+#include "atom.h"
+#include "lexer.h"
+#include "report.h"
+
+const char *token_strings[TOKEN_COUNT] = {
+#define TOKEN_KIND(K,S) S
+    TOKEN_KINDS
+#undef TOKEN_KIND
+};
+
+Suffix_Literal suffix_literals[] = {
+#define LITERAL_KIND(K,S) {str_lit(S), K}
+    LITERAL_KINDS
+#undef LITERAL_KIND
+};
 
 global Token poisoned_token = {TOKEN_UNKNOWN};
 

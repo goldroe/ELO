@@ -1,6 +1,8 @@
 #if !defined(BASE_MEMORY_H)
 #define BASE_MEMORY_H
 
+#include "base_core.h"
+
 #define is_pow2(x)          ((x)!=0 && ((x)&((x)-1))==0)
 #define AlignDownPow2(x,b) ((x)&(~((b) - 1)))
 // #define AlignForward(x, a) ((x)+(a)-((x)&((a)-1)))
@@ -16,22 +18,6 @@ enum Allocation_Type {
     ALLOCATION_FREE_ALL,
 };
 
-#define ALLOCATOR_PROC(Name) void *Name(Allocation_Type type, void *data, u64 size, int alignment, void *old_mem) 
-typedef ALLOCATOR_PROC(Allocator_Proc);
-
-struct Allocator {
-    Allocator_Proc *proc;
-    void *data;
-};
-
-internal void *alloc(Allocator allocator, u64 size);
-internal void free(Allocator allocator, void *memory);
-
-#define array_alloc(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
-#define alloc_item(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
-// #define array_alloc_align(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
-// #define alloc_item_align(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
-
 struct Memory_Block {
     Memory_Block *prev;
     u8 *memory;
@@ -44,8 +30,33 @@ struct Arena {
     u64 minimum_block_size;
 };
 
-internal inline Allocator heap_allocator();
-internal inline Allocator temporary_allocator();
+#define ALLOCATOR_PROC(Name) void *Name(Allocation_Type type, void *data, u64 size, int alignment, void *old_mem) 
+typedef ALLOCATOR_PROC(Allocator_Proc);
+
+struct Allocator {
+    Allocator_Proc *proc;
+    void *data;
+};
+
+extern ALLOCATOR_PROC(arena_allocator_proc);
+extern Arena *temporary_arena;
+
+internal Allocator arena_allocator(Arena *arena);
+internal Allocator heap_allocator();
+internal Allocator temporary_allocator();
+
+internal void *alloc_align(Allocator allocator, u64 size, int alignment);
+
+internal void *alloc(Allocator allocator, u64 size);
+internal void free(Allocator allocator, void *memory);
+
+internal void *allocator_resize(Allocator allocator, void *old_mem, u64 size, int alignment);
+
+
+#define array_alloc(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
+#define alloc_item(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
+// #define array_alloc_align(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
+// #define alloc_item_align(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
 
 internal Arena *arena_create(u64 block_size = MINIMUM_ARENA_BLOCK_SIZE);
 internal void *arena_alloc(Arena *arena, u64 min_size, int alignment);

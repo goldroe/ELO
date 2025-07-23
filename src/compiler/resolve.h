@@ -1,6 +1,13 @@
 #ifndef RESOLVE_H
 #define RESOLVE_H
 
+#include "array.h"
+
+#include "base/base_memory.h"
+#include "decl.h"
+#include "parser.h"
+#include "types.h"
+
 struct Resolver {
     Arena *arena;
 
@@ -105,6 +112,5 @@ struct Resolver {
 
     void resolve();
 };
-
 
 #endif // RESOLVE_H

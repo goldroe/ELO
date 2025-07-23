@@ -3,22 +3,16 @@
 #include "base/base_core.h"
 #include "base/base_memory.h"
 #include "base/base_strings.h"
+
+#include <string_map.h>
+
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb_sprintf.h>
-
-#include "string_map.cpp"
 
 #include "os/os.h"
 #include "path/path.h"
 
-#include "base/base_core.cpp"
-#include "base/base_memory.cpp"
-#include "base/base_strings.cpp"
-#include "os/os.cpp"
-#include "path/path.cpp"
-
 #include "array.h"
-
 #include "source_file.h"
 #include "constant_value.h"
 #include "lexer.h"
@@ -31,22 +25,8 @@
 #include "resolve.h"
 #include "llvm_backend.h"
 
-global bool compiler_dump_IR;
-global Array<String8> compiler_link_libraries;
-
-#include "constant_value.cpp"
-#include "source_file.cpp"
-#include "report.cpp"
-#include "atom.cpp"
-#include "lexer.cpp"
-#include "types.cpp"
-#include "ast.cpp"
-#include "parser.cpp"
-#include "decl.cpp"
-#include "resolve.cpp"
-#include "resolve_expr.cpp"
-#include "resolve_stmt.cpp"
-#include "llvm_backend.cpp"
+bool compiler_dump_IR;
+Array<String> compiler_link_libraries;
 
 internal void compiler_error(char *fmt, ...) {
     va_list args;

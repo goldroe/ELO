@@ -1,6 +1,8 @@
 #if !defined(DECL_H)
 #define DECL_H
 
+#include "ast.h"
+
 #define DECL_ALLOC(T) (alloc_item(heap_allocator(), T))
 #define DECL_NEW(T) static_cast<T*>(&(*DECL_ALLOC(T) = T()))
 
@@ -61,9 +63,19 @@ struct Scope {
     int level = 0;
     Array<Decl*> decls;
     Ast_Block *block;
-
-    Ast_Decl *lookup(Atom *name);
 };
+
+internal bool is_anonymous(Decl *decl);
+
+internal Decl *decl_type_create(Atom *name);
+internal Decl *decl_variable_create(Atom *name);
+internal Decl *decl_constant_create(Atom *name);
+internal Decl *decl_procedure_create(Atom *name);
+
+internal Scope *scope_create(Scope_Kind kind);
+internal void scope_add(Scope *scope, Decl *decl);
+internal Decl *scope_find(Scope *scope, Atom *name);
+internal Decl *scope_lookup(Scope *scope, Atom *name);
 
 
 #endif //DECL_H

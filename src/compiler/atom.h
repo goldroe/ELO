@@ -1,6 +1,9 @@
 #ifndef ATOM_H
 #define ATOM_H
 
+#include "token.h"
+#include "lexer.h"
+
 enum Atom_Flags {
     ATOM_FLAG_NIL       = 0,
     ATOM_FLAG_IDENT     = (1<<0),
@@ -27,6 +30,13 @@ struct Atom_Table {
     int bucket_count;
 };
 
+extern Atom_Table *g_atom_table;
+extern Arena *g_atom_arena;
+
+
+inline bool atoms_match(Atom *a, Atom *b) {return a == b;}
+
 internal Atom *atom_create(String8 string);
+internal void atom_init();
 
 #endif // ATOM_H

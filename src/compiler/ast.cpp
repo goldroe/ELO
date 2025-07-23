@@ -1,5 +1,17 @@
+#include "base/base_strings.h"
+
+#include "atom.h"
+#include "ast.h"
+#include "types.h"
+
 global Arena *g_ast_arena;
 global u64 g_ast_counter;
+
+const char *ast_strings[] = {
+#define AST_KIND(K,S) S
+    AST_KINDS
+#undef AST_KIND
+};
 
 internal bool is_ast_type(Ast *node) {
     switch (node->kind) {
@@ -151,7 +163,6 @@ internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token,
 internal Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem) {
     Ast_Paren *node = AST_NEW(f, Ast_Paren);
     node->elem = elem;
-    node->flags = elem->flags;
     node->open = open;
     node->close = close;
     return node;
@@ -168,7 +179,6 @@ internal Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem
 internal Ast_Address *ast_address_expr(Source_File *f, Token token, Ast *elem) {
     Ast_Address *node = AST_NEW(f, Ast_Address);
     node->elem = elem;
-    node->flags |= AST_FLAG_LVALUE;
     node->token = token;
     return node;
 }
@@ -184,7 +194,6 @@ internal Ast_Range *ast_range_expr(Source_File *f, Token token, Ast *lhs, Ast *r
 internal Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem) {
     Ast_Deref *node = AST_NEW(f, Ast_Deref);
     node->elem = elem;
-    node->flags |= AST_FLAG_LVALUE;
     node->token = token;
     return node;
 }
@@ -193,7 +202,6 @@ internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast
     Ast_Cast *node = AST_NEW(f, Ast_Cast);
     node->typespec = typespec;
     node->elem = elem;
-    node->flags = elem->flags;
     node->token = token;
     return node;
 }
@@ -262,7 +270,6 @@ internal Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token clo
     Ast_Subscript *node = AST_NEW(f, Ast_Subscript);
     node->expr = base;
     node->index = index;
-    node->flags |= AST_FLAG_LVALUE;
     node->open = open;
     node->close = close;
     return node;
@@ -603,7 +610,7 @@ internal char *string_from_operator(OP op) {
     }
 }
 
-internal inline OP get_unary_operator(Token_Kind kind) {
+internal OP get_unary_operator(Token_Kind kind) {
     switch (kind) {
     default:
         return OP_ERR;
@@ -622,7 +629,7 @@ internal inline OP get_unary_operator(Token_Kind kind) {
     }
 }
 
-internal inline OP get_binary_operator(Token_Kind kind) {
+internal OP get_binary_operator(Token_Kind kind) {
     switch (kind) {
     default:
         return OP_ERR;
@@ -694,7 +701,7 @@ internal inline OP get_binary_operator(Token_Kind kind) {
     }
 }
 
-internal inline int get_operator_precedence(OP op) {
+internal int get_operator_precedence(OP op) {
     switch (op) {
     default:
     case OP_ERR:
@@ -766,13 +773,5 @@ internal inline int get_operator_precedence(OP op) {
         return -1;
         // return 1000;
     }
-}
-
-internal inline bool is_assignment_op(OP op) {
-    return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
-}
-
-inline bool is_binop(Ast *expr, OP op) {
-    return expr->kind == AST_BINARY && ((Ast_Binary *)expr)->op == op;
 }
 

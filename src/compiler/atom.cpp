@@ -1,3 +1,5 @@
+#include "atom.h"
+
 global Atom_Table *g_atom_table;
 global Arena *g_atom_arena;
 
@@ -8,11 +10,7 @@ internal inline Allocator atom_allocator() {
     return result;
 }
 
-internal bool atoms_match(Atom *a, Atom *b) {
-    return a == b;
-}
-
-internal u64 atom_hash(String8 string) {
+internal u64 atom_hash(String string) {
     u64 result = 5381;
     for (u64 i = 0; i < string.count; i++) {
         result = ((result << 5) + result) + string.data[i];
@@ -20,7 +18,7 @@ internal u64 atom_hash(String8 string) {
     return result;
 }
 
-internal Atom *atom_lookup(String8 string) {
+internal Atom *atom_lookup(String string) {
     u64 hash = atom_hash(string);
     int hash_index = hash % g_atom_table->bucket_count;
     Atom_Bucket *bucket = &g_atom_table->buckets[hash_index];
@@ -36,7 +34,7 @@ internal Atom *atom_lookup(String8 string) {
     return result;
 }
 
-internal Atom *atom_create(String8 string) {
+internal Atom *atom_create(String string) {
     u64 hash = atom_hash(string);
     int hash_index = hash % g_atom_table->bucket_count;
     Atom_Bucket *bucket = &g_atom_table->buckets[hash_index];
@@ -59,7 +57,7 @@ internal Atom *atom_create(String8 string) {
     return atom;
 }
 
-internal Atom *atom_keyword(Token_Kind token, String8 string) {
+internal Atom *atom_keyword(Token_Kind token, String string) {
     Atom *atom = atom_create(string);
     atom->flags = ATOM_FLAG_KEYWORD;
     atom->token = token;

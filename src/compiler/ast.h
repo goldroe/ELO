@@ -1,6 +1,20 @@
 #ifndef AST_H
 #define AST_H
 
+#include "array.h"
+
+#include "base/base_core.h"
+#include "base/base_strings.h"
+
+#include "lexer.h"
+#include "OP.h"
+#include "source_file.h"
+#include "constant_value.h"
+
+extern Arena *g_ast_arena;
+extern u64 g_ast_counter;
+
+
 struct Type;
 struct Ast;
 struct Ast_Stmt;
@@ -23,63 +37,6 @@ struct Ast_Array_Type;
 struct Ast_Proc_Type;
 struct Ast_Struct_Type;
 struct Ast_Enum_Type;
-
-enum OP {
-    OP_ERR = -1,
-
-    OP_ADDRESS,
-    OP_DEREF,
-    OP_SUBSCRIPT,
-    OP_SELECT,
-    OP_CAST,
-
-    // Unary
-    OP_UNARY_PLUS,
-    OP_UNARY_MINUS,
-    OP_NOT,
-    OP_BIT_NOT,
-
-    OP_SIZEOF,
-
-    // Binary
-    OP_ADD,
-    OP_SUB,
-    OP_MUL,
-    OP_DIV,
-    OP_MOD,
-
-    OP_EQ,
-    OP_NEQ,
-    OP_LT,
-    OP_LTEQ,
-    OP_GT,
-    OP_GTEQ,
-
-    OP_OR,
-    OP_AND,
-    OP_BIT_AND,
-    OP_BIT_OR,
-    OP_XOR,
-    OP_LSH,
-    OP_RSH,
-
-    // Assign
-    OP_ASSIGN,
-    OP_IN,
-    OP_ADD_ASSIGN,
-    OP_SUB_ASSIGN,
-    OP_MUL_ASSIGN,
-    OP_DIV_ASSIGN,
-    OP_MOD_ASSIGN,
-    OP_LSHIFT_ASSIGN,
-    OP_RSHIFT_ASSIGN,
-    OP_AND_ASSIGN,
-    OP_OR_ASSIGN,
-    OP_XOR_ASSIGN,
-    OP_LSH_ASSIGN,
-    OP_RSH_ASSIGN,
-    OP_ASSIGN_END,
-};
 
 #define AST_KINDS \
     AST_KIND(AST_NIL              , "Nil"),                  \
@@ -150,21 +107,10 @@ enum Ast_Kind {
     AST_COUNT
 };
 
-const char *ast_strings[] = {
-#define AST_KIND(K,S) S
-    AST_KINDS
-#undef AST_KIND
-};
+extern const char *ast_strings[];
 
 #define ast_node_var(N, T, V) T *N = (T *)(V)
 #define ast_node(T, V) ((T *)(V))
-
-enum Ast_Flags {
-    AST_FLAG_LVALUE   = (1<<0),
-    AST_FLAG_TYPE     = (1<<2),
-    AST_FLAG_GLOBAL   = (1<<4),
-};
-EnumDefineFlagOperators(Ast_Flags);
 
 enum Addressing_Mode {
     ADDRESSING_INVALID,
@@ -187,18 +133,12 @@ struct Ast {
     Type *type = nullptr;
     Constant_Value value = {};
 
-    Ast_Flags flags = (Ast_Flags)0;
-
     b32 is_poisoned = false;
     b32 visited = false;
 
     bool invalid() { return is_poisoned; }
     bool valid() { return !is_poisoned; }
     void poison() { is_poisoned = true; }
-
-    // bool is_decl() { return AST_DECL_BEGIN <= kind && kind <= AST_DECL_END; }
-    // bool is_expr() { return AST_EXPR_BEGIN <= kind && kind <= AST_EXPR_END; }
-    // bool is_stmt() { return AST_STMT_BEGIN <= kind && kind <= AST_STMT_END; }
 };
 
 struct Ast_Root : Ast {
@@ -491,14 +431,14 @@ struct Ast_Expr_Stmt : Ast_Stmt {
 
 struct Ast_Load : Ast {
     Ast_Load() { kind = AST_LOAD_STMT; }
-    String8 rel_path;
+    String rel_path;
     Token token;
     Token file_token;
 };
 
 struct Ast_Import : Ast {
     Ast_Import() { kind = AST_IMPORT_STMT; }
-    String8 rel_path;
+    String rel_path;
     Token token;
     Token file_token;
 };
@@ -619,8 +559,127 @@ struct Ast_Union_Type : Ast {
 
 #define AST_NEW(F, T) static_cast<T*>(ast__init(&(*ast_alloc(sizeof(T), alignof(T)) = T()), F))
 
+internal bool is_ast_type(Ast *node);
+
+internal bool is_ast_stmt(Ast *node);
+
+internal inline Allocator ast_allocator();
+
+internal inline Ast *ast__init(Ast *node, Source_File *f);
+
+internal inline Ast *ast_alloc(u64 size, int alignment);
+
+internal Ast_Root *ast_root(Source_File *f, Array<Ast*> decls);
+
+internal Ast_Empty_Stmt *ast_empty_stmt(Source_File *f, Token token);
+
+internal Ast_Bad_Expr *ast_bad_expr(Source_File *f, Token start, Token end);
+
+internal Ast_Bad_Stmt *ast_bad_stmt(Source_File *f, Token start, Token end);
+
+internal Ast_Bad_Decl *ast_bad_decl(Source_File *f, Token start, Token end);
+
+internal Ast_Return *ast_return_stmt(Source_File *f, Token token, Array<Ast*> values);
+
+internal Ast_Continue *ast_continue_stmt(Source_File *f, Token token);
+
+internal Ast_Break *ast_break_stmt(Source_File *f, Token token);
+
+internal Ast_Fallthrough *ast_fallthrough_stmt(Source_File *f, Token token);
+
+internal Ast_Defer *ast_defer_stmt(Source_File *f, Token token, Ast *stmt);
+
+internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast_Block *body);
+
+internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr);
+
+internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec, bool is_variadic);
+
+internal Ast_Ident *ast_ident(Source_File *f, Token token);
+
+internal Ast_Literal *ast_literal(Source_File *f, Token token);
+
+internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements);
+
+internal Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem);
+
+internal Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem);
+
+internal Ast_Address *ast_address_expr(Source_File *f, Token token, Ast *elem);
+
+internal Ast_Range *ast_range_expr(Source_File *f, Token token, Ast *lhs, Ast *rhs);
+
+internal Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem);
+
+internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast *elem);
+
+internal Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Array<Ast*> arguments);
+
+internal Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *parent, Ast_Ident *name);
+
+internal Ast_Value_Decl *ast_value_decl(Source_File *f, Array<Ast*> names, Ast *typespec, Array<Ast*> values, bool is_mutable);
+
+internal Ast_Load *ast_load_stmt(Source_File *f, Token token, Token file_token, String8 file_path);
+
+internal Ast_Import *ast_import_stmt(Source_File *f, Token token, Token file_token, String8 file_path);
+
+internal Ast_Binary *ast_binary_expr(Source_File *f, Token token, OP op, Ast *lhs, Ast *rhs);
+
+internal Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Array<Ast*> lhs, Array<Ast*> rhs);
+
+internal Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token close, Ast *base, Ast *index);
+
+internal Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Ast *elem);
+
+internal Ast_Expr_Stmt *ast_expr_stmt(Source_File *f, Ast *expr);
+
+internal Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Array<Ast*> statements);
+
+internal Ast_If *ast_if_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
+
+internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Array<Ast*> statements);
+
+internal Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Array<Ast_Case_Label*> clauses, bool check_enum_complete);
+
+internal Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
+
+internal Ast_For *ast_for_stmt(Source_File *f, Token token, Ast *init, Ast *condition, Ast *post, Ast_Block *block);
+
+internal Ast_Range_Stmt *ast_range_stmt(Source_File *f, Token token, Ast_Assignment *init, Ast_Block *block) ;
+
+internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *elem);
+
+internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *array_size);
+
+internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results, bool is_variadic);
+
+internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Array<Ast_Enum_Field*> fields);
+
+internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
+
+internal Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
+
+internal char *string_from_expr(Ast *expr);
+
+internal inline const char *string_from_ast(Ast_Kind kind);
+
+internal char *string_from_operator(OP op);
+
+internal OP get_unary_operator(Token_Kind kind);
+internal OP get_binary_operator(Token_Kind kind);
+internal int get_operator_precedence(OP op);
+
+
 internal inline Allocator ast_allocator();
 internal Ast *ast_alloc(Source_File *f, u64 size, int alignment);
 internal char *string_from_operator(OP op);
+
+inline bool is_assignment_op(OP op) {
+    return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
+}
+
+inline bool is_binop(Ast *expr, OP op) {
+    return expr->kind == AST_BINARY && ((Ast_Binary *)expr)->op == op;
+}
 
 #endif // AST_H

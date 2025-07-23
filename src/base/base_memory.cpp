@@ -1,45 +1,7 @@
-global Arena *temporary_arena;
+#include "base_memory.h"
+#include "os/os.h"
 
-ALLOCATOR_PROC(arena_allocator_proc) {
-    Arena *arena =  (Arena *)data;
-    switch (type) {
-    case ALLOCATION_ALLOC:
-    {
-        void *memory = arena_alloc(arena, size, alignment);
-        return memory;
-    }
-    case ALLOCATION_RESIZE:
-    {
-        Assert(0);
-        break;
-    }
-    case ALLOCATION_FREE:
-    {
-        Assert(0);
-        break;
-    }
-    case ALLOCATION_FREE_ALL:
-    {
-        arena_release(arena);
-        break;
-    }
-    }
-    return NULL;
-}
-
-internal inline Allocator arena_allocator(Arena *arena) {
-    Allocator result;
-    result.proc = arena_allocator_proc;
-    result.data = (void *)arena;
-    return result;
-}
-
-internal inline Allocator temporary_allocator() {
-    Allocator result;
-    result.data = (void *)temporary_arena;
-    result.proc = arena_allocator_proc;
-    return result;
-}
+Arena *temporary_arena;
 
 internal void *alloc_align(Allocator allocator, u64 size, int alignment) {
     void *memory = allocator.proc(ALLOCATION_ALLOC, allocator.data, size, alignment, NULL);
@@ -56,6 +18,29 @@ internal void free(Allocator allocator, void *memory) {
 
 internal void *allocator_resize(Allocator allocator, void *old_mem, u64 size, int alignment) {
     return allocator.proc(ALLOCATION_RESIZE, allocator.data, size, alignment, old_mem);
+}
+
+ALLOCATOR_PROC(arena_allocator_proc) {
+    Arena *arena =  (Arena *)data;
+    switch (type) {
+    case ALLOCATION_ALLOC: {
+        void *memory = arena_alloc(arena, size, alignment);
+        return memory;
+    }
+    case ALLOCATION_RESIZE: {
+        Assert(0);
+        break;
+    }
+    case ALLOCATION_FREE: {
+        Assert(0);
+        break;
+    }
+    case ALLOCATION_FREE_ALL: {
+        arena_release(arena);
+        break;
+    }
+    }
+    return NULL;
 }
 
 ALLOCATOR_PROC(heap_allocator_proc) {
@@ -81,6 +66,21 @@ ALLOCATOR_PROC(heap_allocator_proc) {
     return NULL;
 }
 
+
+internal Allocator arena_allocator(Arena *arena) {
+    Allocator result;
+    result.proc = arena_allocator_proc;
+    result.data = (void *)arena;
+    return result;
+}
+
+internal Allocator temporary_allocator() {
+    Allocator result;
+    result.data = (void *)temporary_arena;
+    result.proc = arena_allocator_proc;
+    return result;
+}
+
 internal Allocator heap_allocator() {
     Allocator result;
     result.proc = heap_allocator_proc;
@@ -88,6 +88,7 @@ internal Allocator heap_allocator() {
     return result;
 }
 
+#if defined(OS_WINDOWS)
 internal void *virtual_memory_alloc(u64 size) {
     void *result = NULL;
     result = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -104,6 +105,7 @@ internal void virtual_memory_free(void *memory) {
         fprintf(stderr, "VirtualFree failed: %d\n", error);
     }
 }
+#endif
 
 internal Arena *arena_create(u64 block_size) {
     Arena *arena = alloc_item(heap_allocator(), Arena);

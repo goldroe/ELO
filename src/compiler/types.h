@@ -1,6 +1,15 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include "array.h"
+
+#include "base/base_strings.h"
+
+struct Atom;
+struct Decl;
+struct Scope;
+struct BE_Struct;
+
 enum Type_Kind {
     TYPE_INVALID,
 
@@ -112,6 +121,38 @@ struct Type_Enum : Type {
 #define TYPE_ALLOC(T) (alloc_item(heap_allocator(), T))
 #define TYPE_NEW(T) static_cast<T*>(&(*TYPE_ALLOC(T) = T()))
 
+extern Array<Type*> g_builtin_types;
+extern Type *type_invalid;
+extern Type *type_void;
+extern Type *type_null;
+extern Type *type_bool;
+extern Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
+extern Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
+extern Type *type_isize, *type_usize;
+extern Type *type_f32, *type_f64;
+extern Type *type_string;
+extern Type *type_cstring;
+extern Type *type_any;
+
+Type_Pointer *pointer_type_create(Type *elem);
+Type_Array *array_type_create(Type *elem, u64 array_size);
+Type_Array_View *array_view_type_create(Type *elem);
+Type_Dynamic_Array *dynamic_array_type_create(Type *elem);
+Type_Tuple *tuple_type_create(Array<Type*> types);
+Type_Proc *proc_type_create(Array<Type*> params, Array<Type*> results);
+Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope *scope);
+Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *scope);
+Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope);
+Type *builtin_type_create(Type_Kind kind, String8 name, int size);
+
+void register_builtin_types();
+
+internal bool typecheck_castable(Type *t0, Type *t1);
+bool is_convertible(Type *t0, Type *t1);
+
+Type *type_deref(Type *t);
+
+internal char *string_from_type(Type *ty);
 
 internal inline bool is_tuple_type(Type *type)         {return type->kind == TYPE_TUPLE;}
 internal inline bool is_array_type(Type *type)         {return type->kind == TYPE_ARRAY;}
@@ -164,5 +205,6 @@ internal inline bool is_indirection_type(Type *type) {
 internal inline bool is_pointer_like_type(Type *type) {
     return is_pointer_type(type) || is_array_type(type) || is_proc_type(type);
 }
+
 
 #endif // TYPES_H

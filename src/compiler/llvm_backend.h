@@ -39,6 +39,15 @@
 #include <llvm-c/TargetMachine.h>
 #pragma warning(pop)
 
+#include "base/base_memory.h"
+
+#include "atom.h"
+#include "ast.h"
+#include "decl.h"
+#include "types.h"
+
+extern Arena *llvm_arena;
+
 struct LLVM_Value {
     llvm::Value *value;
     llvm::Type *type;

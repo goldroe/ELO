@@ -1,3 +1,9 @@
+#include "base/base_memory.h"
+#include "common.h"
+#include "llvm_backend.h"
+#include "path/path.h"
+#include "os/os.h"
+
 global Arena *llvm_arena;
 
 #define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))

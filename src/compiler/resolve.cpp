@@ -1,66 +1,16 @@
 #include <unordered_set>
 
+#include "atom.h"
+#include "common.h"
+#include "resolve.h"
+#include "report.h"
+
 void Resolver::type_complete_path_add(Ast *type) {
     array_add(&type_complete_path, type);
 }
 
 void Resolver::type_complete_path_clear() {
     array_clear(&type_complete_path);
-}
-
-internal char *get_scoping_name(Scope *scope) {
-    cstring string = nullptr;
-    while (scope) {
-        if (!scope->name) {
-            break;
-        }
-
-        cstring_prepend(&string, scope->name->data); 
-
-        if (scope->parent && scope->parent->name) {
-            cstring_prepend(&string, ".");
-        }
-
-        scope = scope->parent;
-    }
-    return string;
-}
-
-internal char *get_name_scoped(Atom *name, Scope *scope) {
-    char *string = make_cstring(name->data);
-    if (scope->name) {
-        cstring_prepend(&string, ".");
-        char *scope_name = get_scoping_name(scope);
-        cstring_prepend(&string, scope_name);
-    }
-    return string;
-}
-
-internal int get_value_count(Type *type) {
-    if (type->kind == TYPE_TUPLE) {
-        Type_Tuple *tuple = (Type_Tuple *)type;
-        return (int)tuple->types.count;
-    }
-    return 1;
-}
-
-internal int get_total_value_count(Array<Ast*> values) {
-    int count = 0;
-    for (Ast *v : values) {
-        count += get_value_count(v->type);
-    }
-    return count;
-}
-
-internal Type *type_from_index(Type *type, int idx) {
-    if (type->kind == TYPE_TUPLE) {
-        Type_Tuple *tuple = (Type_Tuple *)type;
-        Assert(idx < tuple->types.count);
-        return tuple->types[idx];
-    } else {
-        Assert(idx == 0);
-        return type;
-    }
 }
 
 Resolver::Resolver(Parser *_parser) {
@@ -212,51 +162,6 @@ void Resolver::resolve_decl(Decl *decl) {
     decl->resolve_state = RESOLVE_DONE;
 
     current_decl = prev_decl;
-}
-
-internal Decl *lookup_field(Type *type, Atom *name, bool is_type) {
-    Decl *select = nullptr;
-    if (is_type) {
-        if (is_struct_type(type)) {
-            Type_Struct *ts = (Type_Struct *)type;
-            Decl *member = scope_find(ts->scope, name);
-            if (member && member->kind != DECL_VARIABLE) {
-                select = member;
-            }
-        } else if (is_struct_type(type)) {
-            Type_Union *tu = (Type_Union *)type;
-            Decl *member = scope_find(tu->scope, name);
-            if (member && member->kind != DECL_VARIABLE) {
-                select = member;
-            }
-        } else if (is_enum_type(type)) {
-            Type_Enum *et = (Type_Enum *)type;
-            select = scope_find(et->scope, name);
-        }
-    } else if (is_struct_type(type) || is_union_type(type)) {
-        Array<Decl*> members;
-        if (is_struct_type(type)) {
-            members = ((Type_Struct *)type)->members;
-        } else if (is_union_type(type)) {
-            members = ((Type_Union *)type)->members;
-        }
-
-        for (Decl *decl : members) {
-            if (is_anonymous(decl)) {
-                Decl *member = lookup_field(decl->type, name, is_type);
-                if (member && member->kind == DECL_VARIABLE) {
-                    select = member;
-                }
-            } else {
-                if (atoms_match(decl->name, name)) {
-                    if (decl->kind == DECL_VARIABLE) {
-                        select = decl;
-                    }
-                }
-            }
-        }
-    }
-    return select;
 }
 
 Type_Proc *Resolver::resolve_proc_type(Ast_Proc_Type *proc_type, bool in_proc_lit) {
@@ -757,7 +662,6 @@ void Resolver::register_global_declarations() {
         switch (decl_node->kind) {
         case AST_VALUE_DECL: {
             Ast_Value_Decl *vd = (Ast_Value_Decl *)decl_node;
-            vd->flags |= AST_FLAG_GLOBAL;
 
             if (vd->is_mutable) {
                 for (int i = 0; i < vd->names.count; i++) {
