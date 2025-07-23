@@ -1,3 +1,5 @@
+#ifndef STRING_MAP_H
+#define STRING_MAP_H
 
 template <typename T>
 struct String_Map_Entry {
@@ -91,3 +93,4 @@ internal bool string_map_find(String_Map<T> *string_map, String8 key, T *out_val
     return search_result.found;
 }
 
+#endif // STRING_MAP_H
