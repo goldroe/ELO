@@ -6,6 +6,7 @@ Array<Type*> g_builtin_types;
 Type *type_invalid;
 Type *type_void;
 Type *type_null;
+Type *type_uninit_value;
 Type *type_bool;
 Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
 Type *type_i8, *type_i16, *type_i32, *type_i64, *type_int;
@@ -15,45 +16,45 @@ Type *type_string;
 Type *type_cstring;
 Type *type_any;
 
-internal Type_Pointer *pointer_type_create(Type *elem) {
+Type_Pointer *pointer_type_create(Type *elem) {
     Type_Pointer *type = TYPE_NEW(Type_Pointer);
     type->base = elem;
     return type;
 }
 
-internal Type_Array *array_type_create(Type *elem, u64 array_size) {
+Type_Array *array_type_create(Type *elem, u64 array_size) {
     Type_Array *type = TYPE_NEW(Type_Array);
     type->base = elem;
     type->array_size = array_size;
     return type;
 }
 
-internal Type_Array_View *array_view_type_create(Type *elem) {
+Type_Array_View *array_view_type_create(Type *elem) {
     Type_Array_View *type = TYPE_NEW(Type_Array_View);
     type->base = elem;
     return type;
 }
 
-internal Type_Dynamic_Array *dynamic_array_type_create(Type *elem) {
+Type_Dynamic_Array *dynamic_array_type_create(Type *elem) {
     Type_Dynamic_Array *type = TYPE_NEW(Type_Dynamic_Array);
     type->base = elem;
     return type;
 }
 
-internal Type_Tuple *tuple_type_create(Array<Type*> types) {
+Type_Tuple *tuple_type_create(Array<Type*> types) {
     Type_Tuple *type = TYPE_NEW(Type_Tuple);
     type->types = types;
     return type;
 }
 
-internal Type_Proc *proc_type_create(Array<Type*> params, Array<Type*> results) {
+Type_Proc *proc_type_create(Array<Type*> params, Array<Type*> results) {
     Type_Proc *type = TYPE_NEW(Type_Proc);
     type->params = tuple_type_create(params);
     type->results = tuple_type_create(results);
     return type;
 }
 
-internal Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
+Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
     Type_Struct *type = TYPE_NEW(Type_Struct);
     type->name = name;
     type->members = members;
@@ -61,7 +62,7 @@ internal Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope
     return type;
 }
 
-internal Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
+Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *scope) {
     Type_Union *type = TYPE_NEW(Type_Union);
     type->name = name;
     type->members = members;
@@ -69,7 +70,7 @@ internal Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *
     return type;
 }
 
-internal Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope) {
+Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope) {
     Type_Enum *type = TYPE_NEW(Type_Enum);
     type->base_type = base_type;
     type->fields = fields;
@@ -77,7 +78,7 @@ internal Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope
     return type;
 }
 
-internal Type *builtin_type_create(Type_Kind kind, String8 name, int size) {
+Type *builtin_type_create(Type_Kind kind, String name, int size) {
     Atom *atom = atom_create(name);
     Type *type = TYPE_NEW(Type);
     type->name = atom;
@@ -87,7 +88,7 @@ internal Type *builtin_type_create(Type_Kind kind, String8 name, int size) {
     return type;
 }
 
-internal s64 size_from_type(Type *type) {
+i64 size_from_type(Type *type) {
     switch (type->kind) {
     case TYPE_STRUCT: {
         break;
@@ -96,12 +97,13 @@ internal s64 size_from_type(Type *type) {
     return 0;
 }
 
-internal void register_builtin_types() {
+void register_builtin_types() {
     int system_max_bytes = 8;
     array_init(&g_builtin_types, heap_allocator());
     type_invalid = builtin_type_create(TYPE_INVALID, str_lit("builtin(invalid)"), 0);
     type_void    = builtin_type_create(TYPE_VOID,    str_lit("void"),  0);
-    type_null  = pointer_type_create(type_void);
+    type_null    = pointer_type_create(type_void);
+    type_uninit_value = builtin_type_create(TYPE_UNINIT,  str_lit("builtin(uninit)"), 0);
 
     type_bool  = builtin_type_create(TYPE_BOOL,     str_lit("bool"),   1);
 
@@ -128,7 +130,7 @@ internal void register_builtin_types() {
     type_any = builtin_type_create(TYPE_ANY, str_lit("any"), 16);
 }
 
-internal Type *type_untuple_maybe(Type *type) {
+Type *type_untuple_maybe(Type *type) {
     if (is_tuple_type(type)) {
         Type_Tuple *tuple = (Type_Tuple *)type;
         if (tuple->types.count == 1) {
@@ -140,7 +142,7 @@ internal Type *type_untuple_maybe(Type *type) {
 
 //@Todo More robust type checking for non-indirection types that are "aggregate" such as struct and procedure types.
 //      For now we just check if they are identical, not equivalent.
-internal bool is_convertible(Type *t0, Type *t1) {
+bool is_convertible(Type *t0, Type *t1) {
     Assert(t0 != nullptr);
     Assert(t1 != nullptr);
 
@@ -148,6 +150,8 @@ internal bool is_convertible(Type *t0, Type *t1) {
     t1 = type_untuple_maybe(t1);
 
     if (t0 == t1) return true;
+
+    if (t0->kind == TYPE_UNINIT || t1->kind == TYPE_UNINIT) return true;
 
     //@Note Any results of poisoned types, just okay it
     // if (t0->is_poisoned || t1->is_poisoned) return true;
@@ -223,7 +227,7 @@ internal bool is_convertible(Type *t0, Type *t1) {
     return false;
 }
 
-internal bool typecheck_castable(Type *t0, Type *t1) {
+bool typecheck_castable(Type *t0, Type *t1) {
     Assert(t0 && t1);
 
     if (t0 == t1) return true;
@@ -241,7 +245,7 @@ internal bool typecheck_castable(Type *t0, Type *t1) {
     }
 }
 
-internal Type *type_deref(Type *t) {
+Type *type_deref(Type *t) {
     if (t) {
         if (t->base) {
             return t->base;
@@ -250,92 +254,106 @@ internal Type *type_deref(Type *t) {
     return t;
 }
 
-internal char *string_from_type(Type *ty) {
-    cstring string = NULL;
-    if (ty == NULL) return "";
+CString string_from_type(CString string, Type *type) {
+    if (type == NULL)  {
+        return string_append(string, "<notype>");
+    }
 
-    for (Type *type = ty; type; type = type->base) {
-        switch (type->kind) {
-        case TYPE_POINTER:
-            cstring_append(&string, "*");
-            break;
+    switch (type->kind) {
+    default:
+        string = string_append(string, (char *)type->name->data);
+        break;
 
-        case TYPE_ARRAY: {
-            Type_Array *ta = static_cast<Type_Array*>(type);
-            cstring_append_fmt(&string, "[%llu]", ta->array_size);
-            break;
+    case TYPE_ENUM: {
+        Type_Enum *te = static_cast<Type_Enum*>(type);
+        if (te->name) {
+            string = string_append(string, te->name->data);
+        } else {
+            string = string_append(string, "<anon enum>");
         }
+        break;
+    }
+        
+    case TYPE_PROC: {
+        Type_Proc *tp = static_cast<Type_Proc*>(type);
+        string = string_from_type(string, tp->params);
+        if (tp->results) {
+            string = string_append(string, "->");
+            string = string_from_type(string, tp->results);
+        }
+        break;
+    }
 
-        case TYPE_ARRAY_VIEW:
-            cstring_append(&string, "[]");
-            break;
+    case TYPE_STRUCT: {
+        Type_Struct *ts = static_cast<Type_Struct*>(type);
+        if (ts->name) {
+            string = string_append(string, ts->name->data);
+        } else {
+            string = string_append(string, "<anon struct>");
+        }
+        break;
+    }
 
-        case TYPE_DYNAMIC_ARRAY:
-            cstring_append(&string, "[..]");
-            break;
+    case TYPE_UNION: {
+        Type_Union *tu = static_cast<Type_Union*>(type);
+        if (tu->name) {
+            string = string_append(string, tu->name->data);
+        } else {
+            string = string_append(string, "<anon union>");
+        }
+        break;
+    }
 
-        case TYPE_TUPLE: {
-            Type_Tuple *tup = (Type_Tuple *)type;
+    case TYPE_POINTER: {
+        Type_Pointer *tp = static_cast<Type_Pointer*>(type);
+        string = string_append(string, "*");
+        string = string_from_type(string, tp->base);
+        break;
+    }
 
-            cstring_append(&string, "(");
-
-            for (int i = 0; i < tup->types.count; i++) {
-                Type *t = tup->types[i];
-                cstring_append(&string, string_from_type(t));
-                if (i < tup->types.count-1) {
-                    cstring_append(&string, ",");
-                }
+    case TYPE_TUPLE: {
+        Type_Tuple *tuple = static_cast<Type_Tuple*>(type);
+        string = string_append(string, "(");
+        for (int i = 0; i < tuple->types.count; i++) {
+            Type *t = tuple->types[i];
+            string = string_from_type(string, t);
+            if (i < tuple->types.count-1) {
+                string = string_append(string, ",");
             }
-
-            cstring_append(&string, ")");
-
-            break;
         }
+        string = string_append(string, ")");
+        break;
+    }
 
-        case TYPE_PROC: {
-            Type_Proc *proc_type = static_cast<Type_Proc*>(type);
-            cstring_append(&string, string_from_type(proc_type->params));
-            if (proc_type->results) {
-                cstring_append(&string, "->");
-                cstring_append(&string, string_from_type(proc_type->results));
-            }
-            break;
-        }
+    case TYPE_ARRAY: {
+        Type_Array *ta = static_cast<Type_Array*>(type);
+        string = string_append_fmt(string, "[%llu]", ta->array_size);
+        string = string_from_type(string, ta->base);
+        break;
+    }
 
-        case TYPE_ENUM: {
-            Type_Enum *enum_type = static_cast<Type_Enum*>(type);
-            if (enum_type->name) {
-                cstring_append(&string, enum_type->name->data);
-            } else {
-                cstring_append(&string, "<anon enum>");
-            }
-            break;
-        }
+    case TYPE_ARRAY_VIEW: {
+        Type_Array_View *tav = static_cast<Type_Array_View*>(type);
+        string = string_append(string, "[]");
+        string = string_from_type(string, tav->base);
+        break;
+    }
 
-        case TYPE_STRUCT: {
-            Type_Struct *struct_type = static_cast<Type_Struct*>(type);
-            if (struct_type->name) {
-                cstring_append(&string, struct_type->name->data);
-            } else {
-                cstring_append(&string, "<anon struct>");
-            }
-            break;
-        }
-
-        case TYPE_UNION: {
-            Type_Union *union_type = static_cast<Type_Union*>(type);
-            if (union_type->name) {
-                cstring_append(&string, union_type->name->data);
-            } else {
-                cstring_append(&string, "<anon union>");
-            }
-            break;
-        }
-
-        default:
-            cstring_append(&string, type->name->data);
-            break;
-        }
+    case TYPE_DYNAMIC_ARRAY: {
+        Type_Dynamic_Array *tda = static_cast<Type_Dynamic_Array*>(type);
+        string = string_append(string, "[..]");
+        string = string_from_type(string, tda->base);
+        break;
+    }
     }
     return string;
+}
+
+CString string_from_type(Allocator allocator, Type *type) {
+    CString string = cstring_make(allocator, "");
+    return string_from_type(string, type);
+}
+
+CString string_from_type(Type *type) {
+    return string_from_type(heap_allocator(), type);
 }
