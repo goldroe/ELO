@@ -32,7 +32,6 @@ struct Ast_Stmt;
 
 struct Decl;
 
-struct Ast_Pointer_Type;
 struct Ast_Array_Type;
 struct Ast_Proc_Type;
 struct Ast_Struct_Type;
@@ -62,6 +61,7 @@ struct Ast_Enum_Type;
     AST_KIND(AST_DO_WHILE         , "DoWhileStmt"), \
     AST_KIND(AST_WHILE            , "WhileStmt"), \
     AST_KIND(AST_FOR              , "ForStmt"), \
+    AST_KIND(AST_RANGE_STMT       , "RangeStmt"), \
     AST_KIND(AST_BLOCK            , "Block"), \
     AST_KIND(AST_RETURN           , "ReturnStmt"), \
     AST_KIND(AST_CONTINUE         , "ContinueStmt"), \
@@ -78,21 +78,19 @@ struct Ast_Enum_Type;
     AST_KIND(AST_LITERAL          , "LiteralExpr"), \
     AST_KIND(AST_COMPOUND_LITERAL , "CompoundLiteralExpr"), \
     AST_KIND(AST_IDENT            , "IdentExpr"), \
+    AST_KIND(AST_UNINIT           , "UninitExpor"), \
     AST_KIND(AST_CALL             , "CallExpr"), \
     AST_KIND(AST_SUBSCRIPT        , "SubscriptExpr"), \
     AST_KIND(AST_CAST             , "CastExpr"), \
-    AST_KIND(AST_ITERATOR         , "IteratorExpr"), \
     AST_KIND(AST_UNARY            , "UnaryExpr"), \
-    AST_KIND(AST_ADDRESS          , "AddressExpr"), \
+    AST_KIND(AST_STAR_EXPR        , "StarExpr"), \
     AST_KIND(AST_DEREF            , "DerefExpr"), \
     AST_KIND(AST_BINARY           , "BinaryExpr"), \
     AST_KIND(AST_SELECTOR         , "SelectorExpr"), \
     AST_KIND(AST_RANGE            , "RangeExpr"), \
-    AST_KIND(AST_RANGE_STMT       , "RangeStmt"), \
     AST_KIND(AST_SIZEOF           , "SizeofExpr"), \
     AST_KIND(AST_EXPR_END         , "Expr__End"), \
     AST_KIND(AST_TYPE_BEGIN       , "Type__Begin"), \
-    AST_KIND(AST_POINTER_TYPE     , "PointerType"), \
     AST_KIND(AST_ARRAY_TYPE       , "ArrayType"), \
     AST_KIND(AST_PROC_TYPE        , "ProcType"), \
     AST_KIND(AST_ENUM_TYPE        , "EnumType"), \
@@ -115,8 +113,8 @@ extern const char *ast_strings[];
 enum Addressing_Mode {
     ADDRESSING_INVALID,
     ADDRESSING_TYPE,
-    // ADDRESSING_VALUE,
-    ADDRESSING_VARIABLE,
+    ADDRESSING_VALUE,    // rvalue
+    ADDRESSING_VARIABLE, // lvalue
     ADDRESSING_CONSTANT,
     ADDRESSING_PROCEDURE,
 };
@@ -187,6 +185,11 @@ struct Ast_Literal : Ast {
     Token token;
 };
 
+struct Ast_Uninit : Ast {
+    Ast_Uninit() { kind = AST_UNINIT; }
+    Token token;
+};
+
 struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
     Ast *typespec;
@@ -218,8 +221,8 @@ struct Ast_Unary : Ast {
     Token token;
 };
 
-struct Ast_Address : Ast {
-    Ast_Address() { kind = AST_ADDRESS; }
+struct Ast_Star_Expr : Ast {
+    Ast_Star_Expr() { kind = AST_STAR_EXPR; }
     Ast *elem;
     Token token;
 };
@@ -491,12 +494,6 @@ struct Ast_Value_Decl : Ast {
     bool is_mutable;
 };
 
-struct Ast_Pointer_Type : Ast {
-    Ast_Pointer_Type() { kind = AST_POINTER_TYPE; }
-    Ast *elem;
-    Token token;
-};
-
 struct Ast_Array_Type : Ast {
     Ast_Array_Type() { kind = AST_ARRAY_TYPE; }
     Ast *elem;
@@ -559,120 +556,15 @@ struct Ast_Union_Type : Ast {
 
 #define AST_NEW(F, T) static_cast<T*>(ast__init(&(*ast_alloc(sizeof(T), alignof(T)) = T()), F))
 
-internal bool is_ast_type(Ast *node);
+inline Allocator ast_allocator();
+inline Ast *ast__init(Ast *node, Source_File *f);
+inline Ast *ast_alloc(u64 size, int alignment);
 
-internal bool is_ast_stmt(Ast *node);
+inline Allocator ast_allocator();
+Ast *ast_alloc(Source_File *f, u64 size, int alignment);
 
-internal inline Allocator ast_allocator();
-
-internal inline Ast *ast__init(Ast *node, Source_File *f);
-
-internal inline Ast *ast_alloc(u64 size, int alignment);
-
-internal Ast_Root *ast_root(Source_File *f, Array<Ast*> decls);
-
-internal Ast_Empty_Stmt *ast_empty_stmt(Source_File *f, Token token);
-
-internal Ast_Bad_Expr *ast_bad_expr(Source_File *f, Token start, Token end);
-
-internal Ast_Bad_Stmt *ast_bad_stmt(Source_File *f, Token start, Token end);
-
-internal Ast_Bad_Decl *ast_bad_decl(Source_File *f, Token start, Token end);
-
-internal Ast_Return *ast_return_stmt(Source_File *f, Token token, Array<Ast*> values);
-
-internal Ast_Continue *ast_continue_stmt(Source_File *f, Token token);
-
-internal Ast_Break *ast_break_stmt(Source_File *f, Token token);
-
-internal Ast_Fallthrough *ast_fallthrough_stmt(Source_File *f, Token token);
-
-internal Ast_Defer *ast_defer_stmt(Source_File *f, Token token, Ast *stmt);
-
-internal Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast_Block *body);
-
-internal Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr);
-
-internal Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec, bool is_variadic);
-
-internal Ast_Ident *ast_ident(Source_File *f, Token token);
-
-internal Ast_Literal *ast_literal(Source_File *f, Token token);
-
-internal Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements);
-
-internal Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem);
-
-internal Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem);
-
-internal Ast_Address *ast_address_expr(Source_File *f, Token token, Ast *elem);
-
-internal Ast_Range *ast_range_expr(Source_File *f, Token token, Ast *lhs, Ast *rhs);
-
-internal Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem);
-
-internal Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast *elem);
-
-internal Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Array<Ast*> arguments);
-
-internal Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *parent, Ast_Ident *name);
-
-internal Ast_Value_Decl *ast_value_decl(Source_File *f, Array<Ast*> names, Ast *typespec, Array<Ast*> values, bool is_mutable);
-
-internal Ast_Load *ast_load_stmt(Source_File *f, Token token, Token file_token, String8 file_path);
-
-internal Ast_Import *ast_import_stmt(Source_File *f, Token token, Token file_token, String8 file_path);
-
-internal Ast_Binary *ast_binary_expr(Source_File *f, Token token, OP op, Ast *lhs, Ast *rhs);
-
-internal Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Array<Ast*> lhs, Array<Ast*> rhs);
-
-internal Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token close, Ast *base, Ast *index);
-
-internal Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Ast *elem);
-
-internal Ast_Expr_Stmt *ast_expr_stmt(Source_File *f, Ast *expr);
-
-internal Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Array<Ast*> statements);
-
-internal Ast_If *ast_if_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
-
-internal Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Array<Ast*> statements);
-
-internal Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Array<Ast_Case_Label*> clauses, bool check_enum_complete);
-
-internal Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
-
-internal Ast_For *ast_for_stmt(Source_File *f, Token token, Ast *init, Ast *condition, Ast *post, Ast_Block *block);
-
-internal Ast_Range_Stmt *ast_range_stmt(Source_File *f, Token token, Ast_Assignment *init, Ast_Block *block) ;
-
-internal Ast_Pointer_Type *ast_pointer_type(Source_File *f, Token token, Ast *elem);
-
-internal Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *array_size);
-
-internal Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results, bool is_variadic);
-
-internal Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Array<Ast_Enum_Field*> fields);
-
-internal Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
-
-internal Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
-
-internal char *string_from_expr(Ast *expr);
-
-internal inline const char *string_from_ast(Ast_Kind kind);
-
-internal char *string_from_operator(OP op);
-
-internal OP get_unary_operator(Token_Kind kind);
-internal OP get_binary_operator(Token_Kind kind);
-internal int get_operator_precedence(OP op);
-
-
-internal inline Allocator ast_allocator();
-internal Ast *ast_alloc(Source_File *f, u64 size, int alignment);
-internal char *string_from_operator(OP op);
+bool is_ast_type(Ast *node);
+bool is_ast_stmt(Ast *node);
 
 inline bool is_assignment_op(OP op) {
     return OP_ASSIGN <= op && op <= OP_ASSIGN_END;
@@ -681,5 +573,61 @@ inline bool is_assignment_op(OP op) {
 inline bool is_binop(Ast *expr, OP op) {
     return expr->kind == AST_BINARY && ((Ast_Binary *)expr)->op == op;
 }
+
+Ast_Root *ast_root(Source_File *f, Array<Ast*> decls);
+Ast_Empty_Stmt *ast_empty_stmt(Source_File *f, Token token);
+Ast_Bad_Expr *ast_bad_expr(Source_File *f, Token start, Token end);
+Ast_Bad_Stmt *ast_bad_stmt(Source_File *f, Token start, Token end);
+Ast_Bad_Decl *ast_bad_decl(Source_File *f, Token start, Token end);
+Ast_Return *ast_return_stmt(Source_File *f, Token token, Array<Ast*> values);
+Ast_Continue *ast_continue_stmt(Source_File *f, Token token);
+Ast_Break *ast_break_stmt(Source_File *f, Token token);
+Ast_Fallthrough *ast_fallthrough_stmt(Source_File *f, Token token);
+Ast_Defer *ast_defer_stmt(Source_File *f, Token token, Ast *stmt);
+Ast_Proc_Lit *ast_proc_lit(Source_File *f, Ast_Proc_Type *typespec, Ast_Block *body);
+Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr);
+Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec, bool is_variadic);
+Ast_Ident *ast_ident(Source_File *f, Token token);
+Ast_Literal *ast_literal(Source_File *f, Token token);
+Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements);
+Ast_Uninit *ast_uninit_expr(Source_File *f, Token token);
+Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem);
+Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem);
+Ast_Star_Expr *ast_star_expr(Source_File *f, Token token, Ast *elem);
+Ast_Range *ast_range_expr(Source_File *f, Token token, Ast *lhs, Ast *rhs);
+Ast_Deref *ast_deref_expr(Source_File *f, Token token, Ast *elem);
+Ast_Cast *ast_cast_expr(Source_File *f, Token token, Ast *typespec, Ast *elem);
+Ast_Call *ast_call_expr(Source_File *f, Token open, Token close, Ast *elem, Array<Ast*> arguments);
+Ast_Selector *ast_selector_expr(Source_File *f, Token token, Ast *parent, Ast_Ident *name);
+Ast_Value_Decl *ast_value_decl(Source_File *f, Array<Ast*> names, Ast *typespec, Array<Ast*> values, bool is_mutable);
+Ast_Load *ast_load_stmt(Source_File *f, Token token, Token file_token, String file_path);
+Ast_Import *ast_import_stmt(Source_File *f, Token token, Token file_token, String file_path);
+Ast_Binary *ast_binary_expr(Source_File *f, Token token, OP op, Ast *lhs, Ast *rhs);
+Ast_Assignment *ast_assignment_stmt(Source_File *f, Token token, OP op, Array<Ast*> lhs, Array<Ast*> rhs);
+Ast_Subscript *ast_subscript_expr(Source_File *f, Token open, Token close, Ast *base, Ast *index);
+Ast_Sizeof *ast_sizeof_expr(Source_File *f, Token token, Ast *elem);
+Ast_Expr_Stmt *ast_expr_stmt(Source_File *f, Ast *expr);
+Ast_Block *ast_block_stmt(Source_File *f, Token open, Token close, Array<Ast*> statements);
+Ast_If *ast_if_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
+Ast_Case_Label *ast_case_label(Source_File *f, Token token, Ast *cond, Array<Ast*> statements);
+Ast_Ifcase *ast_ifcase_stmt(Source_File *f, Token token, Token open, Token close, Ast *cond, Array<Ast_Case_Label*> clauses, bool check_enum_complete);
+Ast_While *ast_while_stmt(Source_File *f, Token token, Ast *cond, Ast_Block *block);
+Ast_For *ast_for_stmt(Source_File *f, Token token, Ast *init, Ast *condition, Ast *post, Ast_Block *block);
+Ast_Range_Stmt *ast_range_stmt(Source_File *f, Token token, Ast_Assignment *init, Ast_Block *block) ;
+Ast_Array_Type *ast_array_type(Source_File *f, Token token, Ast *elem, Ast *array_size);
+Ast_Proc_Type *ast_proc_type(Source_File *f, Token open, Token close, Array<Ast_Param*> params, Array<Ast*> results, bool is_variadic);
+Ast_Enum_Type *ast_enum_type(Source_File *f, Token token, Token open, Token close, Ast *base_type, Array<Ast_Enum_Field*> fields);
+Ast_Struct_Type *ast_struct_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
+Ast_Union_Type *ast_union_type(Source_File *f, Token token, Token open, Token close, Array<Ast_Value_Decl*> members);
+
+CString string_from_expr(CString string, Ast *expr);
+CString string_from_expr(Allocator allocator, Ast *expr);
+CString string_from_expr(Ast *expr);
+const char *string_from_ast_kind(Ast_Kind kind);
+
+char *string_from_operator(OP op);
+OP get_unary_operator(Token_Kind kind);
+OP get_binary_operator(Token_Kind kind);
+int get_operator_precedence(OP op);
 
 #endif // AST_H
