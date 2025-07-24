@@ -8,21 +8,28 @@ struct String {
     u8 *data;
     u64 count;
 };
-typedef String String8;
 
-typedef char *cstring;
-struct cstring_header {
-    u64 len;
-    u64 cap;
-    char data[0];
+typedef char *CString;
+struct CString_Header {
+    Allocator allocator;
+    u64 length;
+    u64 capacity;
 };
 
-#define CSTRING_HEADER(str) (cstring_header *)((str) ? ((str) - offsetof(cstring_header, data)) : NULL)
-#define CSTRING_LEN(str)    ((str) ? (CSTRING_HEADER(str))->len : 0)
-#define CSTRING_CAP(str)    ((str) ? (CSTRING_HEADER(str))->cap : 0)
+#define CSTRING_HEADER(Str)  ((CString_Header *)(Str) - 1)
 
-#define str8_lit(S) {(u8 *)(S), sizeof((S)) - 1}
-#define str_lit(S) str8_lit(S)
+// typedef char *cstring;
+// struct cstring_header {
+//     u64 len;
+//     u64 cap;
+//     char data[0];
+// };
+
+// #define CSTRING_HEADER(str) (cstring_header *)((str) ? ((str) - offsetof(cstring_header, data)) : NULL)
+// #define CSTRING_LEN(str)    ((str) ? (CSTRING_HEADER(str))->len : 0)
+// #define CSTRING_CAP(str)    ((str) ? (CSTRING_HEADER(str))->cap : 0)
+
+#define str_lit(S) {(u8 *)(S), sizeof((S)) - 1}
 #define LIT(S) (int)((S).count), (S).data
 
 enum String_Match_Flags {
@@ -31,31 +38,30 @@ enum String_Match_Flags {
 };
 EnumDefineFlagOperators(String_Match_Flags);
 
-internal u64 djb2_hash_string(String8 string);
-internal u64 cstr8_length(const char *c);
-internal String8 str8_zero();
-internal String8 str8(u8 *c, u64 count);
-internal String8 str8_cstring(const char *c);
-internal String8 str8_rng(String8 string, Rng_U64 rng);
+u64 djb2_hash_string(String string);
+u64 cstr8_length(const char *c);
+String str8_zero();
+String str8(u8 *c, u64 count);
+String str8_cstring(const char *c);
+String str8_rng(String string, Rng_U64 rng);
 
-internal String8 str8_copy(Allocator allocator, String8 string);
-internal String8 str8_concat(Allocator allocator, String8 first, String8 second);
-internal bool str8_match(String8 first, String8 second, String_Match_Flags flags);
+String str8_copy(Allocator allocator, String string);
+String str8_concat(Allocator allocator, String first, String second);
+bool str8_match(String first, String second, String_Match_Flags flags);
 
-internal String8 str8_pushfv(Allocator allocator, const char *fmt, va_list args);
-internal String8 str8_pushf(Allocator allocator, const char *fmt, ...);
-internal u64 str8_find_substr(String8 string, String8 substring);
+String str8_pushfv(Allocator allocator, const char *fmt, va_list args);
+String str8_pushf(Allocator allocator, const char *fmt, ...);
+u64 str8_find_substr(String string, String substring);
 
-internal cstring make_cstring_len(const char *str, u64 len);
-internal cstring make_cstring(const char *str);
-internal void cstring_prepend(cstring *string, const char *s);
-internal cstring cstring_append(cstring string, const char *s);
-internal void cstring_append(cstring *string, const char *s);
-internal cstring cstring_fmt(const char *fmt, ...);
-internal cstring cstring_append_fmt(cstring string, const char *fmt, ...);
-internal void cstring_append_fmt(cstring *string, const char *fmt, ...);
+CString cstring_make(Allocator allocator, const char *str, u64 length);
+CString cstring_make(Allocator allocator, const char *str);
+CString cstring_make_fmt(Allocator allocator, const char *fmt, ...);
+void string_free(CString string);
+CString string_append(CString string, const char *other_str, u64 other_len);
+CString string_append(CString string, const char *s);
+CString string_append_fmt(CString string, const char *fmt, ...);
 
-inline bool str8_equal(String8 first, String8 second) {
+inline bool str8_equal(String first, String second) {
     return first.count == second.count && (memcmp(first.data, second.data, first.count) == 0);
 }
 
