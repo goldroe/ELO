@@ -267,14 +267,14 @@ Type_Struct *Resolver::resolve_struct_type(Ast_Struct_Type *type) {
                 struct_align = alignment;
             }
             field_offset = AlignForward(field_offset, alignment);
-            array_add(&st->offsets, (s64)field_offset);
+            array_add(&st->offsets, (i64)field_offset);
             field_offset += (int)field_type->size;
         }
     }
     st->size = AlignForward(field_offset, struct_align);
 
     // printf("STRUCT %s\n", st->name ? st->name->data : "");
-    // for (s64 offset : st->offsets) {
+    // for (i64 offset : st->offsets) {
     //     printf("offset: %lld\n", offset);
     // }
     // printf("---%lld\n", st->size);
@@ -435,11 +435,10 @@ Type *Resolver::resolve_type(Ast *type) {
         }
     }
 
-    case AST_POINTER_TYPE: {
-        Ast_Pointer_Type *pointer = (Ast_Pointer_Type *)type;
-        type_complete_path_add(pointer);
-
-        Type *elem = resolve_type(pointer->elem);
+    case AST_STAR_EXPR: {
+        Ast_Star_Expr *star = static_cast<Ast_Star_Expr*>(type);
+        type_complete_path_add(star);
+        Type *elem = resolve_type(star->elem);
         Type_Pointer *pt = pointer_type_create(elem);
         return pt;
     }
@@ -511,7 +510,12 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
         //@Todo Check for simple value decls
         if (vd->is_mutable) {
             for (Ast *value : vd->values) {
-                resolve_expr_base(value);
+                if (value->kind == AST_UNINIT) {
+                    value->type = type_uninit_value;
+                    value->mode = ADDRESSING_VALUE;
+                } else {
+                    resolve_expr_base(value);
+                }
             }
         }
 
@@ -521,7 +525,12 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
     array_add(&current_proc->local_vars, (Ast *)vd);
 
     for (Ast *value : vd->values) {
-        resolve_expr_base(value);
+        if (value->kind == AST_UNINIT) {
+            value->type = type_uninit_value;
+            value->mode = ADDRESSING_VALUE;
+        } else {
+            resolve_expr_base(value);
+        }
     }
 
     int total_values_count = get_total_value_count(vd->values);
@@ -542,7 +551,11 @@ void Resolver::resolve_value_decl(Ast_Value_Decl *vd, bool is_global) {
 
         for (Ast *value : vd->values) {
             if (!is_convertible(spec_type, value->type)) {
-                report_ast_error(value, "cannot convert from '%s to '%s'.\n", string_from_type(value->type), string_from_type(spec_type));
+                CString value_type_str = string_from_type(value->type);
+                CString spec_type_str = string_from_type(spec_type);
+                report_ast_error(value, "cannot convert from '%s to '%s'.\n", value_type_str, spec_type_str);
+                string_free(value_type_str);
+                string_free(spec_type_str);
             }
         }
     } else {
