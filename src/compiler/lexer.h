@@ -40,7 +40,7 @@ struct Lexer {
     Token current();
 
     int get_next_hex_digit();
-    String8 scan_number_suffix();
+    String scan_number_suffix();
     f64 Lexer::scan_mantissa();
     void Lexer::scan_number(Token *token);
 
@@ -54,6 +54,6 @@ struct Lexer {
     void eat_comment_region();
 };
 
-internal Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index);
+Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index);
 
 #endif // LEXER_H

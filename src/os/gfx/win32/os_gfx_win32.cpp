@@ -1,7 +1,7 @@
-global HCURSOR win32_hcursor;
-global Arena *win32_event_arena;
-global OS_Event_List win32_events;
-global bool win32_resizing;
+HCURSOR win32_hcursor;
+Arena *win32_event_arena;
+OS_Event_List win32_events;
+bool win32_resizing;
 
 internal void os_post_quit_message(int exit_code) {
     PostQuitMessage(exit_code);

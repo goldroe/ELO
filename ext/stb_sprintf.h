@@ -600,10 +600,10 @@ STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB *callback,
          // copy the string in
          goto scopy;
 
-      //@Note String8 impl
+      //@Note String impl
       case 'S':
       {
-          String8 string = va_arg(va, String8);
+          String string = va_arg(va, String);
           s = (char *)string.data;
           l = (stbsp__uint32)string.count;
           lead[0] = 0;

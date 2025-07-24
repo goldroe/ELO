@@ -11,9 +11,9 @@ extern Arena *g_report_arena;
 extern int g_error_count;
 
 
-u64 get_line_start_after_spaces(String8 string, u64 start);
+u64 get_line_start_after_spaces(String string, u64 start);
 
-u64 get_next_line_boundary(String8 string, u64 start);
+u64 get_next_line_boundary(String string, u64 start);
 
 void report_out_va(const char *fmt, va_list args);
 

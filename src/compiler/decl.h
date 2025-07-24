@@ -65,17 +65,17 @@ struct Scope {
     Ast_Block *block;
 };
 
-internal bool is_anonymous(Decl *decl);
+bool is_anonymous(Decl *decl);
 
-internal Decl *decl_type_create(Atom *name);
-internal Decl *decl_variable_create(Atom *name);
-internal Decl *decl_constant_create(Atom *name);
-internal Decl *decl_procedure_create(Atom *name);
+Decl *decl_type_create(Atom *name);
+Decl *decl_variable_create(Atom *name);
+Decl *decl_constant_create(Atom *name);
+Decl *decl_procedure_create(Atom *name);
 
-internal Scope *scope_create(Scope_Kind kind);
-internal void scope_add(Scope *scope, Decl *decl);
-internal Decl *scope_find(Scope *scope, Atom *name);
-internal Decl *scope_lookup(Scope *scope, Atom *name);
+Scope *scope_create(Scope_Kind kind);
+void scope_add(Scope *scope, Decl *decl);
+Decl *scope_find(Scope *scope, Atom *name);
+Decl *scope_lookup(Scope *scope, Atom *name);
 
 
 #endif //DECL_H

@@ -31,7 +31,6 @@ struct Resolver {
     void type_complete_path_add(Ast *type);
     void type_complete_path_clear();
 
-
     void resolve_expr_base(Ast *expr);
     void resolve_single_value(Ast *expr);
 
@@ -66,7 +65,7 @@ struct Resolver {
     void resolve_ident(Ast_Ident *ident);
     void resolve_range_expr(Ast_Range *range);
     void resolve_selector_expr(Ast_Selector *selector);
-    void resolve_address_expr(Ast_Address *address);
+    void resolve_star_expr(Ast_Star_Expr *star);
     void resolve_deref_expr(Ast_Deref *deref);
     void resolve_call_expr(Ast_Call *call);
     void resolve_literal(Ast_Literal *literal);

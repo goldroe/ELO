@@ -4,32 +4,33 @@
 #include "types.h"
 #include "decl.h"
 
-internal char *get_scoping_name(Scope *scope) {
-    cstring string = nullptr;
-    while (scope) {
-        if (!scope->name) {
-            break;
-        }
+char *get_scoping_name(Scope *scope) {
+    return (char *)scope->name->data;
+    // cstring string = nullptr;
+    // while (scope) {
+    //     if (!scope->name) {
+    //         break;
+    //     }
 
-        cstring_prepend(&string, scope->name->data); 
+    //     cstring_prepend(&string, scope->name->data); 
 
-        if (scope->parent && scope->parent->name) {
-            cstring_prepend(&string, ".");
-        }
+    //     if (scope->parent && scope->parent->name) {
+    //         cstring_prepend(&string, ".");
+    //     }
 
-        scope = scope->parent;
-    }
-    return string;
+    //     scope = scope->parent;
+    // }
+    // return string;
 }
 
-internal char *get_name_scoped(Atom *name, Scope *scope) {
-    char *string = make_cstring(name->data);
-    if (scope->name) {
-        cstring_prepend(&string, ".");
-        char *scope_name = get_scoping_name(scope);
-        cstring_prepend(&string, scope_name);
-    }
-    return string;
+char *get_name_scoped(Atom *name, Scope *scope) {
+    return (char *)name->data;
+//     char *string = make_cstring(name->data);
+//     if (scope->name) {
+//         cstring_prepend(&string, ".");
+//         char *scope_name = get_scoping_name(scope);
+//         cstring_prepend(&string, scope_name);
+//     }
 }
 
 int get_value_count(Type *type) {
@@ -40,7 +41,7 @@ int get_value_count(Type *type) {
     return 1;
 }
 
-internal int get_total_value_count(Array<Ast*> values) {
+int get_total_value_count(Array<Ast*> values) {
     int count = 0;
     for (Ast *v : values) {
         count += get_value_count(v->type);
@@ -48,7 +49,7 @@ internal int get_total_value_count(Array<Ast*> values) {
     return count;
 }
 
-internal Type *type_from_index(Type *type, int idx) {
+Type *type_from_index(Type *type, int idx) {
     if (type->kind == TYPE_TUPLE) {
         Type_Tuple *tuple = (Type_Tuple *)type;
         Assert(idx < tuple->types.count);
@@ -59,7 +60,7 @@ internal Type *type_from_index(Type *type, int idx) {
     }
 }
 
-internal Decl *lookup_field(Type *type, Atom *name, bool is_type) {
+Decl *lookup_field(Type *type, Atom *name, bool is_type) {
     Decl *select = nullptr;
     if (is_type) {
         if (is_struct_type(type)) {

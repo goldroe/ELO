@@ -16,13 +16,13 @@ Suffix_Literal suffix_literals[] = {
 #undef LITERAL_KIND
 };
 
-global Token poisoned_token = {TOKEN_UNKNOWN};
+Token poisoned_token = {TOKEN_UNKNOWN};
 
-global u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];
+u8 g_lexer_string_buffer[LEXER_MAX_STRING_LENGTH];
 
-internal void compiler_error(char *fmt, ...);
+void compiler_error(char *fmt, ...);
 
-internal const char *string_from_token(Token_Kind token) {
+const char *string_from_token(Token_Kind token) {
     return token_strings[token];
 }
 
@@ -43,7 +43,7 @@ u8 Lexer::get_escape_character(u8 c) {
     }
 }
 
-internal Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index) {
+Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 index) {
     Source_Pos result;
     result.file = file;
     result.line = line;
@@ -52,11 +52,11 @@ internal Source_Pos source_pos_make(Source_File *file, u64 line, u64 col, u64 in
     return result;
 }
 
-internal inline bool is_assignment_op(Token_Kind op) {
+inline bool is_assignment_op(Token_Kind op) {
     return TOKEN_ASSIGN_BEGIN < op && op < TOKEN_ASSIGN_END;
 }
 
-internal bool is_unary_op(Token_Kind token) {
+bool is_unary_op(Token_Kind token) {
     switch (token) {
     default:
         return false;
@@ -69,11 +69,11 @@ internal bool is_unary_op(Token_Kind token) {
     }
 }
 
-internal bool is_operator(Token_Kind op) {
+bool is_operator(Token_Kind op) {
     return TOKEN_OPERATOR_BEGIN < op && op < TOKEN_OPERATOR_END;
 }
 
-internal bool operator_is_overloadable(Token_Kind op) {
+bool operator_is_overloadable(Token_Kind op) {
     switch (op) {
     default:
         return false;

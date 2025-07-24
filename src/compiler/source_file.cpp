@@ -2,9 +2,9 @@
 #include "source_file.h"
 #include "os/os.h"
 
-global Source_File_Map source_file_map;
+Source_File_Map source_file_map;
 
-internal Source_File *source_file_create(String8 file_path) {
+Source_File *source_file_create(String file_path) {
     for (Source_File *file = source_file_map.first; file; file = file->next) {
         if (str8_equal(file_path, file->path)) {
             return file;

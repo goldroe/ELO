@@ -6,7 +6,7 @@
 #include "OP.h"
 #include "types.h"
 
-internal String string_from_bigint(bigint a) {
+String string_from_bigint(bigint a) {
     local_persist char buffer[128];
     // MemoryZero(buffer, 128);
     size_t written = 0;
@@ -15,58 +15,58 @@ internal String string_from_bigint(bigint a) {
     return str;
 }
 
-internal s64 s64_from_bigint(bigint i) {
-    s64 v = mp_get_i64(&i);
+i64 s64_from_bigint(bigint i) {
+    i64 v = mp_get_i64(&i);
     return v;
 }
 
-internal s64 u64_from_bigint(bigint i) {
+i64 u64_from_bigint(bigint i) {
     u64 v = mp_get_u64(&i);
     return v;
 }
 
-internal f64 f64_from_bigint(bigint i) {
+f64 f64_from_bigint(bigint i) {
     f64 f = mp_get_double(&i);
     return f;
 }
 
-internal bigint bigint_copy(const bigint *a) {
+bigint bigint_copy(const bigint *a) {
     bigint i = {};
     mp_init_copy(&i, a);
     return i;
 }
 
-internal bigint bigint_make(int value) {
+bigint bigint_make(int value) {
     bigint i = {};
     mp_init_i32(&i, value);
     return i;
 }
 
-internal bigint bigint_u32_make(uint32_t value) {
+bigint bigint_u32_make(uint32_t value) {
     bigint i = {};
     mp_init_u32(&i, value);
     return i;
 }
 
-internal bigint bigint_i32_make(int32_t value) {
+bigint bigint_i32_make(int32_t value) {
     bigint i = {};
     mp_init_i32(&i, value);
     return i;
 }
 
-internal bigint bigint_u64_make(uint64_t value) {
+bigint bigint_u64_make(uint64_t value) {
     bigint i = {};
     mp_init_u64(&i, value);
     return i;
 }
 
-internal bigint bigint_i64_make(int64_t value) {
+bigint bigint_i64_make(int64_t value) {
     bigint i = {};
     mp_init_i64(&i, value);
     return i;
 }
 
-internal bigint bigint_f64_make(f64 f) {
+bigint bigint_f64_make(f64 f) {
     bigint i = {};
     mp_init(&i);
     u64 u = (u64)f;
@@ -74,44 +74,44 @@ internal bigint bigint_f64_make(f64 f) {
     return i;
 }
 
-internal void bigint_add(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_add(bigint *dst, const bigint *a, const bigint *b) {
     mp_add(a, b, dst);
 }
 
-internal void bigint_add(bigint *dst, const bigint *a, int d) {
+void bigint_add(bigint *dst, const bigint *a, int d) {
     mp_add_d(a, d, dst);
 }
 
-internal void bigint_sub(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_sub(bigint *dst, const bigint *a, const bigint *b) {
     mp_sub(a, b, dst);
 }
 
-internal void bigint_mul(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_mul(bigint *dst, const bigint *a, const bigint *b) {
     mp_mul(a, b, dst);
 }
 
-internal void bigint_div(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_div(bigint *dst, const bigint *a, const bigint *b) {
     bigint r = {};
     mp_div(a, b, dst, &r);
 }
 
-internal void bigint_or(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_or(bigint *dst, const bigint *a, const bigint *b) {
     mp_or(a, b, dst);
 }
 
-internal void bigint_xor(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_xor(bigint *dst, const bigint *a, const bigint *b) {
     mp_xor(a, b, dst);
 }
 
-internal void bigint_and(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_and(bigint *dst, const bigint *a, const bigint *b) {
     mp_and(a, b, dst);
 }
 
-internal void bigint_mod(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_mod(bigint *dst, const bigint *a, const bigint *b) {
     mp_mod(a, b, dst);
 }
 
-internal void bigint_lazy_or(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_lazy_or(bigint *dst, const bigint *a, const bigint *b) {
     if (mp_iszero(a) && mp_iszero(b)) {
         mp_set(dst, 0);
     } else {
@@ -119,7 +119,7 @@ internal void bigint_lazy_or(bigint *dst, const bigint *a, const bigint *b) {
     }
 }
 
-internal void bigint_lazy_and(bigint *dst, const bigint *a, const bigint *b) {
+void bigint_lazy_and(bigint *dst, const bigint *a, const bigint *b) {
     if (mp_iszero(a) || mp_iszero(b)) {
         mp_set(dst, 0);
     } else {
@@ -127,7 +127,7 @@ internal void bigint_lazy_and(bigint *dst, const bigint *a, const bigint *b) {
     }
 }
 
-internal void bigint_cmp(bigint *dst, const bigint *a, const bigint *b, OP op) {
+void bigint_cmp(bigint *dst, const bigint *a, const bigint *b, OP op) {
     mp_ord ord = mp_cmp(a, b);
     mp_digit x = 0;
     switch (op) {
@@ -141,35 +141,35 @@ internal void bigint_cmp(bigint *dst, const bigint *a, const bigint *b, OP op) {
     mp_init_set(dst, x);
 }
 
-internal Constant_Value constant_value_int_make(bigint i) {
+Constant_Value constant_value_int_make(bigint i) {
     Constant_Value value = {};
     value.kind = CONSTANT_VALUE_INTEGER;
     value.value_integer = i;
     return value;
 }
 
-internal Constant_Value constant_value_float_make(f64 f) {
+Constant_Value constant_value_float_make(f64 f) {
     Constant_Value value = {};
     value.kind = CONSTANT_VALUE_FLOAT;
     value.value_float = f;
     return value;
 }
 
-internal Constant_Value constant_value_string_make(String string) {
+Constant_Value constant_value_string_make(String string) {
     Constant_Value value = {};
     value.kind = CONSTANT_VALUE_STRING;
     value.value_string = string;
     return value;
 }
 
-internal Constant_Value constant_value_typeid_make(Type *type) {
+Constant_Value constant_value_typeid_make(Type *type) {
     Constant_Value value = {};
     value.kind = CONSTANT_VALUE_TYPEID;
     value.value_typeid = type;
     return value;
 }
 
-internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
+Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
     switch (value.kind) {
     case CONSTANT_VALUE_INTEGER: {
         if (is_float_type(ct)) {
@@ -188,7 +188,7 @@ internal Constant_Value constant_cast_value(Constant_Value value, Type *ct) {
     return value;
 }
 
-internal Constant_Value constant_unary_op_value(OP op, Constant_Value x) {
+Constant_Value constant_unary_op_value(OP op, Constant_Value x) {
     switch (x.kind) {
     case CONSTANT_VALUE_INTEGER: {
         Constant_Value v = {CONSTANT_VALUE_INTEGER};
@@ -228,7 +228,7 @@ internal Constant_Value constant_unary_op_value(OP op, Constant_Value x) {
     return {};
 }
 
-internal Constant_Value constant_binary_op_value(OP op, Constant_Value x, Constant_Value y) {
+Constant_Value constant_binary_op_value(OP op, Constant_Value x, Constant_Value y) {
     switch (x.kind) {
     case CONSTANT_VALUE_INTEGER: {
         bigint *a = &x.value_integer;

@@ -189,8 +189,8 @@ struct OS_File_List {
 
 OS_Event_Flags os_event_flags();
 OS_Key os_key_from_vk(u32 vk);
-inline s64 get_wall_clock();
-inline f32 get_ms_elapsed(s64 start, s64 end);
+inline i64 get_wall_clock();
+inline f32 get_ms_elapsed(i64 start, i64 end);
 bool os_chdir(String path);
 bool os_file_exists(String file_name);
 bool os_valid_handle(OS_Handle handle);

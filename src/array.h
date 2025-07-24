@@ -25,7 +25,7 @@ public:
 };
 
 template <typename T>
-internal void array__grow(Array<T> *array, size_t num) {
+void array__grow(Array<T> *array, size_t num) {
     size_t new_cap = 0;
     while (new_cap < array->capacity + num) {
         new_cap = 2 * new_cap + 1;
@@ -37,7 +37,7 @@ internal void array__grow(Array<T> *array, size_t num) {
 }
 
 template <typename T>
-internal void array_add(Array<T> *array, T element) {
+void array_add(Array<T> *array, T element) {
     if (array->count + 1 > array->capacity) {
         array__grow(array, 1);
     }
@@ -46,7 +46,7 @@ internal void array_add(Array<T> *array, T element) {
 }
 
 template <typename T>
-internal void array_remove(Array<T> *array, size_t index) {
+void array_remove(Array<T> *array, size_t index) {
     assert(index >= 0);
     assert(index < array->count);
     array->count -= 1;
@@ -59,13 +59,13 @@ internal void array_remove(Array<T> *array, size_t index) {
 }
 
 template <typename T>
-internal void array_pop(Array<T> *array) {
+void array_pop(Array<T> *array) {
     assert(array->count > 0);
     array->count--;
 }
 
 template <typename T>
-internal void array_clear(Array<T> *array) {
+void array_clear(Array<T> *array) {
     if (array->data) {
         free(array->allocator, array->data);
         array->data = nullptr;
@@ -75,7 +75,7 @@ internal void array_clear(Array<T> *array) {
 }
 
 template <typename T>
-internal void array_reserve(Array<T> *array, size_t new_capacity) {
+void array_reserve(Array<T> *array, size_t new_capacity) {
     assert(new_capacity > 0);
     if (array->capacity < new_capacity) {
         array__grow(array, new_capacity);
@@ -83,28 +83,28 @@ internal void array_reserve(Array<T> *array, size_t new_capacity) {
 }
 
 template <typename T>
-internal void array_reset_count(Array<T> *array) {
+void array_reset_count(Array<T> *array) {
     array->count = 0;
 }
 
 template <typename T>
-internal T *array_begin(Array<T> &array) {
+T *array_begin(Array<T> &array) {
     return array.data;
 }
 
 template <typename T>
-internal T *array_end(Array<T> &array) {
+T *array_end(Array<T> &array) {
     return array.data + array.count - 1;
 }
     
 template <typename T>
-internal T& array_front(Array<T> &array) {
+T& array_front(Array<T> &array) {
     assert(array.count > 0);
     return array.data[0];
 }
 
 template <typename T>
-internal T& array_back(Array<T> &array) {
+T& array_back(Array<T> &array) {
     assert(array.count > 0);
     return array.data[array.count - 1];
 }
@@ -123,7 +123,7 @@ internal T& array_back(Array<T> &array) {
 
 
 template <typename T>
-internal void array_init(Array<T> *array, Allocator a) {
+void array_init(Array<T> *array, Allocator a) {
     array->allocator = a;
     array->data = nullptr;
     array->capacity = 0;
@@ -131,7 +131,7 @@ internal void array_init(Array<T> *array, Allocator a) {
 }
 
 template <typename T>
-internal void array_init(Array<T> *array, Allocator a, size_t num) {
+void array_init(Array<T> *array, Allocator a, size_t num) {
     array->allocator = a;
     array->data = nullptr;
     array->count = 0;
@@ -140,13 +140,13 @@ internal void array_init(Array<T> *array, Allocator a, size_t num) {
 }
 
 template <typename T>
-internal Array<T> array_make(const Allocator a) {
+Array<T> array_make(const Allocator a) {
     Array<T> array = {a};
     return array;
 }
 
 template <typename T>
-internal Array<T> array_make(Allocator a, std::initializer_list<T> init) {
+Array<T> array_make(Allocator a, std::initializer_list<T> init) {
     Array<T> array = {a};
     array__grow(&array, init.size());
     array.count = init.size();
@@ -156,7 +156,7 @@ internal Array<T> array_make(Allocator a, std::initializer_list<T> init) {
 }
 
 template <typename T>
-internal T *array_find(Array<T> &array, T val) {
+T *array_find(Array<T> &array, T val) {
     for (u64 i = 0; i < array.count; i++) {
         T *ptr = &array.data[i];
         if (value == *ptr) {
@@ -175,7 +175,7 @@ internal T *array_find(Array<T> &array, T val) {
     for (size_t _iterator = 0; _iterator < Arr.count; _iterator++, Var = Arr.data[_iterator]) \
 
 template <typename T>
-internal Array<T> array_copy(Array<T> &array) {
+Array<T> array_copy(Array<T> &array) {
     Array<T> copy = {};
     copy.allocator = array.allocator;
     copy.capacity = array.capacity;

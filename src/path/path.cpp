@@ -3,11 +3,11 @@
 #include "base/base_core.h"
 #include "path.h"
 
-internal inline bool is_separator(u8 c) {
+inline bool is_separator(u8 c) {
     return c == '/' || c == '\\';
 }
 
-internal String path_join(Allocator allocator, String parent, String child) {
+String path_join(Allocator allocator, String parent, String child) {
     Assert(parent.data);
     String result = str8_zero();
     bool ends_in_slash = is_separator(parent.data[parent.count - 1]);
@@ -21,7 +21,7 @@ internal String path_join(Allocator allocator, String parent, String child) {
     return result;
 }
 
-internal String path_strip_extension(Allocator allocator, String path) {
+String path_strip_extension(Allocator allocator, String path) {
     Assert(path.data);
     for (u64 i = path.count - 1; i > 0; i--) {
         switch (path.data[i]) {
@@ -39,7 +39,7 @@ internal String path_strip_extension(Allocator allocator, String path) {
     return str8_zero();
 }
 
-internal String path_get_extension(String path) {
+String path_get_extension(String path) {
     Assert(path.data);
     for (u64 i = path.count - 1; i > 0; i--) {
         switch (path.data[i]) {
@@ -57,7 +57,7 @@ internal String path_get_extension(String path) {
     return str8_zero();
 }
 
-internal String path_dir_name(String path) {
+String path_dir_name(String path) {
     String result = str8_zero();
     if (path.data) {
         u64 end = path.count - 1;
@@ -70,7 +70,7 @@ internal String path_dir_name(String path) {
     return result;
 }
 
-internal String path_file_name(String path) {
+String path_file_name(String path) {
     String result = str8_zero();
     if (path.data) {
         if (is_separator(path.data[path.count - 1])) {
@@ -88,7 +88,7 @@ internal String path_file_name(String path) {
     return result;
 }
 
-internal String path_remove_extension(String path) {
+String path_remove_extension(String path) {
     String result = path;
     for (u64 i = path.count; i >= 0; i--) {
         if (is_separator(path.data[i - 1])) {
@@ -102,7 +102,7 @@ internal String path_remove_extension(String path) {
     return result;
 }
 
-internal String path_strip_dir_name(Allocator allocator, String path) {
+String path_strip_dir_name(Allocator allocator, String path) {
     String result = str8_zero();
     if (path.data) {
         u64 end = path.count - 1;
@@ -116,7 +116,7 @@ internal String path_strip_dir_name(Allocator allocator, String path) {
     return result;
 }
 
-internal String path_strip_file_name(Allocator allocator, String path) {
+String path_strip_file_name(Allocator allocator, String path) {
     String result = str8_zero();
     if (path.data) {
         if (is_separator(path.data[path.count - 1])) {
@@ -134,7 +134,7 @@ internal String path_strip_file_name(Allocator allocator, String path) {
     return result;
 }
 
-internal u64 path_last_segment(String path) {
+u64 path_last_segment(String path) {
     u64 result = 0;
     for (u64 i = path.count; i > 0; i -= 1) {
         if (is_separator(path.data[i - 1])) {
@@ -145,7 +145,7 @@ internal u64 path_last_segment(String path) {
     return result;
 }
 
-internal String normalize_path(Allocator allocator, String path) {
+String normalize_path(Allocator allocator, String path) {
     Assert(path.data);
     String result = str8_zero();
     result.data = array_alloc(allocator, u8, path.count + 1);
@@ -156,9 +156,9 @@ internal String normalize_path(Allocator allocator, String path) {
             u64 seg_pos = path_last_segment(result);
             Rng_U64 rng = rng_u64(seg_pos, idx);
             String segment = str8_rng(path, rng);
-            if (str8_match(segment, str8_lit("."), StringMatchFlag_Nil)) {
+            if (str8_match(segment, str_lit("."), StringMatchFlag_Nil)) {
                 result.count -= rng.max - rng.min;
-            } else if (str8_match(segment, str8_lit(".."), StringMatchFlag_Nil)) {
+            } else if (str8_match(segment, str_lit(".."), StringMatchFlag_Nil)) {
                 String b = result;
                 b.count = rng.min - 1;
                 u64 prev_seg = path_last_segment(b);
@@ -178,7 +178,7 @@ internal String normalize_path(Allocator allocator, String path) {
     return result;
 }
 
-internal bool path_is_absolute(String path) {
+bool path_is_absolute(String path) {
     switch (path.data[0]) {
 #if defined(__linux__)
     case '~':
@@ -191,6 +191,6 @@ internal bool path_is_absolute(String path) {
     return false;
 }
 
-internal bool path_is_relative(String path) {
+bool path_is_relative(String path) {
     return !path_is_absolute(path);
 }

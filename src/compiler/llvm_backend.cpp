@@ -4,23 +4,23 @@
 #include "path/path.h"
 #include "os/os.h"
 
-global Arena *llvm_arena;
+Arena *llvm_arena;
 
 #define llvm_alloc(T) (T*)llvm_backend_alloc(sizeof(T), alignof(T))
-internal void *llvm_backend_alloc(u64 size, int alignment) {
+void *llvm_backend_alloc(u64 size, int alignment) {
     void *result = (void *)arena_alloc(llvm_arena, size, alignment);
     MemoryZero(result, size);
     return result;
 }
 
-internal BE_Struct *llvm_backend_struct_create(Atom *name) {
+BE_Struct *llvm_backend_struct_create(Atom *name) {
     BE_Struct *bs = llvm_alloc(BE_Struct);
     bs->name = name;
     array_init(&bs->element_types, heap_allocator());
     return bs;
 }
 
-internal BE_Proc *llvm_backend_proc_create(Atom *name, Ast_Proc_Lit *proc_lit) {
+BE_Proc *llvm_backend_proc_create(Atom *name, Ast_Proc_Lit *proc_lit) {
     BE_Proc *bp = llvm_alloc(BE_Proc);
     bp->name = name;
     bp->proc_lit = proc_lit;
@@ -29,7 +29,7 @@ internal BE_Proc *llvm_backend_proc_create(Atom *name, Ast_Proc_Lit *proc_lit) {
     return bp;
 }
 
-internal BE_Var *llvm_backend_var_create(Decl *decl, llvm::Type *type) {
+BE_Var *llvm_backend_var_create(Decl *decl, llvm::Type *type) {
     BE_Var *bv = llvm_alloc(BE_Var);
     bv->name = decl->name;
     bv->decl = decl;
@@ -37,7 +37,7 @@ internal BE_Var *llvm_backend_var_create(Decl *decl, llvm::Type *type) {
     return bv;
 }
 
-internal LLVM_Value llvm_value_make(llvm::Value *value, llvm::Type *type) {
+LLVM_Value llvm_value_make(llvm::Value *value, llvm::Type *type) {
     LLVM_Value result;
     result.value = value;
     result.type = type;
@@ -181,11 +181,11 @@ llvm::BasicBlock *LLVM_Backend::llvm_block_new(const char *s) {
     return basic_block;
 }
 
-internal inline llvm::Constant *llvm_const_int(llvm::Type *type, u64 value) {
+inline llvm::Constant *llvm_const_int(llvm::Type *type, u64 value) {
     return llvm::ConstantInt::get(type, value);
 }
 
-internal inline llvm::Constant *llvm_zero(llvm::Type *type) {
+inline llvm::Constant *llvm_zero(llvm::Type *type) {
     return llvm_const_int(type, 0);
 }
 
@@ -481,6 +481,10 @@ LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value constant_value, Type 
         } else {
             value.value = llvm::ConstantInt::get(ty, u64_from_bigint(constant_value.value_integer), sign);
         }
+
+        if (is_pointer_type(type)) {
+            value.value = Builder->CreateBitCast(value.value, ty);
+        }
         break;
     }
     case CONSTANT_VALUE_FLOAT: {
@@ -695,12 +699,13 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
         return value;
     }
 
-    case AST_ADDRESS: {
-        Ast_Address *address = static_cast<Ast_Address*>(expr);
+    case AST_STAR_EXPR: {
+        Ast_Star_Expr *star = static_cast<Ast_Star_Expr*>(expr);
+        Assert(star->mode == ADDRESSING_VARIABLE);
         LLVM_Value value;
-        LLVM_Addr addr = gen_addr(address->elem);
+        LLVM_Addr addr = gen_addr(star->elem);
         value.value = addr.value;
-        value.type = get_type(address->type);
+        value.type = get_type(star->type);
         return value;
     }
 
@@ -1109,7 +1114,7 @@ void LLVM_Backend::gen_ifcase_switch(Ast_Ifcase *ifcase) {
             bigint max = range->rhs->value.value_integer;
             bigint i = bigint_copy(&range->lhs->value.value_integer);
 
-            while (mp_cmp(&i, &max) == MP_LT) {
+            while (mp_cmp(&i, &max) != MP_GT) {
                 bool is_signed = mp_isneg(&i);
                 u64 c = u64_from_bigint(i);
                 llvm::ConstantInt *case_constant = static_cast<llvm::ConstantInt*>(llvm::ConstantInt::get(type, c, is_signed));
@@ -1452,7 +1457,7 @@ void LLVM_Backend::gen_type_struct(Type_Struct *ts) {
 
     char *canon_name = "anon.struct";
     if (ts->name) {
-        canon_name = cstring_fmt("struct.%s", (char *)ts->name->data);
+        canon_name = cstring_make_fmt(heap_allocator(), "struct.%s", (char *)ts->name->data);
     }
 
     llvm::StructType *struct_type = llvm::StructType::create(*Ctx, canon_name);
@@ -1642,6 +1647,9 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd, bool is_global) {
         for (int v = 0, n = 0; v < vd->values.count; v++) {
             Ast *val_expr = vd->values[v];
 
+            //@Note Do not initialize
+            if (val_expr->kind == AST_UNINIT) continue;
+
             LLVM_Value value = gen_expr(val_expr);
 
             if (is_global) {
@@ -1677,6 +1685,19 @@ void LLVM_Backend::gen_value_decl(Ast_Value_Decl *vd, bool is_global) {
                     }
                 }
                 n += value_count;
+            }
+        }
+
+        //@Note Zero-initialize
+        if (!is_global && vd->values.count == 0) {
+            for (Ast *name : vd->names) {
+                Ast_Ident *ident = (Ast_Ident *)name;
+                Decl *decl = ident->ref;
+                llvm::Type *type = get_type(decl->type);
+                llvm::Constant *null_value = llvm::Constant::getNullValue(type);
+                if (decl->kind == DECL_VARIABLE) {
+                    llvm_store(null_value, decl->backend_var->storage);
+                }
             }
         }
     } else {
@@ -1752,14 +1773,14 @@ void LLVM_Backend::gen() {
         return;
     }
 
-    array_init(&compiler_link_libraries, heap_allocator());
     array_add(&compiler_link_libraries, str_lit("msvcrt.lib"));
     array_add(&compiler_link_libraries, str_lit("legacy_stdio_definitions.lib"));
-    char *linker_args = NULL;
+    CString linker_args = cstring_make(heap_allocator(), "");
     for (String lib : compiler_link_libraries) {
-        linker_args = cstring_append_fmt(linker_args, "%S ", lib);
+        linker_args = string_append(linker_args, (char *)lib.data);
+        linker_args = string_append(linker_args, " ");
     }
-    char *linker_command = cstring_fmt("link.exe %s %s", (char *)object_file_name.data, linker_args);
+    CString linker_command = cstring_make_fmt(heap_allocator(), "link.exe %s %s", (char *)object_file_name.data, linker_args);
 
     printf("LINK COMMAND: %s\n", linker_command);
 

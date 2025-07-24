@@ -75,8 +75,6 @@ void AssertMessage(const char *message, const char *file, int line);
     DebugTrap(); \
 } \
 
-#define internal
-#define global
 #define local_persist static
 
 #define Swap(T,a,b) do{T __t = a; a = b; b = __t;}while(0)
@@ -87,14 +85,14 @@ typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-typedef int8_t  s8;
-typedef int16_t s16;
-typedef int32_t s32;
-typedef int64_t s64;
-typedef s8  b8;
-typedef s16 b16;
-typedef s32 b32;
-typedef s64 b64;
+typedef int8_t  i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef i8  b8;
+typedef i16 b16;
+typedef i32 b32;
+typedef i64 b64;
 typedef float  f32;
 typedef double f64;
 typedef uintptr_t uintptr;
@@ -109,7 +107,7 @@ enum Axis2 {
 
 union V2_S32 {
     struct {
-        s32 x, y;
+        i32 x, y;
     };
     int e[2];
     int& operator[](int index) {
@@ -119,17 +117,17 @@ union V2_S32 {
 
 union V2_S64 {
     struct {
-        s64 x, y;
+        i64 x, y;
     };
-    s64 e[2];
-    s64& operator[](int index) {
+    i64 e[2];
+    i64& operator[](int index) {
         return e[index];
     }
 };
 
 union V3_S32 {
     struct {
-        s32 x, y, z;
+        i32 x, y, z;
     };
     int e[3];
     int& operator[](int index) {
@@ -139,30 +137,30 @@ union V3_S32 {
 
 union V3_S64 {
     struct {
-        s64 x, y, z;
+        i64 x, y, z;
     };
-    s64 e[3];
-    s64& operator[](int index) {
+    i64 e[3];
+    i64& operator[](int index) {
         return e[index];
     }
 };
 
 union V4_S32 {
     struct {
-        s32 x, y, z, w;
+        i32 x, y, z, w;
     };
-    s32 e[4];
-    s32& operator[](int index) {
+    i32 e[4];
+    i32& operator[](int index) {
         return e[index];
     }
 };
 
 union V4_S64 {
     struct {
-        s64 x, y, z, w;
+        i64 x, y, z, w;
     };
-    s64 e[4];
-    s64& operator[](int index) {
+    i64 e[4];
+    i64& operator[](int index) {
         return e[index];
     }
 };
@@ -253,10 +251,10 @@ union Rng_U64 {
 
 union Rng_S64 {
     struct {
-        s64 min;
-        s64 max;
+        i64 min;
+        i64 max;
     };   
-    s64 v[2];
+    i64 v[2];
 };
 
 union Rect {
@@ -290,8 +288,8 @@ union RGBA {
 
 Rng_U64 rng_u64(u64 min, u64 max);
 u64 rng_u64_len(Rng_U64 rng);
-Rng_S64 rng_s64(s64 min, s64 max);
-s64 rng_s64_len(Rng_S64 rng);
+Rng_S64 rng_s64(i64 min, i64 max);
+i64 rng_s64_len(Rng_S64 rng);
 
 #endif // BASE_CORE_H
 

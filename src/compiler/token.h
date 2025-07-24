@@ -151,7 +151,7 @@ struct Token {
     };
 };
 
-internal const char *string_from_token(Token_Kind token);
+const char *string_from_token(Token_Kind token);
 
 
 #endif //TOKEN_H

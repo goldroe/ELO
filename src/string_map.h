@@ -28,7 +28,7 @@ struct String_Map_Result {
     T value;
 };
 
-internal u32 string__hash(String string) {
+u32 string__hash(String string) {
     u32 result = 5381;
     for (u64 i = 0; i < string.count; i++) {
         result = ((result << 5) + result) + string.data[i];
@@ -37,13 +37,13 @@ internal u32 string__hash(String string) {
 }
 
 template <typename T>
-internal void string_map_init(String_Map<T> *string_map, int bucket_count) {
+void string_map_init(String_Map<T> *string_map, int bucket_count) {
     string_map->bucket_count = bucket_count;
     string_map->buckets = new String_Map_Bucket<T>[bucket_count];
 }
 
 template <typename T>
-internal void string_map_insert(String_Map<T> *map, String key, T value) {
+void string_map_insert(String_Map<T> *map, String key, T value) {
     u32 hash = string__hash(key);
     int hash_index = hash % map->bucket_count;
     String_Map_Bucket<T> *bucket = &map->buckets[hash_index];
@@ -66,7 +66,7 @@ internal void string_map_insert(String_Map<T> *map, String key, T value) {
 }
 
 template <typename T>
-internal String_Map_Result<T> string_map__find(String_Map<T> *string_map, String key) {
+String_Map_Result<T> string_map__find(String_Map<T> *string_map, String key) {
     String_Map_Result<T> result;
     result.found = false;
 
@@ -85,7 +85,7 @@ internal String_Map_Result<T> string_map__find(String_Map<T> *string_map, String
 }
 
 template <typename T>
-internal bool string_map_find(String_Map<T> *string_map, String8 key, T *out_value) {
+bool string_map_find(String_Map<T> *string_map, String key, T *out_value) {
     String_Map_Result<T> search_result = string_map__find(string_map, key);
     if (search_result.found) {
         *out_value = search_result.value;

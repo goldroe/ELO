@@ -33,10 +33,9 @@ struct Atom_Table {
 extern Atom_Table *g_atom_table;
 extern Arena *g_atom_arena;
 
-
 inline bool atoms_match(Atom *a, Atom *b) {return a == b;}
 
-internal Atom *atom_create(String8 string);
-internal void atom_init();
+Atom *atom_create(String string);
+void atom_init();
 
 #endif // ATOM_H

@@ -11,10 +11,10 @@
 Token ast_start_token(Ast *node);
 Token ast_end_token(Ast *node);
 
-global Arena *g_report_arena;
-global int g_error_count;
+Arena *g_report_arena;
+int g_error_count;
 
-u64 get_line_start_after_spaces(String8 string, u64 start) {
+u64 get_line_start_after_spaces(String string, u64 start) {
     for (u64 i = start; i < string.count; i++) {
         if (string.data[i] == '\n' || string.data[i] == '\r') {
             return start;
@@ -26,7 +26,7 @@ u64 get_line_start_after_spaces(String8 string, u64 start) {
     return start;
 }
 
-u64 get_next_line_boundary(String8 string, u64 start) {
+u64 get_next_line_boundary(String string, u64 start) {
     for (u64 i = start; i < string.count; i++) {
         if (string.data[i] == '\n' || string.data[i] == '\r') {
             return i;
@@ -55,12 +55,12 @@ void report_line(const char *fmt, ...) {
 }
 
 void report_error_line(Source_File *file, Source_Pos pos) {
-    String8 buffer = file->text; 
+    String buffer = file->text; 
     u64 line_pos = pos.index - pos.col;
     u64 line_end = get_next_line_boundary(buffer, pos.index);
     u64 len = line_end - line_pos;
     int before_len = (int)(pos.index - line_pos);
-    String8 string = str8(buffer.data + line_pos, len);
+    String string = str8(buffer.data + line_pos, len);
 
     report_out("%.*s\n", (int)string.count, string.data);
 
@@ -131,13 +131,13 @@ void report_ast_error_va(Ast *node, const char *fmt, va_list va) {
 
     report_out("%s:%llu:%llu:\n", file->path.data, pos.line, pos.col);
 
-    String8 buffer = file->text; 
+    String buffer = file->text; 
     u64 line_pos = pos.index - pos.col;
     u64 line_end = get_next_line_boundary(buffer, pos.index);
     int before_len = (int)(pos.index - line_pos);
     u64 end_index = Min(end.index, line_end);
 
-    String8 string = str8(buffer.data + line_pos, line_end - line_pos);
+    String string = str8(buffer.data + line_pos, line_end - line_pos);
     report_out("%.*s\n", (int)string.count, string.data);
 
     for (int i = 0; i < before_len; i++) {
@@ -286,12 +286,10 @@ Token ast_start_token(Ast *node) {
         return ast_node(Ast_Subscript, node)->open;
     case AST_CAST:
         return ast_node(Ast_Cast, node)->token;
-    case AST_ITERATOR:
-        break;
     case AST_UNARY:
         return ast_node(Ast_Unary, node)->token;
-    case AST_ADDRESS:
-        return ast_node(Ast_Address, node)->token;
+    case AST_STAR_EXPR:
+        return ast_node(Ast_Star_Expr, node)->token;
     case AST_DEREF: {
         ast_node_var(deref, Ast_Deref, node);
         return ast_start_token(deref->elem);
@@ -311,10 +309,6 @@ Token ast_start_token(Ast *node) {
     case AST_SIZEOF:
         return ast_node(Ast_Sizeof, node)->token;
 
-    case AST_POINTER_TYPE: {
-        ast_node_var(type, Ast_Pointer_Type, node);
-        return ast_start_token(type->elem);
-    }
     case AST_ARRAY_TYPE: {
         ast_node_var(type, Ast_Array_Type, node);
         return ast_start_token(type->elem);
@@ -441,12 +435,10 @@ Token ast_end_token(Ast *node) {
         return ast_node(Ast_Subscript, node)->close;
     case AST_CAST:
         return ast_node(Ast_Cast, node)->token;
-    case AST_ITERATOR:
-        break;
     case AST_UNARY:
         return ast_node(Ast_Unary, node)->token;
-    case AST_ADDRESS:
-        return ast_node(Ast_Address, node)->token;
+    case AST_STAR_EXPR:
+        return ast_node(Ast_Star_Expr, node)->token;
     case AST_DEREF:
         return ast_node(Ast_Deref, node)->token;
     case AST_BINARY: {
@@ -464,8 +456,6 @@ Token ast_end_token(Ast *node) {
     case AST_SIZEOF:
         return ast_end_token(ast_node(Ast_Sizeof, node)->elem);
 
-    case AST_POINTER_TYPE:
-        return ast_end_token(ast_node(Ast_Pointer_Type, node)->elem);
     case AST_ARRAY_TYPE:
         return ast_end_token(ast_node(Ast_Array_Type, node)->elem);
     case AST_PROC_TYPE: {

@@ -28,23 +28,23 @@
 bool compiler_dump_IR;
 Array<String> compiler_link_libraries;
 
-internal void compiler_error(char *fmt, ...) {
+void compiler_error(char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    String8 string = str8_pushfv(heap_allocator(), fmt, args);
+    String string = str8_pushfv(heap_allocator(), fmt, args);
     va_end(args);
     printf("ELO: error: %s", (char *)string.data);
     free(heap_allocator(), string.data);
 }
 
 #ifdef OS_WINDOWS
-global HANDLE hOut;
-global DWORD dwOriginalOutMode;
+HANDLE hOut;
+DWORD dwOriginalOutMode;
 #endif
 
 bool _terminal_supports_ansi_colors;
 
-internal void compiler_exit() {
+void compiler_exit() {
 #ifdef OS_WINDOWS
     if (hOut != INVALID_HANDLE_VALUE) {
         SetConsoleMode(hOut, dwOriginalOutMode);
@@ -52,15 +52,16 @@ internal void compiler_exit() {
 #endif
 }
 
-internal void compiler_process_args(int argc, char **args) {
+void compiler_process_args(int argc, char **args) {
+    array_init(&compiler_link_libraries, heap_allocator());
     for (int i = 0; i < argc; i++) {
-        String8 arg = str8_cstring(args[i]);
+        String arg = str8_cstring(args[i]);
         if (arg.count < 2) continue;
 
         if (arg.data[0] == '-') {
             arg.data++; arg.count--;
             if (arg.data[0] == 'l') {
-                String8 lib = arg;
+                String lib = arg;
                 lib.count--; lib.data++;
                 array_add(&compiler_link_libraries, lib);
             } else if (str8_match(arg, str_lit("dump_ir"), StringMatchFlag_CaseInsensitive)) {
@@ -101,17 +102,17 @@ int main(int argc, char **argv) {
 
     register_builtin_types();
 
-    String8 file_name = str8_cstring(argv[0]);
-    String8 file_path = path_join(heap_allocator(), os_current_dir(temporary_allocator()), file_name);
+    String file_name = str8_cstring(argv[0]);
+    String file_path = path_join(heap_allocator(), os_current_dir(temporary_allocator()), file_name);
     file_path = normalize_path(heap_allocator(), file_path);
 
-    String8 extension = path_get_extension(file_path);
+    String extension = path_get_extension(file_path);
 
     if (!os_file_exists(file_path)) {
         compiler_error("no such file or directory '%S'.\n", file_path);
         return 1;
     }
-    if (!str8_equal(extension, str8_lit("elo"))) {
+    if (!str8_equal(extension, str_lit("elo"))) {
         compiler_error("'%S' is not a valid elo file.\n", file_path);
         return 1;
     }
@@ -143,8 +144,6 @@ int main(int argc, char **argv) {
     }
 
     compiler_exit();
-
-    printf("done.\n");
 
     return g_error_count;
 }

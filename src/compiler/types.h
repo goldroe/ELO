@@ -15,6 +15,7 @@ enum Type_Kind {
 
     TYPE_VOID,
     TYPE_NULL,
+    TYPE_UNINIT,
 
     TYPE_INTEGER_BEGIN,
     TYPE_UINT8,
@@ -59,7 +60,7 @@ struct Type {
     Type_Kind kind = TYPE_INVALID;
     Decl *decl = nullptr;
     Atom *name = nullptr;
-    s64 size = 0;
+    i64 size = 0;
 };
 
 struct Type_Pointer : Type {
@@ -97,7 +98,7 @@ struct Type_Struct : Type {
     Type_Struct() { kind = TYPE_STRUCT; }
     Scope *scope;
     Array<Decl*> members;
-    Array<s64> offsets;
+    Array<i64> offsets;
 
     BE_Struct *backend_struct = nullptr;
 };
@@ -124,6 +125,7 @@ struct Type_Enum : Type {
 extern Array<Type*> g_builtin_types;
 extern Type *type_invalid;
 extern Type *type_void;
+extern Type *type_uninit_value;
 extern Type *type_null;
 extern Type *type_bool;
 extern Type *type_u8, *type_u16, *type_u32, *type_u64, *type_uint;
@@ -143,66 +145,68 @@ Type_Proc *proc_type_create(Array<Type*> params, Array<Type*> results);
 Type_Struct *struct_type_create(Atom *name, Array<Decl*> members, Scope *scope);
 Type_Union *union_type_create(Atom *name, Array<Decl*> members, Scope *scope);
 Type_Enum *enum_type_create(Type *base_type, Array<Decl*> fields, Scope *scope);
-Type *builtin_type_create(Type_Kind kind, String8 name, int size);
+Type *builtin_type_create(Type_Kind kind, String name, int size);
 
 void register_builtin_types();
 
-internal bool typecheck_castable(Type *t0, Type *t1);
+bool typecheck_castable(Type *t0, Type *t1);
 bool is_convertible(Type *t0, Type *t1);
 
 Type *type_deref(Type *t);
 
-internal char *string_from_type(Type *ty);
+CString string_from_type(CString string, Type *type);
+CString string_from_type(Allocator allocator, Type *type);
+CString string_from_type(Type *type);
 
-internal inline bool is_tuple_type(Type *type)         {return type->kind == TYPE_TUPLE;}
-internal inline bool is_array_type(Type *type)         {return type->kind == TYPE_ARRAY;}
-internal inline bool is_array_view_type(Type *type)    {return type->kind == TYPE_ARRAY_VIEW;}
-internal inline bool is_dynamic_array_type(Type *type) {return type->kind == TYPE_DYNAMIC_ARRAY;}
-internal inline bool is_pointer_type(Type *type)       {return type->kind == TYPE_POINTER;}
-internal inline bool is_boolean_type(Type *type)       {return type->kind == TYPE_BOOL;}
-internal inline bool is_struct_type(Type *type)        {return type->kind == TYPE_STRUCT;}
-internal inline bool is_union_type(Type *type)         {return type->kind == TYPE_UNION;}
-internal inline bool is_enum_type(Type *type)          {return type->kind == TYPE_ENUM;}
-internal inline bool is_proc_type(Type *type)          {return type->kind == TYPE_PROC;}
+inline bool is_tuple_type(Type *type)         {return type->kind == TYPE_TUPLE;}
+inline bool is_array_type(Type *type)         {return type->kind == TYPE_ARRAY;}
+inline bool is_array_view_type(Type *type)    {return type->kind == TYPE_ARRAY_VIEW;}
+inline bool is_dynamic_array_type(Type *type) {return type->kind == TYPE_DYNAMIC_ARRAY;}
+inline bool is_pointer_type(Type *type)       {return type->kind == TYPE_POINTER;}
+inline bool is_boolean_type(Type *type)       {return type->kind == TYPE_BOOL;}
+inline bool is_struct_type(Type *type)        {return type->kind == TYPE_STRUCT;}
+inline bool is_union_type(Type *type)         {return type->kind == TYPE_UNION;}
+inline bool is_enum_type(Type *type)          {return type->kind == TYPE_ENUM;}
+inline bool is_proc_type(Type *type)          {return type->kind == TYPE_PROC;}
 
-internal inline bool is_integer_type(Type *type) {
+inline bool is_integer_type(Type *type) {
     return TYPE_INTEGER_BEGIN <= type->kind && type->kind <= TYPE_INTEGER_END;
 }
 
-internal inline bool is_float_type(Type *type) {
+inline bool is_float_type(Type *type) {
     return type->kind == TYPE_FLOAT32 || type->kind == TYPE_FLOAT64;
 }
 
-internal inline bool is_signed_type(Type *type) {
+inline bool is_signed_type(Type *type) {
     return TYPE_INT8 <= type->kind && type->kind <= TYPE_INT64;
 }
-internal inline bool is_integral_type(Type *type) {return is_integer_type(type) || is_enum_type(type);}
+inline bool is_integral_type(Type *type) {return is_integer_type(type) || is_enum_type(type);}
 
-internal inline bool is_user_defined_type(Type *type) {
+inline bool is_user_defined_type(Type *type) {
     return type->kind == TYPE_STRUCT || type->kind == TYPE_ARRAY;
 }
 
-internal inline bool is_struct_or_pointer(Type *type) {
+inline bool is_struct_or_pointer(Type *type) {
     return (is_struct_type(type) || (is_pointer_type(type) && is_struct_type(type->base)));
 }
 
-internal inline bool is_conditional_type(Type *type) {
+inline bool is_conditional_type(Type *type) {
     return is_integral_type(type) || is_enum_type(type) || is_boolean_type(type) || is_float_type(type) || is_pointer_type(type);
 }
 
-internal inline bool is_numeric_type(Type *type) {
+inline bool is_numeric_type(Type *type) {
     return is_integral_type(type) || is_enum_type(type) || is_boolean_type(type) || is_float_type(type) || is_pointer_type(type);
 }
 
-internal inline bool is_array_like_type(Type *type) {
+inline bool is_array_like_type(Type *type) {
     return is_array_type(type) || is_array_view_type(type) || is_dynamic_array_type(type);
 }
 
-internal inline bool is_indirection_type(Type *type) {
+inline bool is_indirection_type(Type *type) {
     return is_pointer_type(type) || is_array_like_type(type);
 }
 
-internal inline bool is_pointer_like_type(Type *type) {
+inline bool is_pointer_like_type(Type *type) {
     return is_pointer_type(type) || is_array_type(type) || is_proc_type(type);
 }
 

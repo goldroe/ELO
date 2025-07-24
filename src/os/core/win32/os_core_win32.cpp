@@ -4,7 +4,7 @@
 #include "path/path.h"
 
 OS_Key keycode_table[256];
-s64 win32_performance_frequency;
+i64 win32_performance_frequency;
 
 OS_Event_Flags os_event_flags() {
     OS_Event_Flags result = (OS_Event_Flags)0;
@@ -55,13 +55,13 @@ OS_Key os_key_from_vk(u32 vk) {
     return keycode_table[vk];
 }
 
-inline s64 get_wall_clock() {
+inline i64 get_wall_clock() {
     LARGE_INTEGER result;
     QueryPerformanceCounter(&result);
-    return (s64)result.QuadPart;
+    return (i64)result.QuadPart;
 }
 
-inline f32 get_ms_elapsed(s64 start, s64 end) {
+inline f32 get_ms_elapsed(i64 start, i64 end) {
     f32 result = 1000.0f * ((f32)(end - start) / (f32)win32_performance_frequency);
     return result;
 }
@@ -222,7 +222,7 @@ OS_File os_file_from_win32_data(Allocator allocator, WIN32_FIND_DATAA win32_data
 }
 
 OS_Handle os_find_first_file(Allocator allocator, String path, OS_File *file) {
-    String find_path = str8_concat(allocator, path, str8_lit("\\*"));
+    String find_path = str8_concat(allocator, path, str_lit("\\*"));
     WIN32_FIND_DATAA win32_data;
     HANDLE find_file_handle = FindFirstFileA((const char *)find_path.data, &win32_data);
     if (find_file_handle) {

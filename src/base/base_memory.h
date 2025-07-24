@@ -41,16 +41,16 @@ struct Allocator {
 extern ALLOCATOR_PROC(arena_allocator_proc);
 extern Arena *temporary_arena;
 
-internal Allocator arena_allocator(Arena *arena);
-internal Allocator heap_allocator();
-internal Allocator temporary_allocator();
+Allocator arena_allocator(Arena *arena);
+Allocator heap_allocator();
+Allocator temporary_allocator();
 
-internal void *alloc_align(Allocator allocator, u64 size, int alignment);
+void *alloc_align(Allocator allocator, u64 size, int alignment);
 
-internal void *alloc(Allocator allocator, u64 size);
-internal void free(Allocator allocator, void *memory);
+void *alloc(Allocator allocator, u64 size);
+void free(Allocator allocator, void *memory);
 
-internal void *allocator_resize(Allocator allocator, void *old_mem, u64 size, int alignment);
+void *allocator_resize(Allocator allocator, void *old_mem, u64 size, int alignment);
 
 
 #define array_alloc(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
@@ -58,8 +58,8 @@ internal void *allocator_resize(Allocator allocator, void *old_mem, u64 size, in
 // #define array_alloc_align(Alloc, T, Count) (T*)alloc_align(Alloc, sizeof(T) * (Count), alignof(T))
 // #define alloc_item_align(Alloc, T) (T*)alloc_align(Alloc, sizeof(T), alignof(T))
 
-internal Arena *arena_create(u64 block_size = MINIMUM_ARENA_BLOCK_SIZE);
-internal void *arena_alloc(Arena *arena, u64 min_size, int alignment);
-internal void arena_release(Arena *arena);
+Arena *arena_create(u64 block_size = MINIMUM_ARENA_BLOCK_SIZE);
+void *arena_alloc(Arena *arena, u64 min_size, int alignment);
+void arena_release(Arena *arena);
 
 #endif // BASE_MEMORY_H

@@ -23,7 +23,7 @@ struct Source_File_Map {
 
 extern Source_File_Map source_file_map;
 
-internal Source_File *source_file_create(String8 file_path);
+Source_File *source_file_create(String file_path);
 void add_source_file(Source_File *source_file);
 
 
