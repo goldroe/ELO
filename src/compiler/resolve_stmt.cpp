@@ -184,7 +184,15 @@ void Resolver::resolve_ifcase_stmt(Ast_Ifcase *ifcase) {
 
         case_label->scope = new_scope(current_scope, SCOPE_BLOCK);
 
-        for (Ast *stmt : case_label->statements) {
+        for (int i = 0; i < case_label->statements.count; i++) {
+            Ast *stmt = case_label->statements[i];
+            if (stmt->kind == AST_FALLTHROUGH) {
+                Ast_Fallthrough *fallthrough = static_cast<Ast_Fallthrough*>(stmt);
+                fallthrough->target = case_label;
+                if (i != case_label->statements.count-1) {
+                    report_ast_error(fallthrough, "illegal fallthrough, must be placed at end of case block.\n");
+                }
+            }
             resolve_stmt(stmt);
         }
         exit_scope();
@@ -319,7 +327,7 @@ void Resolver::resolve_return_stmt(Ast_Return *return_stmt) {
 
 void Resolver::resolve_fallthrough_stmt(Ast_Fallthrough *fallthrough) {
     if (!fallthrough->target) {
-        report_ast_error(fallthrough, "illegal fallthrough, must be placed at end of a case block.\n");
+        report_ast_error(fallthrough, "illegal fallthrough, must be placed in an ifcase clause.\n");
     }
 }
 
