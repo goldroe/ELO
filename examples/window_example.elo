@@ -1,10 +1,8 @@
 #import "win32/win32.elo";
 #import "libc/stdio.elo";
 
-window_should_close: bool;
-
 win32_proc :: (hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
-    result : LRESULT = cast(LRESULT)0;
+    result: LRESULT;
 
     ifcase Msg {
     case:
@@ -14,22 +12,25 @@ win32_proc :: (hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT
     case WM_CREATE:
         break;
     }
-
     return result;
 }
 
 main :: (argc: int, argv: **u8) -> int {
-    hInstance := GetModuleHandleA(null);
+    window_should_close := false;
+
+    hInstance := GetModuleHandleA(cast(*u8)null);
     class_name := "hwnd_class_demo";
+
     window_class: WNDCLASSA;
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = win32_proc;
     window_class.lpszClassName = class_name;
     window_class.hInstance = hInstance;
     window_class.hbrBackground = cast(HBRUSH)(COLOR_WINDOW + 1);
-    window_class.hCursor = LoadCursorA(null, cast(LPCSTR)cast(ULONG_PTR)cast(WORD)32512);
+
     if !RegisterClassA(*window_class) {
         puts("RegisterClassA failed.");
+        return 1;
     }
 
     hWnd := CreateWindowExA(0, class_name, "Window", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, null, null);
