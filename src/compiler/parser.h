@@ -43,6 +43,7 @@ struct Parser {
     Ast *parse_assignment_expr();
     Ast *parse_range_expr();
     Ast *parse_expr();
+    Ast_Star_Expr *parse_star_expr();
 
     Ast *parse_operand();
 

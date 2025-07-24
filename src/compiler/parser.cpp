@@ -296,12 +296,14 @@ Ast *Parser::parse_operand() {
         operand = ast_literal(file, token);
         return operand;
 
+    case TOKEN_UNINIT:
+        lexer->next_token();
+        return ast_uninit_expr(file, token);
+
     case TOKEN_STAR: {
-        expect_token(TOKEN_STAR);
-        Ast *type = parse_type();
-        operand = ast_pointer_type(file, token, type);
-        return operand;
+        return parse_star_expr();
     }
+
     case TOKEN_LBRACKET: {
         expect_token(TOKEN_LBRACKET);
         Ast *array_size = nullptr;
@@ -396,6 +398,13 @@ Ast *Parser::parse_operand() {
     return operand;
 }
 
+Ast_Star_Expr *Parser::parse_star_expr() {
+    Token token = expect_token(TOKEN_STAR);
+    Ast *elem = parse_unary_expr();
+    Ast_Star_Expr *expr = ast_star_expr(file, token, elem);
+    return expr;
+}
+
 Ast *Parser::parse_unary_expr() {
     Token token = lexer->current();
     switch (token.kind) {
@@ -405,10 +414,7 @@ Ast *Parser::parse_unary_expr() {
     }
 
     case TOKEN_STAR: {
-        expect_token(TOKEN_STAR);
-        Ast *elem = parse_unary_expr();
-        Ast_Address *expr = ast_address_expr(file, token, elem);
-        return expr;
+        return parse_star_expr();
     }
 
     case TOKEN_SIZEOF: {
