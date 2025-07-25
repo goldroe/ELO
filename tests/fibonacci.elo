@@ -1,11 +1,10 @@
-#load "stdlib.elo";
-#load "stdio.elo";
+#import "libc/stdlib.elo";
+#import "libc/stdio.elo";
 
 main :: () -> int {
     num := 20;
-    number_array: [1000]u64;
-    // numbers: *u64 = number_array;
-    numbers := cast(*u64)malloc(cast(u64)(8 * 1000));
+    numbers: [1000]u64 = ---;
+
     numbers[0] = 0u64;
     numbers[1] = 1u64;
 
