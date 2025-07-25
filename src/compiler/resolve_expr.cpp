@@ -350,17 +350,6 @@ void Resolver::resolve_compound_literal(Ast_Compound_Literal *literal) {
             }
         }
     }
-
-    bool is_constant = true;
-    for (int i = 0; i < literal->elements.count; i++) {
-        Ast *elem = literal->elements[i];
-        if (elem->mode != ADDRESSING_CONSTANT) {
-            is_constant = false;
-        }
-    }
-    if (is_constant) {
-        literal->mode = ADDRESSING_CONSTANT;
-    }
 }
 
 void Resolver::resolve_deref_expr(Ast_Deref *deref) {
@@ -803,14 +792,12 @@ void Resolver::resolve_expr_base(Ast *expr) {
 
     case AST_PAREN: {
         Ast_Paren *paren = static_cast<Ast_Paren*>(expr);
-        resolve_expr(paren->elem);
-        paren->type = paren->elem->type;
+        resolve_expr_base(paren->elem);
 
         if (paren->elem->valid()) {
-            if (paren->elem->mode == ADDRESSING_CONSTANT) {
-                paren->mode = ADDRESSING_CONSTANT;
-                paren->value = paren->elem->value;
-            }
+            paren->mode = paren->elem->mode;
+            paren->value = paren->elem->value;
+            paren->type = paren->elem->type;
         } else {
             paren->poison();
         }

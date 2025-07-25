@@ -194,7 +194,6 @@ struct Ast_Compound_Literal : Ast {
     Ast_Compound_Literal() { kind = AST_COMPOUND_LITERAL; }
     Ast *typespec;
     Array<Ast*> elements;
-    Token token;
     Token open;
     Token close;
 };
@@ -589,7 +588,7 @@ Ast_Enum_Field *ast_enum_field(Source_File *f, Ast_Ident *ident, Ast *expr);
 Ast_Param *ast_param(Source_File *f, Ast_Ident *name, Ast *typespec, bool is_variadic);
 Ast_Ident *ast_ident(Source_File *f, Token token);
 Ast_Literal *ast_literal(Source_File *f, Token token);
-Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements);
+Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Array<Ast*> elements);
 Ast_Uninit *ast_uninit_expr(Source_File *f, Token token);
 Ast_Paren *ast_paren_expr(Source_File *f, Token open, Token close, Ast *elem);
 Ast_Unary *ast_unary_expr(Source_File *f, Token token, OP op, Ast *elem);

@@ -9,8 +9,8 @@ struct Parser {
 
     int error_count = 0;
 
-    bool allow_value_decl = false;
     bool allow_type = false;
+    int expr_level = 0; // Solves conflict with compound literal and control statements.
 
     Source_File *file;
     
@@ -31,7 +31,7 @@ struct Parser {
 
     Ast_Ident *Parser::parse_ident();
 
-    Ast_Compound_Literal *parse_compound_literal(Token token, Ast *operand);
+    Ast_Compound_Literal *parse_compound_literal(Ast *operand);
     Ast_Selector *Parser::parse_selector_expr(Token token, Ast *base);
     Ast_Subscript *parse_subscript_expr(Ast *base);
     Ast_Call *parse_call_expr(Ast *expr);

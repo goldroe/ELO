@@ -149,11 +149,10 @@ Ast_Literal *ast_literal(Source_File *f, Token token) {
     return node;
 }
 
-Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token token, Token open, Token close, Ast *typespec, Array<Ast*> elements) {
+Ast_Compound_Literal *ast_compound_literal(Source_File *f, Token open, Token close, Ast *typespec, Array<Ast*> elements) {
     Ast_Compound_Literal *node = AST_NEW(f, Ast_Compound_Literal);
     node->elements = elements;
     node->typespec = typespec;
-    node->token = token;
     node->open = open;
     node->close = close;
     return node;

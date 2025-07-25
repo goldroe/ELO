@@ -479,6 +479,9 @@ LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value constant_value, Type 
         if (sign) {
             value.value = llvm::ConstantInt::get(ty, (u64)s64_from_bigint(constant_value.value_integer), sign);
         } else {
+
+
+
             value.value = llvm::ConstantInt::get(ty, u64_from_bigint(constant_value.value_integer), sign);
         }
 
@@ -520,7 +523,58 @@ LLVM_Value LLVM_Backend::gen_expr(Ast *expr) {
 
     case AST_COMPOUND_LITERAL: {
         Ast_Compound_Literal *literal = static_cast<Ast_Compound_Literal*>(expr);
-        break;
+        Type *aggregate_type = nullptr;
+        bool is_aggregate = false;
+
+        switch (literal->type->kind) {
+        case TYPE_TUPLE:
+            if (get_value_count(literal->type) > 1) {
+                is_aggregate = true;
+                aggregate_type = literal->type;
+            }
+            break;
+
+        case TYPE_STRUCT:
+            is_aggregate = true;
+            aggregate_type = literal->type;
+            break;
+
+        case TYPE_UNION: {
+            Type_Union *tu = static_cast<Type_Union*>(literal->type);
+            for (Decl *m : tu->members) {
+                if (m->kind == DECL_VARIABLE && is_struct_type(m->type)) {
+                    is_aggregate = true;
+                    aggregate_type = m->type;
+                }
+            }
+            break;
+        }
+        }
+
+        if (is_aggregate) {
+            llvm::Type *ty = get_type(aggregate_type);
+            auto values = array_make<llvm::Constant*>(heap_allocator());
+            for (Ast *elem : literal->elements) {
+                LLVM_Value v = gen_expr(elem);
+                array_add(&values, static_cast<llvm::Constant*>(v.value));
+            }
+            llvm::Value *value = llvm::ConstantStruct::get(static_cast<llvm::StructType*>(ty), llvm::ArrayRef(values.data, values.count));
+            return llvm_value_make(value, ty);
+        }
+
+        if (is_array_type(literal->type)) {
+            llvm::ArrayType *ty = static_cast<llvm::ArrayType*>(get_type(literal->type));
+            auto values = array_make<llvm::Constant*>(heap_allocator());
+            for (Ast *elem : literal->elements) {
+                LLVM_Value v = gen_expr(elem);
+                array_add(&values, static_cast<llvm::Constant*>(v.value));
+            }
+            llvm::Value *value = llvm::ConstantArray::get(ty, llvm::ArrayRef(values.data, values.count));
+            return llvm_value_make(value, ty);
+        }
+            
+        Assert(literal->elements.count == 1);
+        return gen_expr(literal->elements[0]);
     }
 
     case AST_IDENT: {
@@ -1750,7 +1804,7 @@ void LLVM_Backend::gen() {
 
     char *errors = nullptr;
 
-	char const *target_triple = LLVM_DEFAULT_TARGET_TRIPLE;
+    char const *target_triple = LLVM_DEFAULT_TARGET_TRIPLE;
     LLVMTargetRef target;
     if (LLVMGetTargetFromTriple(target_triple, &target, &errors)) {
         fprintf(stderr, "ERROR:%s\n", errors);

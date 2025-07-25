@@ -1,6 +1,3 @@
-//@Todo Fix paren expression parsing. Conflicts with procedure type.
-//@Todo Fix compound literal parsing. Conflicts with control-statements ?
-
 #include "path/path.h"
 
 #include "atom.h"
@@ -78,9 +75,8 @@ Array<Ast*> Parser::parse_type_list() {
     return type_list;
 }
 
-Ast_Compound_Literal *Parser::parse_compound_literal(Token token, Ast *type) {
+Ast_Compound_Literal *Parser::parse_compound_literal(Ast *type) {
     Token open = expect_token(TOKEN_LBRACE);
-
     auto elements = array_make<Ast*>(heap_allocator());
 
     while (!lexer->match(TOKEN_RBRACE)) {
@@ -94,7 +90,7 @@ Ast_Compound_Literal *Parser::parse_compound_literal(Token token, Ast *type) {
 
     Token close = expect_token(TOKEN_RBRACE);
 
-    Ast_Compound_Literal *compound = ast_compound_literal(file, token, open, close, type, elements);
+    Ast_Compound_Literal *compound = ast_compound_literal(file, open, close, type, elements);
     return compound;
 }
 
@@ -245,27 +241,22 @@ Ast *Parser::parse_primary_expr(Ast *operand) {
 
     bool loop = true;
     while (loop) {
-        Token token = lexer->current();
-
-        switch (token.kind) {
+        switch (lexer->peek()) {
         default:
             loop = false;
             break;
 
         case TOKEN_DOT: {
             Token token = expect_token(TOKEN_DOT);
-            if (lexer->match(TOKEN_LBRACE)) {
-                operand = parse_compound_literal(token, operand);
-            } else {
-                operand = parse_selector_expr(token, operand);
-            }
+            operand = parse_selector_expr(token, operand);
             break;
         }
 
-        case TOKEN_DOT_STAR:
-            expect_token(TOKEN_DOT_STAR);
+        case TOKEN_DOT_STAR: {
+            Token token = expect_token(TOKEN_DOT_STAR);
             operand = ast_deref_expr(file, token, operand);
             break;
+        }
 
         case TOKEN_LBRACKET:
             operand = parse_subscript_expr(operand);
@@ -274,6 +265,15 @@ Ast *Parser::parse_primary_expr(Ast *operand) {
         case TOKEN_LPAREN:
             operand = parse_call_expr(operand);
             break;
+
+        case TOKEN_LBRACE: {
+            if (expr_level >= 0) {
+                operand = parse_compound_literal(operand);
+            } else {
+                loop = false;
+            }
+            break;
+        }
         }
     }
 
@@ -329,33 +329,51 @@ Ast *Parser::parse_operand() {
     }
 
     case TOKEN_LPAREN: {
-        if (!allow_value_decl) {
-            return parse_paren_expr();
+        if (allow_type) {
+            return parse_proc_type();
         }
 
-        Ast_Proc_Type *type = parse_proc_type();
+        Token open = expect_token(TOKEN_LPAREN);
 
-        while (lexer->eat(TOKEN_HASH)) {
-            Token tag = expect_token(TOKEN_IDENT);
-            if (tag.string == "foreign") {
-                type->is_foreign = true;
+        Ast_Proc_Type *proc_type = nullptr;
+        bool is_type = false;
+
+        //@Todo Peak next token
+        // () (-> ..)?
+        if (lexer->match(TOKEN_RPAREN)) {
+            lexer->rewind(open);
+            is_type = true;
+        }
+
+        if (!is_type) {
+            Ast *expr = parse_expr();
+            if (lexer->match(TOKEN_COLON)) {
+                lexer->rewind(open);
+                is_type = true;
             } else {
-                report_parser_error(lexer, "unknown procedure directive '%S'.\n", tag.string); 
+                lexer->rewind(open);
             }
         }
 
-        if (allow_type) {
-            return type;
+        if (is_type) {
+            proc_type = parse_proc_type();
+            while (lexer->eat(TOKEN_HASH)) {
+                Token tag = expect_token(TOKEN_IDENT);
+                if (tag.string == "foreign") {
+                    proc_type->is_foreign = true;
+                }
+            }
+
+            if (lexer->match(TOKEN_LBRACE)) {
+                Ast_Block *body = parse_block();
+                return ast_proc_lit(file, proc_type, body);
+            } else if (lexer->eat(TOKEN_UNINIT)) {
+                return ast_proc_lit(file, proc_type, nullptr);
+            }
+            return proc_type;
         }
 
-        if (lexer->match(TOKEN_LBRACE)) {
-            Ast_Block *body = parse_block();
-            return ast_proc_lit(file, type, body);
-        } else if (lexer->eat(TOKEN_UNINIT)) {
-            return ast_proc_lit(file, type, nullptr);
-        } else {
-            return type;
-        }
+        return parse_paren_expr();
     }
 
     case TOKEN_UNION:
@@ -505,7 +523,13 @@ Ast_If *Parser::parse_if_stmt() {
     Token token = lexer->current();
     expect_token(TOKEN_IF);
 
+    int prev_expr_level = expr_level;
+    expr_level = -1;
+
     Ast *cond = parse_expr();
+
+    expr_level = prev_expr_level;
+
     Ast_Block *block = parse_block();
     Ast_If *if_stmt = ast_if_stmt(file, token, cond, block);
 
@@ -543,7 +567,13 @@ Ast_If *Parser::parse_if_stmt() {
 Ast_While *Parser::parse_while_stmt() {
     Token token = expect_token(TOKEN_WHILE);
 
+    int prev_expr_level = expr_level;
+    expr_level = -1;
+
     Ast *cond = parse_expr();
+
+    expr_level = prev_expr_level;
+
     if (!cond) {
         report_parser_error(lexer, "missing while loop expression.\n");
     }
@@ -568,6 +598,10 @@ Ast *Parser::parse_for_stmt() {
         return ast_for_stmt(file, token, nullptr, nullptr, nullptr, block);
     }
 
+
+    int prev_expr_level = expr_level;
+    expr_level = -1;
+
     init = parse_simple_stmt();
     if (init && init->kind == AST_ASSIGNMENT) {
         Ast_Assignment *assignment = (Ast_Assignment *)init;
@@ -576,10 +610,17 @@ Ast *Parser::parse_for_stmt() {
         }
     }
 
+    expr_level = prev_expr_level;
+
     if (!is_range) {
         expect_semi();
 
+        int prev_expr_level = expr_level;
+        expr_level = -1;
+
         condition = parse_expr();
+
+        expr_level = prev_expr_level;
 
         expect_semi();
 
@@ -641,7 +682,12 @@ Ast_Ifcase *Parser::parse_ifcase_stmt() {
         }
     }
 
+    int prev_expr_level = expr_level;
+    expr_level = -1;
+
     Ast *cond = parse_expr();
+
+    expr_level = prev_expr_level;
 
     Token open = expect_token(TOKEN_LBRACE);
 
@@ -783,11 +829,7 @@ Ast *Parser::parse_type() {
 }
 
 Ast_Value_Decl *Parser::parse_value_decl(Array<Ast*> names) {
-    allow_value_decl = true;
-
     Ast *type = parse_type();
-
-    allow_value_decl = false;
 
     Token token = lexer->current();
 
@@ -805,11 +847,7 @@ Ast_Value_Decl *Parser::parse_value_decl(Array<Ast*> names) {
         lexer->next_token();
         is_mutable = token.kind != TOKEN_COLON;
 
-        allow_value_decl = true;
-
         values = parse_expr_list();
-
-        allow_value_decl = false;
     }
 
     return ast_value_decl(file, names, type, values, is_mutable);
