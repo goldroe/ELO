@@ -71,7 +71,7 @@ advance :: (lexer: *Lexer) {
 }
 
 main :: () -> int {
-    lexer: *Lexer = cast(*Lexer)malloc(64u64);
+    lexer: *Lexer = cast(*Lexer)malloc(size_of(Lexer));
     lexer.stream = "This is some 1002 text. 1 21 1223. * 12";
 
     while true {
