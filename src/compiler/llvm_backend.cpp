@@ -482,6 +482,10 @@ LLVM_Value LLVM_Backend::gen_constant_value(Constant_Value constant_value, Type 
 
 
 
+
+
+
+
             value.value = llvm::ConstantInt::get(ty, u64_from_bigint(constant_value.value_integer), sign);
         }
 
@@ -903,11 +907,11 @@ LLVM_Addr LLVM_Backend::gen_addr(Ast *expr) {
 
         if (is_array_type(subscript->expr->type)) {
             llvm::Type *array_type = get_type(subscript->expr->type);
-            llvm::ArrayRef<llvm::Value*> indices = {
-                llvm_zero(llvm::Type::getInt32Ty(*Ctx)), // ptr
+            llvm::Value *indices[] = {
+                (llvm::Value *)llvm_zero(llvm::Type::getInt32Ty(*Ctx)), // ptr
                 rhs.value  // subscript
             };
-            llvm::Value *ptr = Builder->CreateGEP(array_type, addr.value, indices);
+            llvm::Value *ptr = Builder->CreateGEP(array_type, addr.value, llvm::ArrayRef(indices, 2));
             result.value = ptr;
         } else if (is_pointer_type(subscript->expr->type)) {
             llvm::Type *pointer_type = get_type(subscript->expr->type);
@@ -1834,9 +1838,6 @@ void LLVM_Backend::gen() {
         linker_args = string_append(linker_args, (char *)lib.data);
         linker_args = string_append(linker_args, " ");
     }
-    CString linker_command = cstring_make_fmt(heap_allocator(), "link.exe %s %s", (char *)object_file_name.data, linker_args);
-
-    printf("LINK COMMAND: %s\n", linker_command);
-
+    CString linker_command = cstring_make_fmt(heap_allocator(), "link.exe %S %s", object_file_name, linker_args);
     system(linker_command);
 }
