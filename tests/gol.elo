@@ -4,35 +4,29 @@
 main :: () -> int {
     W :: 8;
     H :: 8;
-    count :: 8;
+    count :: 10;
 
     cells: [H][W]int;
     cells_copy: [H][W]int;
-
-    memset(cast(*void)cells, 0, cast(usize)(4 * W * H));
-    memset(cast(*void)cells_copy, 0, cast(usize)(4 * W * H));
 
     cells[3][3] = 1;
     cells[4][3] = 1;
     cells[3][2] = 1;
     cells[3][4] = 1;
 
-    fp := fopen("gol.out", "w");
-
-    fprintf(fp, "*** GAME OF LIFE ***\n\n");
-    fprintf(fp, "Count: %d\n", count);
+    printf("*** GAME OF LIFE ***\n\n");
 
     for i in 0..count {
-        fprintf(fp, "========== IT:%d ============\n", i);
+        printf("==============================\n");
         for y in 0..H {
             for x in 0..W {
                 if cells[y][x] {
-                    fputc(cast(int)'*', fp);
+                    putchar(cast(int) '*');
                 } else {
-                    fputc(cast(int)' ', fp);
+                    putchar(cast(int) ' ');
                 }
             }
-            fputc(cast(int)'\n', fp);
+            putchar(cast(int)'\n');
         }
 
         // copy cells
