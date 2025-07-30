@@ -1,5 +1,5 @@
 ## ELO
-A generic-purpose programming language for building software.
+A general-purpose programming language for building software.
 
 Built around the simplicity of C yet with more convenience.
 
@@ -21,7 +21,7 @@ Outputs executable and object file using the LLVM backend.
  
 
 Compiler options:
-- Link Library:    -l{file.lib} (e.g -luser32.lib)
+- Link Library:    -l{library} (e.g -luser32.lib)
 - Dump IR (LLVM):  -dump_ir
 
 ### Build
